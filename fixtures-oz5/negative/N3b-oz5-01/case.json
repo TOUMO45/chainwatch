@@ -1,0 +1,14 @@
+{
+  "id": "N3b-oz5-01",
+  "sub_rule": "3b",
+  "label": "negative",
+  "oz_major": 5,
+  "oz_version": "5.7.0",
+  "solc": "0.8.27",
+  "exclusion_ref": "3b.1",
+  "description": "OZ 5 equivalent of N3b-01. initialize() swaps its initializer modifier for reinitializer(2) as part of a V2 upgrade that adds and configures a new appended struct member feeBps.",
+  "why_labeled": "The initializer modifier is gone, but reinitializer(n) is OpenZeppelin's intended mechanism for versioned re-initialization: it reverts when $._initialized >= version, so it can run exactly once at version 2 and never again. The function did not become freely re-callable, so per exclusion 3b.1 the rule must stay silent. A detector keyed on 'initializer present at N-1, absent at N' fires falsely here; it must recognise reinitializer as an equivalent one-shot guard.",
+  "oz5_specific_trap": "In OZ 5 the signature is reinitializer(uint64 version), NOT reinitializer(uint8) as in OZ 4.9.6. Any implementation matching on the parameter type rather than the guard's structure will mis-handle one major version or the other.",
+  "why_oz5_matters": "Once Signal A is taught to recognise ERC-7201 init machinery (3x-L3), this case guards the boundary: the fix must make Rule 3b able to fire on OZ 5, without making it fire on legitimate versioned re-initialization. feeBps is appended after all existing members so this case cannot accidentally trip Rule 3c.",
+  "diff_summary": "before.sol -> after.sol: `initializer` becomes `reinitializer(2)`, struct gains an appended `uint256 feeBps`, initialize() gains a feeBps_ parameter and sets it, and the factory passes 0."
+}

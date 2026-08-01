@@ -1,0 +1,17 @@
+{
+  "id": "N3c-oz5-01",
+  "sub_rule": "3c",
+  "label": "negative",
+  "oz_major": 5,
+  "oz_version": "5.7.0",
+  "solc": "0.8.27",
+  "exclusion_ref": "3c.1",
+  "description": "OZ 5 equivalent of N3c-01. The same new member `uint256 feeBps` used in P3c-oz5-01 is APPENDED strictly after all existing members of the ERC-7201 namespaced struct VaultStorage, on the same proxied UUPS contract.",
+  "why_labeled": "Appending after every existing member leaves each pre-existing member at its original offset from the namespace base, so proxy storage written by the old implementation is still read correctly by the new one. This is the standard safe way to extend a namespaced struct, and exclusion 3c.1 requires silence.",
+  "twin": "Deliberately identical to P3c-oz5-01 in every respect (same member name, same type, same struct, same namespace constant, same contracts, same proxy factory) except where feeBps sits inside the struct. before.sol is byte-identical between the two cases; the after.sol files differ by exactly one line moved. A detector that fires here is keying on the wrong signal.",
+  "slot_ground_truth": {
+    "before": "totalDeposits @ base+0, feeRecipient @ base+1",
+    "after": "totalDeposits @ base+0, feeRecipient @ base+1, feeBps @ base+2  (nothing moved)"
+  },
+  "why_oz5_matters": "This is the precision half of OZ 5 Rule 3c support. The eventual struct-member comparator must separate this from P3c-oz5-01 using resulting member offsets alone."
+}

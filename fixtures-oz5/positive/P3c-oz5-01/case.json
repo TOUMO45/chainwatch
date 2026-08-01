@@ -1,0 +1,18 @@
+{
+  "id": "P3c-oz5-01",
+  "sub_rule": "3c",
+  "label": "positive",
+  "oz_major": 5,
+  "oz_version": "5.7.0",
+  "solc": "0.8.27",
+  "exclusion_ref": null,
+  "description": "OZ 5 equivalent of P3c-01. A new member `uint256 feeBps` is inserted BETWEEN the two existing members of the ERC-7201 namespaced struct VaultStorage (chainwatch.storage.Vault), on a UUPS contract deployed behind an ERC1967Proxy by an in-file factory.",
+  "why_labeled": "Inserting mid-struct shifts every subsequent member by one slot relative to the namespace base. Concretely, feeRecipient moves from base+1 to base+2 while the proxy's existing storage still holds the old arrangement, so after an upgrade the implementation reads the old feeRecipient bytes as feeBps and vice versa. This is a genuine slot collision: identical in kind to P3c-01, only relocated into a namespaced struct. Exclusion 3c.3 does not apply, since VaultFactory deploys the contract via ERC1967Proxy.",
+  "twin": "N3c-oz5-01 is byte-identical except for where `uint256 feeBps;` sits inside the struct. before.sol is byte-identical between the two cases; the two after.sol files differ by exactly one line moved. Any logic that separates them by anything other than resulting member offset is wrong even if it scores perfectly.",
+  "slot_ground_truth": {
+    "before": "totalDeposits @ base+0, feeRecipient @ base+1",
+    "after": "totalDeposits @ base+0, feeBps @ base+1, feeRecipient @ base+2  (feeRecipient MOVED)"
+  },
+  "comparator_note": "VERIFIED during fixture construction: `solc --storage-layout` reports an EMPTY storage array for this contract, because ERC-7201 members are not declared state variables and live at an assembly-computed slot. The existing Rule 3c comparator, which diffs the compiler's contract-level storage layout, therefore sees nothing on either side and cannot detect this even if Signal A is fixed. Detecting this case requires comparing STRUCT MEMBER layout from the AST, which is separate work from the 3x-L3 Signal A fix.",
+  "why_oz5_matters": "Ground truth for OZ 5 mode of Rule 3c. Currently missed twice over: exclusion 3c.3 discards the contract via the failed Signal A (3x-L3), and the layout comparator has nothing to compare."
+}

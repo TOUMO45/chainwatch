@@ -8,7 +8,9 @@ import logging
 from pathlib import Path
 
 from slither import Slither
-from slither.core.declarations import Function, SolidityVariableComposed
+from slither.core.declarations import Function, SolidityVariableComposed, Structure
+from slither.core.solidity_types import UserDefinedType
+from slither.slithir.operations import Assignment, InternalCall, Member
 from slither.analyses.data_dependency.data_dependency import is_dependent
 
 REMAPS = [
@@ -97,24 +99,105 @@ def constrains_msg_sender(fn: Function, contract) -> bool:
     return False
 
 
+def _is_namespace_pointer_function(fn) -> bool:
+    """True iff `fn` hands back an ERC-7201 namespaced storage pointer.
+
+    Shape (OZ 5, verified against the installed 5.7.0 source): a function whose
+    body is inline assembly assigning `$.slot := <namespace constant>` and which
+    returns a struct held in storage:
+
+        function _getOwnableStorage() private pure returns (OwnableStorage storage $) {
+            assembly { $.slot := OwnableStorageLocation }
+        }
+
+    Detected by that structure, never by name or by the `erc7201:` annotation.
+    Deliberately does NOT require the slot constant to be read directly: OZ 5's
+    Initializable reaches it through a further call (_initializableStorageSlot()),
+    which is exactly why Slither attributes no state-variable write to the
+    `initializer` modifier and why Signal A failed on OZ 5 (finding 3x-L3).
+    """
+    if not isinstance(fn, Function) or not fn.returns:
+        return False
+    if not any(node.type.name == "ASSEMBLY" for node in fn.nodes):
+        return False
+    for ret in fn.returns:
+        rtype = getattr(ret, "type", None)
+        if isinstance(rtype, UserDefinedType) and isinstance(rtype.type, Structure):
+            return True
+    return False
+
+
+def _namespaced_member_access(fn: Function, transitive: bool = True) -> tuple[set, set]:
+    """(member names read, member names written) through a namespaced pointer.
+
+    Tracks which IR values are ERC-7201 storage pointers, then classifies each
+    member access on them. A member REF used as an Assignment lvalue is a write;
+    a member REF appearing in any operation's reads is a read. This is the
+    namespaced-struct analogue of "which declared state variables does this
+    touch", which is what the OZ 4 path uses.
+    """
+    reads: set = set()
+    writes: set = set()
+    for f in (reachable(fn) if transitive else [fn]):
+        pointers: set = set()
+        ref_to_member: dict = {}
+        for node in f.nodes:
+            for ir in node.irs:
+                if isinstance(ir, InternalCall) and _is_namespace_pointer_function(
+                    getattr(ir, "function", None)
+                ):
+                    if ir.lvalue is not None:
+                        pointers.add(ir.lvalue)
+                elif isinstance(ir, Assignment):
+                    if getattr(ir, "rvalue", None) in pointers and ir.lvalue is not None:
+                        pointers.add(ir.lvalue)
+                if isinstance(ir, Member) and ir.variable_left in pointers:
+                    ref_to_member[ir.lvalue] = str(ir.variable_right).strip('"')
+        for node in f.nodes:
+            for ir in node.irs:
+                if isinstance(ir, Assignment) and ir.lvalue in ref_to_member:
+                    writes.add(ref_to_member[ir.lvalue])
+                for v in getattr(ir, "read", []):
+                    if v in ref_to_member:
+                        reads.add(ref_to_member[v])
+    return reads, writes
+
+
 def is_oneshot_init_guard(mod: Function) -> bool:
     """True iff `mod` is a one-shot initialization guard, structurally.
 
     Shape: the modifier gates on a storage flag AND writes that same flag, so
     it can only pass a bounded number of times. This is what OpenZeppelin's
     `initializer` and `reinitializer(n)` both do, and what `onlyInitializing`
-    (reads _initializing, writes nothing) deliberately does not.
+    (reads the flag, writes nothing) deliberately does not.
     Detected by structure, never by name.
+
+    Two storage forms are recognised, chosen per contract by which one actually
+    matches - there is no global version switch:
+
+      * OZ 4 form: the flag is a declared state variable.
+      * OZ 5 form: the flag is a member of an ERC-7201 namespaced struct reached
+        through an assembly storage pointer, so it is not a declared state
+        variable at all (finding 3x-L3).
+
+    The OZ 4 test runs first and is untouched, so OZ 4 behaviour is unchanged;
+    the OZ 5 test can only add detections where the OZ 4 test found none.
     """
     if not isinstance(mod, Function):
         return False
+
+    # --- OZ 4 form: declared state variables.
     written = set(mod.all_state_variables_written())
-    if not written:
+    if written:
+        for node in guard_nodes(mod):
+            if set(node.state_variables_read) & written:
+                return True
+
+    # --- OZ 5 form: ERC-7201 namespaced struct members.
+    if not any(True for f in reachable(mod) for _ in guard_nodes(f)):
         return False
-    for node in guard_nodes(mod):
-        if set(node.state_variables_read) & written:
-            return True
-    return False
+    ns_reads, ns_writes = _namespaced_member_access(mod)
+    return bool(ns_reads & ns_writes)
 
 
 def has_init_guard(fn: Function) -> bool:
@@ -125,6 +208,12 @@ def has_init_guard(fn: Function) -> bool:
     written = set(fn.all_state_variables_written())
     for node in guard_nodes(fn):
         if set(node.state_variables_read) & written:
+            return True
+    # Same inline check for an ERC-7201 namespaced flag. Restricted to fn's own
+    # body so that a guard belonging to a callee is not credited to fn.
+    if any(True for _ in guard_nodes(fn)):
+        ns_reads, ns_writes = _namespaced_member_access(fn, transitive=False)
+        if ns_reads & ns_writes:
             return True
     return False
 

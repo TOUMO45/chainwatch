@@ -1,0 +1,13 @@
+{
+  "id": "N3c-oz5-02",
+  "sub_rule": "3c",
+  "label": "negative",
+  "oz_major": 5,
+  "oz_version": "5.7.0",
+  "solc": "0.8.27",
+  "exclusion_ref": "3c.3",
+  "description": "OZ 5 equivalent of N3c-03. A new member `uint256 feeBps` is inserted BETWEEN existing members of an ERC-7201 namespaced struct (chainwatch.storage.FeeManager) — the same mid-struct insertion as P3c-oz5-01 — but FeeManager is a plain constructor-deployed contract with no proxy anywhere in the fixture.",
+  "why_labeled": "Storage layout only matters when an old layout persists under a new implementation, which requires a proxy. FeeManager inherits only the non-upgradeable OZ 5 Ownable, has a real constructor, and there is no Initializable, no UUPSUpgradeable, no ERC1967Proxy and no factory anywhere in the file. The 'after' layout is therefore simply the layout of a fresh deployment and the change is meaningless. A detector that flags mid-struct insertions without first proving the contract sits behind a proxy fires falsely here.",
+  "no_proxy_assertion": "Verified mechanically during construction: neither before.sol nor after.sol contains any occurrence of Proxy, Initializable, UUPS, or initializer (grep count 0 in both files).",
+  "why_oz5_matters": "Exclusion 3c.3 is the key exclusion for sub-rule 3c, and it is the one that finding 3x-L3 broke: on OZ 5 the current Signal A returns False for EVERY contract, so 3c.3 discards everything and this case passes for entirely the wrong reason. Once Signal A is fixed to recognise ERC-7201 init machinery, this case must keep passing for the RIGHT reason — genuine absence of proxy evidence. Note this contract uses namespaced storage WITHOUT being upgradeable, which is legal and is exactly why namespaced storage alone must never be treated as proof of proxy deployment."
+}

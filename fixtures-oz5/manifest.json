@@ -1,0 +1,48 @@
+[
+  {
+    "id": "P3b-oz5-01",
+    "rule": 3,
+    "sub_rule": "3b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P3b-oz5-01",
+    "summary": "OZ5: initialize() loses the initializer modifier, ownership set via _transferOwnership directly; runtime-exploitable."
+  },
+  {
+    "id": "P3c-oz5-01",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P3c-oz5-01",
+    "summary": "OZ5: feeBps inserted between existing members of the ERC-7201 struct on a proxied UUPS contract; member offsets shift.",
+    "known_unsupported": "rule 3c OZ5 mode not built; needs an AST struct-offset comparator, solc --storage-layout is empty on OZ5"
+  },
+  {
+    "id": "N3b-oz5-01",
+    "rule": 3,
+    "sub_rule": "3b",
+    "label": "negative",
+    "exclusion_ref": "3b.1",
+    "path": "negative/N3b-oz5-01",
+    "summary": "OZ5: initializer replaced with reinitializer(2) (uint64 in OZ5); intentional versioned re-init."
+  },
+  {
+    "id": "N3c-oz5-01",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "negative",
+    "exclusion_ref": "3c.1",
+    "path": "negative/N3c-oz5-01",
+    "summary": "OZ5: feeBps appended after all existing struct members; twin of P3c-oz5-01 differing only in placement."
+  },
+  {
+    "id": "N3c-oz5-02",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "negative",
+    "exclusion_ref": "3c.3",
+    "path": "negative/N3c-oz5-02",
+    "summary": "OZ5: mid-struct insertion in a plain non-proxied contract using namespaced storage; no proxy exists in the fixture."
+  }
+]

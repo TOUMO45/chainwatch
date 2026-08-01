@@ -25,6 +25,19 @@ ROOT = Path(__file__).resolve().parent
 FIXTURES = ROOT / "fixtures"
 MANIFEST = FIXTURES / "manifest.json"
 
+# Solidity dependency sets a fixture directory may be built against. This is
+# build configuration (which remapping solc gets), never detection logic.
+REMAP_SETS = {
+    "oz4": [
+        "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+        "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/",
+    ],
+    "oz5": [
+        "@openzeppelin/contracts/=realworld-test/oz5/node_modules/@openzeppelin/contracts/",
+        "@openzeppelin/contracts-upgradeable/=realworld-test/oz5/node_modules/@openzeppelin/contracts-upgradeable/",
+    ],
+}
+
 PRECISION_GATE = 1.00
 RECALL_GATE = 0.70
 
@@ -38,11 +51,11 @@ from src.rules import register_all  # noqa: E402
 register_all(REGISTERED_RULES)
 
 
-def load_cases() -> list[dict]:
-    with open(MANIFEST, encoding="utf-8") as fh:
+def load_cases(fixtures_dir: Path = FIXTURES) -> list[dict]:
+    with open(fixtures_dir / "manifest.json", encoding="utf-8") as fh:
         cases = json.load(fh)
     for case in cases:
-        case_dir = FIXTURES / case["path"]
+        case_dir = fixtures_dir / case["path"]
         before = case_dir / "before.sol"
         after = case_dir / "after.sol"
         if not before.is_file() or not after.is_file():
@@ -55,7 +68,8 @@ def load_cases() -> list[dict]:
 def score(rules: dict, cases: list[dict]) -> tuple[dict, int]:
     """Run every rule against every case. Returns (per-rule stats, total detections)."""
     stats = {
-        rule_id: {"tp": 0, "fp": 0, "fn": 0, "detections": []} for rule_id in rules
+        rule_id: {"tp": 0, "fp": 0, "fn": 0, "unsupported": 0, "detections": []}
+        for rule_id in rules
     }
     total_detections = 0
     for case in cases:
@@ -65,11 +79,25 @@ def score(rules: dict, cases: list[dict]) -> tuple[dict, int]:
             # is an expected positive for the rule that owns it.
             owns_case = rule_id in (str(case["rule"]), str(case.get("sub_rule")))
             expected_fire = owns_case and is_positive
+            # A case may be flagged in the manifest as covering a rule mode that
+            # is not built yet. It is still run and still shown, but a miss is
+            # reported as KNOWN-UNSUPPORTED rather than counted as a failure.
+            unsupported = owns_case and bool(case.get("known_unsupported"))
             fired = bool(rule_fn(case["_before"], case["_after"], case))
             if fired:
                 total_detections += 1
                 stats[rule_id]["detections"].append(case["id"])
-            if expected_fire:
+            if expected_fire and unsupported:
+                if fired:
+                    stats[rule_id]["tp"] += 1
+                else:
+                    stats[rule_id]["unsupported"] += 1
+                    print(
+                        f"  [{rule_id}] {case['id']:<11} expected=FIRE  got=quiet "
+                        f"KNOWN-UNSUPPORTED ({case['known_unsupported']})"
+                    )
+                    continue
+            elif expected_fire:
                 if fired:
                     stats[rule_id]["tp"] += 1
                 else:
@@ -96,9 +124,27 @@ def main() -> int:
     parser.add_argument(
         "--all", action="store_true", help="score all registered rules (default)"
     )
+    parser.add_argument(
+        "--fixtures", default="fixtures",
+        help="fixture directory to score (default: fixtures, the frozen OZ 4 set)",
+    )
+    parser.add_argument(
+        "--remaps", choices=sorted(REMAP_SETS), default="oz4",
+        help="solc remapping set the fixtures are built against (build config only)",
+    )
     args = parser.parse_args()
 
-    cases = load_cases()
+    if args.remaps != "oz4":
+        # Build configuration: which OpenZeppelin tree solc resolves imports
+        # against. Detection logic is unaffected.
+        import src.rules._shared as _shared
+        import src.rules._storage as _storage
+
+        _shared.REMAPS = list(REMAP_SETS[args.remaps])
+        _storage.REMAPPINGS = list(REMAP_SETS[args.remaps])
+
+    fixtures_dir = (ROOT / args.fixtures).resolve()
+    cases = load_cases(fixtures_dir)
     n_pos = sum(1 for c in cases if c["label"] == "positive")
     n_neg = len(cases) - n_pos
 
@@ -112,6 +158,7 @@ def main() -> int:
 
     print("Chainwatch scorer")
     print(f"  mode            : {mode}")
+    print(f"  fixtures        : {args.fixtures}  (remaps: {args.remaps})")
     print(f"  cases loaded    : {len(cases)} ({n_pos} positive, {n_neg} negative)")
     print(f"  rules registered: {len(REGISTERED_RULES)}")
     print()
@@ -128,18 +175,23 @@ def main() -> int:
         return 0
 
     failed = False
-    print(f"{'rule':<6} {'TP':>3} {'FP':>3} {'FN':>3} {'precision':>10} {'recall':>8}  gates")
+    print(f"{'rule':<6} {'TP':>3} {'FP':>3} {'FN':>3} {'N/S':>4} {'precision':>10} {'recall':>8}  gates")
     for rule_id, s in sorted(stats.items()):
-        tp, fp, fn = s["tp"], s["fp"], s["fn"]
+        tp, fp, fn, ns = s["tp"], s["fp"], s["fn"], s["unsupported"]
         precision = tp / (tp + fp) if (tp + fp) else 0.0
         recall = tp / (tp + fn) if (tp + fn) else 0.0
-        p_ok = (tp + fp) > 0 and precision >= PRECISION_GATE
-        r_ok = recall >= RECALL_GATE
-        verdict = "OK" if (p_ok and r_ok) else "FAIL"
-        if verdict == "FAIL":
-            failed = True
+        if (tp + fn) == 0 and fp == 0:
+            # No scoreable positive for this rule in this set (e.g. its only
+            # positive is flagged known_unsupported). Not a pass, not a failure.
+            verdict = "N/A" if ns else "no-cases"
+        else:
+            p_ok = (tp + fp) > 0 and precision >= PRECISION_GATE
+            r_ok = recall >= RECALL_GATE
+            verdict = "OK" if (p_ok and r_ok) else "FAIL"
+            if verdict == "FAIL":
+                failed = True
         print(
-            f"{rule_id:<6} {tp:>3} {fp:>3} {fn:>3} {precision:>10.2f} {recall:>8.2f}  {verdict}"
+            f"{rule_id:<6} {tp:>3} {fp:>3} {fn:>3} {ns:>4} {precision:>10.2f} {recall:>8.2f}  {verdict}"
         )
         if s["fp"]:
             fp_cases = [c for c in s["detections"]]

@@ -1,0 +1,13 @@
+{
+  "id": "P3b-oz5-01",
+  "sub_rule": "3b",
+  "label": "positive",
+  "oz_major": 5,
+  "oz_version": "5.7.0",
+  "solc": "0.8.27",
+  "exclusion_ref": null,
+  "description": "OZ 5 equivalent of P3b-02. initialize() loses its initializer modifier on a UUPS contract deployed behind an ERC1967Proxy. Ownership is set by calling _transferOwnership(owner_) directly, and contract state lives in an ERC-7201 namespaced struct (chainwatch.storage.Vault) reached through an assembly storage pointer.",
+  "why_labeled": "Runtime-exploitable, deliberately mirroring P3b-02 rather than P3b-01. In OZ 5.7.0 _transferOwnership is plain `internal virtual` with no onlyInitializing modifier, and no __Ownable_init/__UUPSUpgradeable_init helper is called, so nothing gates the function once `initializer` is gone. Any caller can invoke initialize() on the proxy, pass their own address as owner_, take ownership, then satisfy the onlyOwner check on _authorizeUpgrade and swap the implementation. _disableInitializers() in the constructor does not help: it locks the implementation contract's own storage, not the proxy's, which is where the ERC-7201 InitializableStorage struct actually lives (RULES.md exclusion 3b.4 as corrected in Phase 2).",
+  "why_oz5_matters": "This is the OZ 5 form of a regression Rule 3b already detects at 1.00 recall under OZ 4.9.6. Per finding 3x-L3, the rule currently CANNOT fire here: OZ 5's initializer modifier writes _initialized/_initializing through an assembly pointer, so Slither reports no declared state-variable write, is_oneshot_init_guard() returns False, defines_init_machinery() (Signal A) returns False, and exclusion 3b.4 discards the contract. This fixture is the ground truth for fixing that.",
+  "diff_summary": "before.sol -> after.sol differs on exactly one line: the `initializer` modifier is removed from initialize()."
+}
