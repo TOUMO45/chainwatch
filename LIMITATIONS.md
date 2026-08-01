@@ -57,7 +57,7 @@ The proxy determination uses two signals:
 
 | # | Limitation | Direction |
 |---|---|---|
-| 3c-L6 | **ERC-7201 namespaced storage defeats sequential slot comparison entirely.** State lives in structs at keccak-derived slots rather than sequential slots 0,1,2… There is nothing for a slot-by-slot comparator to compare, so the rule goes quiet regardless of what changed inside the namespaced struct. This is a **silent** false negative — indistinguishable from a clean result. It is also **growing**: ERC-7201 is the default in OpenZeppelin 5.x, so coverage of this rule decays as repos migrate off 4.x. Treat a quiet 3c result on an OZ 5.x repo as *unmeasured*, not as *safe*. | **[FN risk]** |
+| 3c-L6 | **ERC-7201 namespaced storage defeats sequential slot comparison.** State lives in structs at keccak-derived slots rather than sequential slots 0,1,2… There is nothing for a slot-by-slot comparator to compare, so the rule goes quiet regardless of what changed inside the namespaced struct. Silent, and **growing**: ERC-7201 is the default in OpenZeppelin 5.x, so coverage decays as repos migrate off 4.x. **CORRECTED (Phase 5b) — this entry understated the damage in two ways.** ERC-7201 defeats proxy **detection** one layer *earlier* than layout comparison, so Rule 3c never even reaches the comparator; and the same mechanism disables **Rule 3b**, which this entry never claimed. The real scope is in **3x-L3**, which supersedes this row for OZ 5.x projects. Treat a quiet 3c result on an OZ 5.x repo as *unmeasured*, not as *safe*. | **[FN risk]** |
 | 3c-L7 | **OpenZeppelin dependency version bumps between commits.** If the OZ version itself changes across the two commits, inherited base-contract layouts shift wholesale and every downstream variable appears relocated. Sometimes this is a genuine hazard, but it surfaces as one enormous finding covering every variable rather than a targeted one, and it will fire on routine dependency-upgrade commits. | **[FP risk]** |
 
 ### The core caveat
@@ -94,6 +94,143 @@ rests on a declaration of intent rather than a deployment fact.
 | 3b-L2 | **Trigger 2 is unexercised.** The "constructor's `_disableInitializers()` was removed" clause is implemented and spec-faithful but no fixture covers it. It is unproven code: neither its firing nor its silence has been demonstrated. | **unproven, both directions** |
 | 3b-L3 | **Shares the proxy determination with Rule 3c.** Exclusion 3b.4 discards only on proof the contract is never proxied, using the same Signal A. Every Signal A blind spot above (3c-L1 through 3c-L4) applies here too. | **[FN + FP risk]** |
 | 3b-L4 | **Shallow caller analysis for 3b.3.** Whether an internal initializer's callers are themselves guarded is checked one level through the contract's own external functions. Deeper or cross-contract call paths are not resolved. | **[FP risk]** |
+
+---
+
+## Cross-rule — applies to 3a, 3b and 3c alike
+
+Both items below were found in Phase 5, running the rules against the real
+Monetrix contracts (`realworld-test/monetrix-src/`, a Code4rena project). They
+are recorded because a real corpus surfaced them and a hand-built fixture set
+did not.
+
+### 3x-L1 — test/mock path exclusion is a substring match
+
+**Type: FALSE NEGATIVE (silent).**
+
+Every rule begins by discarding test/mock/script paths. The check is a plain
+substring match of `test/`, `tests/`, `mock/`, `mocks/`, `script/`, `scripts/`
+against the whole path. Any real project directory whose name merely *ends* in
+one of those words is therefore skipped: the rule returns `False` having
+examined nothing, and the output is indistinguishable from a genuine clean
+result.
+
+Verified against the shipped matcher:
+
+| Path | Skipped? | |
+|---|---|---|
+| `latest/Vault.sol` | **yes** | false negative |
+| `contest/Vault.sol` | **yes** | false negative |
+| `greatest/Vault.sol` | **yes** | false negative |
+| `protests/Vault.sol` | **yes** | false negative |
+| `src/latest/Vault.sol` | **yes** | false negative — any depth |
+| `attestations/Vault.sol` | no | markers require a trailing `/`, so this yields `testa`, not `test/` |
+| `test-helpers/Vault.sol` | no | |
+
+**How it was caught.** Phase 5's first run reported a clean "0 detections across
+20 files" — with every rule returning in **0.0 seconds**, which is impossible
+for a Slither parse plus a `solc --storage-layout` invocation. Our own harness
+directory `realworld-test/` contains the substring `test/`, so all three rules
+bailed out before examining a single contract. The run was a false PASS. Timing
+was the only signal that anything was wrong; the verdicts themselves looked
+correct.
+
+A second exposure: when a caller does not supply `source_path`, the rules fall
+back to the *filesystem* path. Any component of the absolute path — a user
+directory named `latest`, a CI workspace named `contest` — can then silently
+disable analysis for an entire run.
+
+**Fix direction (deliberately not implemented yet):** match on path *segments*,
+not substrings — a directory named exactly `test`, `tests`, `mock`, `mocks` or
+`script`, or a filename matching `*.t.sol` / `*Mock*` / `*Harness*`. Tracked in
+TODO.md.
+
+### 3x-L2 — OZ major-version pre-screen was wrong
+
+**Type: analysis-blocking / wrong assumption.**
+
+The Monetrix corpus was screened as "OpenZeppelin 4.x" on the strength of its
+storage style: it uses sequential storage rather than ERC-7201 namespacing.
+That signal is **necessary but not sufficient**. The corpus in fact imports OZ
+**5.x** paths — `PausableUpgradeable` and `ReentrancyGuard` live under `utils/`
+in OZ 5, but under `security/` in the pinned 4.9.6. A project can use OZ 5
+while keeping sequential storage in its own contracts, so storage style alone
+cannot establish the dependency major version. **Import paths must be checked
+too.**
+
+**Consequence:** 4 of 20 files failed to compile under the pinned 4.9.6 and were
+left entirely unmeasured — `MonetrixVault.sol`, `MonetrixAccountant.sol`,
+`USDM.sol`, `sUSDM.sol`, with the raw error `Source
+"@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol" not found`.
+This includes **MonetrixVault, the largest and most complex contract in the
+project — precisely where a false positive is most likely**. The Phase 5 result
+is therefore "0 false positives on 16 of 20 files", not on 20. Silence on those
+four files is *unmeasured*, not *clean*, and must not be reported as evidence of
+precision. Tracked in TODO.md.
+
+### 3x-L3 — Rules 3b and 3c cannot fire at all on OpenZeppelin 5.x
+
+**Type: STRUCTURAL BLINDNESS (silent). Affects Rule 3b and Rule 3c.**
+Supersedes 3c-L6 for OZ 5.x projects.
+
+On any project using OpenZeppelin 5.x base contracts, **Rules 3b and 3c are
+incapable of producing a finding** — not less accurate, incapable. Rule 3a is
+unaffected.
+
+**Mechanism.** OZ 5 moved the initialization flags `_initialized` /
+`_initializing` out of declared state variables and into an **ERC-7201
+namespaced struct**, reached through an assembly storage pointer at a constant
+slot. Observed directly against OZ 5.7.0:
+
+```
+modifier Initializable.initializer()
+   state vars WRITTEN : [] <-- EMPTY
+   state vars READ    : ['INITIALIZABLE_STORAGE']
+   is_oneshot_init_guard = False
+```
+
+Slither attributes **no declared state-variable write** to `initializer`,
+`reinitializer`, or `onlyInitializing`, because the write goes through the
+assembly pointer. `is_oneshot_init_guard()` requires the gate-on-and-write-the-
+same-flag shape, so it returns False for all three. The failure then cascades:
+
+1. `is_oneshot_init_guard` → False for every OZ 5 init modifier
+2. → `defines_init_machinery()` (Signal A) → False for every contract
+3. → Rule 3c exclusion **3c.3** discards every contract as "not behind a proxy"
+4. → Rule 3b exclusion **3b.4** discards every contract on the same signal
+
+Both rules therefore return quiet before examining anything of substance. The
+storage-layout comparator in 3c is never reached, so this is *not* the
+"nothing to compare" problem described in 3c-L6 — it fires one layer earlier
+and is not confined to Rule 3c.
+
+**Proven, not inferred.** Two synthetic OZ 5.7.0 regressions were built with
+exactly the shapes of fixtures P3b-01 / P3b-02 and P3c-01 — the same shapes that
+score **1.00 recall** under OZ 4.9.6:
+
+```
+Rule 3b  initializer modifier REMOVED from ownership-setting fn : QUIET  <-- MISSED
+Rule 3c  storage var INSERTED mid-layout on UUPS proxy contract : QUIET  <-- MISSED
+```
+
+**How it was found.** Phase 5b, on the real Monetrix corpus. Monetrix is the
+case that makes the scope unambiguous: it uses **sequential** storage in its own
+contracts, so 3c's layout comparator would have worked correctly. It is the OZ 5
+*base classes alone* that blind both rules. After recovering the 4 previously
+uncompilable files under OZ 5.7.0, Rule 3c reported `proxied contracts: none` on
+all four, where the same rule found `InsuranceFund(10)` and `MonetrixConfig(26)`
+under OZ 4.9.6.
+
+**Consequence for reporting.** The Phase 5b headline "0 false positives across
+20/20 Monetrix files" is accurate but must never be quoted without this
+qualifier: on the 4 files analyzed under OZ 5, **Rules 3b and 3c contributed no
+signal at all**. Their silence there is structural, not evidence of precision.
+Only Rule 3a's silence on those files is meaningful.
+
+**Fix direction (not implemented):** teach Signal A to recognise ERC-7201 init
+machinery structurally — a modifier that reads a constant namespace slot and
+writes through an assembly storage pointer. Tracked in TODO.md; it is the single
+unlock for OZ 5 support in both rules.
 
 ---
 
