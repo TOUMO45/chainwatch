@@ -1,4 +1,5 @@
 solc-select==1.2.0
+slither-analyzer==0.11.5
 # solc 0.8.20 (exact) installed and selected via:
 #   solc-select install 0.8.20 && solc-select use 0.8.20
 # Solidity deps pinned exactly in package.json:

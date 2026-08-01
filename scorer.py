@@ -30,8 +30,12 @@ RECALL_GATE = 0.70
 
 # Registry: rule_id -> callable(before_path: Path, after_path: Path, meta: dict) -> bool
 # The callable returns True iff the rule FIRES (claims a regression) on the case.
-# Rules register themselves here via src/rules/. ZERO rules are registered yet.
+# Rules register themselves via src/rules/register_all().
 REGISTERED_RULES: dict[str, object] = {}
+
+from src.rules import register_all  # noqa: E402
+
+register_all(REGISTERED_RULES)
 
 
 def load_cases() -> list[dict]:
@@ -55,14 +59,17 @@ def score(rules: dict, cases: list[dict]) -> tuple[dict, int]:
     }
     total_detections = 0
     for case in cases:
-        expected_rule = str(case["rule"])
         is_positive = case["label"] == "positive"
         for rule_id, rule_fn in rules.items():
+            # A rule id may be a whole rule ("3") or a sub-rule ("3a"); a case
+            # is an expected positive for the rule that owns it.
+            owns_case = rule_id in (str(case["rule"]), str(case.get("sub_rule")))
+            expected_fire = owns_case and is_positive
             fired = bool(rule_fn(case["_before"], case["_after"], case))
             if fired:
                 total_detections += 1
                 stats[rule_id]["detections"].append(case["id"])
-            if rule_id == expected_rule and is_positive:
+            if expected_fire:
                 if fired:
                     stats[rule_id]["tp"] += 1
                 else:
@@ -71,6 +78,11 @@ def score(rules: dict, cases: list[dict]) -> tuple[dict, int]:
                 # Fired on a negative case, or on a case belonging to another
                 # rule: false positive either way.
                 stats[rule_id]["fp"] += 1
+            ok = fired == expected_fire
+            print(
+                f"  [{rule_id}] {case['id']:<7} expected={'FIRE' if expected_fire else 'quiet':<5} "
+                f"got={'FIRE' if fired else 'quiet':<5} {'OK' if ok else '** WRONG **'}"
+            )
     return stats, total_detections
 
 
@@ -98,12 +110,15 @@ def main() -> int:
         rules = dict(REGISTERED_RULES)
         mode = "normal"
 
-    stats, total_detections = score(rules, cases)
-
     print("Chainwatch scorer")
     print(f"  mode            : {mode}")
     print(f"  cases loaded    : {len(cases)} ({n_pos} positive, {n_neg} negative)")
     print(f"  rules registered: {len(REGISTERED_RULES)}")
+    print()
+    if rules:
+        print("Per-case verdicts:")
+    stats, total_detections = score(rules, cases)
+    print()
     print(f"  detections      : {total_detections}/{len(cases)}")
     print()
 
