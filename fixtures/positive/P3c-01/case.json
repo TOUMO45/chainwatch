@@ -1,0 +1,8 @@
+{
+  "id": "P3c-01",
+  "sub_rule": "3c",
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "New storage variable feeBps is inserted between the existing variables totalDeposits and feeRecipient in a UUPS contract deployed behind an ERC1967Proxy; feeRecipient shifts down one slot.",
+  "why_labeled": "In an upgraded implementation the proxy's existing storage for feeRecipient would be read as feeBps and vice versa — a live slot collision. The contract is provably behind a proxy (VaultFactory deploys it via ERC1967Proxy), so exclusion 3c.3 does not apply. Identical to N3c-01 except for variable placement."
+}

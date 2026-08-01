@@ -1,0 +1,8 @@
+{
+  "id": "N3c-02",
+  "sub_rule": "3c",
+  "label": "negative",
+  "exclusion_ref": "3c.2",
+  "description": "New variable feeBps is added before the reserved __gap array, and the gap shrinks from uint256[48] to uint256[47] so total occupied slots are unchanged.",
+  "why_labeled": "This is the documented OpenZeppelin __gap pattern for adding storage to an upgradeable contract: the new variable consumes one reserved slot and the gap size is reduced by exactly one to match. Every pre-existing variable keeps its slot, and nothing after the gap moves. Textually feeBps is 'inserted before an existing variable' (__gap), so a placement-only detector that does not treat gap consumption specially fires falsely here."
+}

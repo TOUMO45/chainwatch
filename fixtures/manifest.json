@@ -1,1 +1,83 @@
-[]
+[
+  {
+    "id": "P3a-01",
+    "rule": 3,
+    "sub_rule": "3a",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P3a-01",
+    "summary": "_authorizeUpgrade loses onlyOwner; upgrade authorization becomes unrestricted."
+  },
+  {
+    "id": "P3b-01",
+    "rule": 3,
+    "sub_rule": "3b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P3b-01",
+    "summary": "initialize() loses the initializer modifier; re-callable through the proxy."
+  },
+  {
+    "id": "P3c-01",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P3c-01",
+    "summary": "feeBps inserted between existing storage variables in a proxied UUPS contract; slot collision."
+  },
+  {
+    "id": "N3a-01",
+    "rule": 3,
+    "sub_rule": "3a",
+    "label": "negative",
+    "exclusion_ref": "3a.1",
+    "path": "negative/N3a-01",
+    "summary": "Upgrade auth moves from EOA owner to a TimelockController; narrowed in practice."
+  },
+  {
+    "id": "N3a-02",
+    "rule": 3,
+    "sub_rule": "3a",
+    "label": "negative",
+    "exclusion_ref": "3a.2",
+    "path": "negative/N3a-02",
+    "summary": "Upgrade path removed entirely; contract becomes plain immutable."
+  },
+  {
+    "id": "N3b-01",
+    "rule": 3,
+    "sub_rule": "3b",
+    "label": "negative",
+    "exclusion_ref": "3b.1",
+    "path": "negative/N3b-01",
+    "summary": "initializer replaced with reinitializer(2); intentional versioned re-init."
+  },
+  {
+    "id": "N3c-01",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "negative",
+    "exclusion_ref": "3c.1",
+    "path": "negative/N3c-01",
+    "summary": "feeBps appended strictly after all existing variables; twin of P3c-01 differing only in placement."
+  },
+  {
+    "id": "N3c-02",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "negative",
+    "exclusion_ref": "3c.2",
+    "path": "negative/N3c-02",
+    "summary": "feeBps consumes one slot of __gap; gap shrinks 48 to 47, no existing slot moves."
+  },
+  {
+    "id": "N3c-03",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "negative",
+    "exclusion_ref": "3c.3",
+    "path": "negative/N3c-03",
+    "summary": "Mid-layout insertion in a plain non-proxied contract; no proxy exists in the fixture."
+  }
+]

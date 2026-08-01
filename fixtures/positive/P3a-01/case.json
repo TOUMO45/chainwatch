@@ -1,0 +1,8 @@
+{
+  "id": "P3a-01",
+  "sub_rule": "3a",
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "_authorizeUpgrade loses its onlyOwner modifier; anyone can now authorize a UUPS implementation upgrade.",
+  "why_labeled": "The caller set for the upgrade path widened from owner-only to unrestricted. No compensating control is added anywhere in the commit. This is the canonical SC10 proxy-takeover regression and must fire."
+}

@@ -1,0 +1,8 @@
+{
+  "id": "N3b-01",
+  "sub_rule": "3b",
+  "label": "negative",
+  "exclusion_ref": "3b.1",
+  "description": "initialize() swaps its initializer modifier for reinitializer(2) as part of a V2 upgrade that adds and configures a new appended feeBps variable.",
+  "why_labeled": "The initializer modifier is gone, but reinitializer(2) is OpenZeppelin's intended mechanism for versioned re-initialization: it can run exactly once at version 2 and never again. The function did not become freely re-callable. A detector that only checks 'initializer modifier present at N-1, absent at N' fires falsely here — it must recognize reinitializer(n) as an equivalent guard."
+}

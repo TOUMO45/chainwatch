@@ -1,0 +1,8 @@
+{
+  "id": "N3a-02",
+  "sub_rule": "3a",
+  "label": "negative",
+  "exclusion_ref": "3a.2",
+  "description": "The contract migrates from UUPS-upgradeable to a plain immutable contract: UUPSUpgradeable/Initializable inheritance, initialize(), and _authorizeUpgrade are all removed and replaced with a constructor.",
+  "why_labeled": "The upgrade path was removed entirely, not weakened. There is no _authorizeUpgrade left for anyone to call and no proxy admin to seize — the caller set for upgrades went from {owner} to the empty set. A detector that treats the disappearance of the constraint as a widening, without noticing the constrained function itself disappeared, fires falsely here."
+}

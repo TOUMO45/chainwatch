@@ -135,7 +135,13 @@ Highest-value rule: SC10 is new in the 2026 list and ranked critical. Three sub-
 - 3b.1 `reinitializer(n)` used instead — intentional versioned re-init
 - 3b.2 An explicit `initialized` bool guard added manually in the same commit
 - 3b.3 The function became `internal` and its only caller is itself guarded
-- 3b.4 Implementation contract only, with proof `_disableInitializers()` still present in constructor
+- 3b.4 DISCARD only if the contract is provably never deployed behind a proxy (no
+  proxy in the repo references it). `_disableInitializers()` alone is NOT grounds
+  for discard - it protects the implementation contract's own storage, not the
+  proxy's storage, which is where real state lives. A missing `initializer` on a
+  proxied contract is exploitable regardless. (Corrected during Phase 2 human
+  review: the original wording would have caused a silent false negative on
+  fixture P3b-01.)
 
 ### 3c — Storage layout collision
 **Trigger:** in an upgradeable contract, an existing storage variable's slot index

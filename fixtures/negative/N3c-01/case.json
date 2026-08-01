@@ -1,0 +1,8 @@
+{
+  "id": "N3c-01",
+  "sub_rule": "3c",
+  "label": "negative",
+  "exclusion_ref": "3c.1",
+  "description": "New storage variable feeBps is appended strictly after all existing variables (totalDeposits, feeRecipient) in the same UUPS contract used in P3c-01.",
+  "why_labeled": "Appending after all existing variables leaves every pre-existing slot assignment unchanged — the standard safe upgrade pattern. Deliberately identical to P3c-01 in every respect (same variable name, same type, same contracts, same proxy factory) except where feeBps is placed; a detector that fires here is keying on the wrong signal."
+}

@@ -1,0 +1,8 @@
+{
+  "id": "N3a-01",
+  "sub_rule": "3a",
+  "label": "negative",
+  "exclusion_ref": "3a.1",
+  "description": "_authorizeUpgrade changes from onlyOwner to an inline require that the caller is a TimelockController stored at initialization; the new storage variable is appended after existing ones.",
+  "why_labeled": "Upgrade authority moved from a directly-callable owner to a governance timelock — widened in name (owner check removed) but narrowed in practice (upgrades now require going through the timelock's delay and role gates). Per exclusion 3a.1 this must not surface as a CONFIRMED finding; at most it is a CANDIDATE flagged for human read. Note (human review, Phase 2): the timelock is set inside an initializer, so on an already-deployed proxy upgradeTimelock stays address(0) and the upgrade path locks rather than opens. Still correctly a negative — it never widens access."
+}

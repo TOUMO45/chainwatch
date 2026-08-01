@@ -1,0 +1,17 @@
+{
+  "name": "chainwatch",
+  "version": "1.0.0",
+  "description": "Every other tool reports whether a contract is vulnerable now. Chainwatch reports **which commit made it vulnerable, and whether that commit is live on-chain.**",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@openzeppelin/contracts": "4.9.6",
+    "@openzeppelin/contracts-upgradeable": "4.9.6"
+  }
+}

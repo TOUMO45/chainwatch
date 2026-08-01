@@ -1,0 +1,8 @@
+{
+  "id": "P3b-01",
+  "sub_rule": "3b",
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "initialize() loses the initializer modifier; through the proxy it becomes callable repeatedly, letting anyone re-run ownership setup and seize the contract.",
+  "why_labeled": "A function that sets ownership lost its initializer modifier with no reinitializer, no manual initialized guard, and no visibility change. _disableInitializers() in the constructor only protects the bare implementation, not the proxy's storage, so this must fire."
+}

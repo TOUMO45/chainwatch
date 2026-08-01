@@ -1,0 +1,8 @@
+{
+  "id": "N3c-03",
+  "sub_rule": "3c",
+  "label": "negative",
+  "exclusion_ref": "3c.3",
+  "description": "Variable feeBps is inserted between existing storage variables in FeeManager — the same kind of mid-layout insertion as P3c-01 — but FeeManager is a plain constructor-deployed contract with no proxy anywhere in the fixture.",
+  "why_labeled": "Storage layout only matters when an old layout persists under a new implementation, i.e. behind a proxy. FeeManager is not upgradeable (no Initializable, no UUPS, no ERC1967Proxy, nothing references it from a proxy), so the 'after' layout is simply the layout of a fresh deployment. A detector that flags mid-layout insertions without first proving the contract sits behind a proxy fires falsely here — this is the key exclusion for sub-rule 3c."
+}

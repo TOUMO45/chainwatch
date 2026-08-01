@@ -17,3 +17,5 @@ htmlcov/
 
 # Chainwatch
 .guard-hashes
+
+node_modules/
