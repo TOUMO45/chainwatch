@@ -21,3 +21,5 @@ htmlcov/
 node_modules/
 
 .env
+
+realworld-test/oz5/
