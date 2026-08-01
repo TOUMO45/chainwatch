@@ -97,6 +97,53 @@ rests on a declaration of intent rather than a deployment fact.
 
 ---
 
+## Capability 11 — On-chain liveness (the decisive gate)
+
+Comparison method: **normalized runtime-bytecode identity**. Deployed runtime
+code (`eth_getCode`, after resolving proxies) is compared against a reference,
+with the CBOR metadata trailer split off and immutable ranges masked, then
+keccak-hashed. Findings on each hard problem, all verified against mainnet:
+
+| # | Problem | How it is handled, and what it costs |
+|---|---|---|
+| 11-F1 | **Runtime vs creation bytecode** | Solved, not papered over: we compare against `solc --bin-runtime`, the artifact that matches what `eth_getCode` returns. Consequence: creation bytecode is *not* recoverable from the chain at all, so constructor logic is outside what liveness can ever verify. |
+| 11-F2 | **CBOR metadata trailer** | Stripped before hashing (last 2 bytes are the blob length). Verified on real data that the trailer format is not even stable within one contract's own lineage: Aave V3 Pool's current implementation carries a 10-byte trailer (compiler version only) while its original implementation carries 51 bytes including an ipfs source hash. Any byte-equality check would have reported PATCHED on two identical deployments. |
+| 11-F3 | **Immutables** | Masked using solc's `immutableReferences` when a compiled artifact is available. **This is the main false-PATCHED source in bytecode-vs-bytecode mode**: there we have no artifact and therefore no immutable offsets, so two deployments with identical logic but different constructor-set immutables (a different oracle or treasury address) compare as PATCHED. See 11-R2. |
+| 11-F4 | **Constructor arguments** | Structurally absent — they are appended to *creation* code, and we compare runtime code. Choosing runtime comparison eliminates this problem rather than mitigating it. |
+| 11-F5 | **Proxy indirection** | `eth_getCode` on a proxy returns the *proxy's* code, so a naive check inspects the wrong contract and is blind to every Rule 3 finding. We resolve first: EIP-1967 slot, then beacon (via a read-only `implementation()` call), then EIP-1167 inline clone target, then the legacy zeppelinos slot. |
+
+### Verified finding: the standard slot is not universal
+
+USDC (`0xA0b8…eB48`), one of the largest contracts on mainnet, returns **zero**
+at the EIP-1967 implementation slot. Its implementation lives at the pre-1967
+zeppelinos slot `keccak256("org.zeppelinos.proxy.implementation")`, where it
+resolves to `0x43506849…02dd`. A liveness check that assumes the EIP-1967 slot
+would silently compare the *proxy's* code and could report either verdict
+without ever touching the real implementation. This is why the resolver tries
+four schemes and reports which one matched (`proxy_kind`).
+
+### Error rates
+
+| # | Risk | Direction |
+|---|---|---|
+| 11-R1 | **LIVE means "this executable code is running", not "this exact commit is deployed."** Metadata stripping and immutable masking are deliberate, and they make the mapping commit→normalized-hash many-to-one: two commits differing only in comments, NatSpec, or immutable values normalize identically. Liveness can confirm or deny that a commit's *code* is running; it cannot uniquely identify *which* commit produced it. | **[FP risk]** — bounded: a real logic fix always changes normalized code, so a genuinely patched contract cannot report LIVE. |
+| 11-R2 | **False PATCHED from unmaskable immutables or library linking** in bytecode-vs-bytecode mode. Without an artifact there are no immutable offsets or library placeholder positions to mask, so configuration-only differences read as code differences. | **[FP risk]** (reports a regression as not-live / a mismatch that is not real) |
+| 11-R3 | **Source-compiled mismatches are reported UNKNOWN, never PATCHED.** A local recompile cannot be distinguished from the original build unless optimizer runs, viaIR, evmVersion, and library links are all reproduced, and none of those are recoverable from deployed bytecode. Verified: comparing a locally compiled fixture against a live contract returns UNKNOWN citing `deployed solc 0.8.27 != reference solc 0.8.20`. The cost is **UNKNOWN inflation** — on real repos the source path will often refuse to conclude. That is the intended trade. | **[FN risk]**, deliberately chosen |
+| 11-R4 | **Diamonds (EIP-2535) have no single implementation slot.** Resolution finds nothing, falls through to `proxy_kind="none"`, and compares the Diamond's own code — which is not where the facet logic lives. Silent, and it compounds 3c-L2. | **[FN risk]** |
+| 11-R5 | **Archive-node dependency and provider limits.** Historical implementation reads need archive state. Observed on the configured provider: `eth_getLogs` over full history is rejected outright (HTTP 400), so upgrade history was reconstructed with historical `eth_getStorageAt` instead. A provider without archive access silently loses the ability to establish what *was* deployed. | **[FN risk]** |
+| 11-R6 | **A verdict is a snapshot at one block on one chain.** The implementation can be upgraded immediately after the read, and the same source deployed to other chains may sit behind a different implementation. Report the block and chain_id with any finding; both are recorded in the evidence. | **[FP risk]** |
+
+### Control status
+
+Both directions are proven on real mainnet data (chain_id 1), not asserted:
+positive control returns LIVE against the current implementation, negative
+control returns PATCHED against the superseded original implementation of the
+same proxy. Charter success criterion 5 is met for this contract. It has **not**
+been exercised across a broad set of proxy styles — one EIP-1967 proxy, one
+legacy-slot resolution, and no beacon or clone tested against live data.
+
+---
+
 ## Cross-cutting
 
 | # | Limitation | Direction |
