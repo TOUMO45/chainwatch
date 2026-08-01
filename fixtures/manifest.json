@@ -18,6 +18,15 @@
     "summary": "initialize() loses the initializer modifier; re-callable through the proxy."
   },
   {
+    "id": "P3b-02",
+    "rule": 3,
+    "sub_rule": "3b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P3b-02",
+    "summary": "initialize() loses the initializer modifier and sets ownership via _transferOwnership directly; runtime-exploitable sibling of P3b-01."
+  },
+  {
     "id": "P3c-01",
     "rule": 3,
     "sub_rule": "3c",

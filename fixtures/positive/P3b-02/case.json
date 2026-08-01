@@ -1,0 +1,9 @@
+{
+  "id": "P3b-02",
+  "sub_rule": "3b",
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "initialize() loses the initializer modifier on a UUPS contract deployed behind an ERC1967Proxy. Ownership is set by calling _transferOwnership(owner_) directly, so no __*_init helper is involved.",
+  "why_labeled": "Runtime-exploitable, unlike its sibling P3b-01. _transferOwnership is plain `internal virtual` in OpenZeppelin 4.9.6 with no onlyInitializing modifier, and the omitted __UUPSUpgradeable_init()/__Ownable_init() helpers have empty bodies, so nothing gates this function. After the regression any caller can invoke initialize() on the proxy repeatedly, pass their own address as owner_, take ownership, and then pass the onlyOwner check on _authorizeUpgrade to swap the implementation and drain the proxy. _disableInitializers() in the constructor does not help: it locks the implementation contract's own storage, not the proxy's storage, which is where _initialized and _owner actually live (RULES.md exclusion 3b.4 as corrected in Phase 2 review).",
+  "relationship_to_P3b-01": "P3b-01 is the same regression shape but its after-state initialize() still calls __Ownable_init(), __Ownable_init_unchained() and __UUPSUpgradeable_init(), all of which carry onlyInitializing (require(_initializing)). With the initializer modifier removed _initializing is false, so P3b-01's initialize() always reverts and is un-callable rather than exploitable. Both cases are kept deliberately: P3b-01 proves Rule 3b detects the regression pattern from the diff alone as RULES.md specifies the trigger, and P3b-02 proves the pattern the rule detects corresponds to a real, reachable takeover. If a future change to Rule 3b starts requiring end-to-end runtime reachability, P3b-01 is the case that will catch it and force that decision to be explicit."
+}
