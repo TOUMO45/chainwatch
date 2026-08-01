@@ -19,3 +19,5 @@ htmlcov/
 .guard-hashes
 
 node_modules/
+
+.env
