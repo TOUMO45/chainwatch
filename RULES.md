@@ -156,6 +156,8 @@ or type changed between commits (insertion, reordering, or type-width change).
 **This sub-rule needs a real storage-layout comparator** (`solc --storage-layout`
 at both commits, compare slot-by-slot), not AST heuristics.
 
+**Known blind spots:** see [LIMITATIONS.md](LIMITATIONS.md) — exclusion 3c.3 proves intent to be proxied, not the fact of it, and ERC-7201 namespaced storage (OZ 5.x default) defeats slot comparison silently.
+
 ---
 
 # RULE 4 — SC09 Integer Overflow/Underflow regression
