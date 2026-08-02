@@ -29,7 +29,12 @@ from pathlib import Path
 from slither.slithir.operations import LowLevelCall, NewContract
 
 from ._shared import defines_init_machinery, is_test_path, parse
-from ._storage import keyed_entries, slot_span, storage_layouts
+from ._storage import (
+    keyed_entries,
+    namespaced_struct_layouts,
+    slot_span,
+    storage_layouts,
+)
 
 RULE_ID = "3c"
 
@@ -110,6 +115,33 @@ def _reserved_gap_labels(contract) -> set:
     return out
 
 
+def _namespaced_collision(structs_b: dict, structs_a: dict) -> bool:
+    """True iff a member that exists in BOTH commits moved within its ERC-7201
+    struct, or changed type.
+
+    Exclusion 3c.1 falls out of this exactly as it does in the OZ 4 path: a
+    member appended after every existing one leaves each pre-existing member at
+    its original slot/offset, so there is nothing to report. Members that exist
+    only in the new commit are ignored; members that were removed are ignored
+    too, because any resulting shift is caught on the members that survived.
+    """
+    for sname, members_b in structs_b.items():
+        members_a = structs_a.get(sname)
+        if members_a is None:
+            continue  # struct gone at N
+        for mname, before in members_b.items():
+            after = members_a.get(mname)
+            if after is None:
+                continue
+            if (
+                before["slot"] != after["slot"]
+                or before["offset"] != after["offset"]
+                or before["type"] != after["type"]
+            ):
+                return True
+    return False
+
+
 def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
     """Returns True iff Rule 3c fires on this before/after pair."""
     if is_test_path(case_meta.get("source_path", after_path)):
@@ -119,6 +151,8 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
     layouts_a = storage_layouts(after_path)
     after_sl = parse(after_path)
     after_contracts = {c.name: c for c in after_sl.contracts}
+    # Computed lazily below only if a contract's compiler layout is empty.
+    ns_layouts_b = ns_layouts_a = None
 
     for cname, layout_b in layouts_b.items():
         layout_a = layouts_a.get(cname)
@@ -135,6 +169,21 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
         gaps = _reserved_gap_labels(contract_a)
         entries_b = keyed_entries(layout_b)
         entries_a = keyed_entries(layout_a)
+
+        if not entries_b and not entries_a:
+            # OZ 5 mode. The compiler layout is empty, which for an upgradeable
+            # contract means its state lives in an ERC-7201 namespaced struct
+            # (finding 3x-L3). Fall back to comparing member offsets computed
+            # from the AST. Selected per contract by what the compiler actually
+            # reported - there is no global version switch.
+            if ns_layouts_b is None:
+                ns_layouts_b = namespaced_struct_layouts(parse(before_path))
+                ns_layouts_a = namespaced_struct_layouts(after_sl)
+            if _namespaced_collision(
+                ns_layouts_b.get(cname, {}), ns_layouts_a.get(cname, {})
+            ):
+                return True
+            continue
 
         for key, entry_b in entries_b.items():
             entry_a = entries_a.get(key)

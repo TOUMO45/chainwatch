@@ -15,8 +15,7 @@
     "label": "positive",
     "exclusion_ref": null,
     "path": "positive/P3c-oz5-01",
-    "summary": "OZ5: feeBps inserted between existing members of the ERC-7201 struct on a proxied UUPS contract; member offsets shift.",
-    "known_unsupported": "rule 3c OZ5 mode not built; needs an AST struct-offset comparator, solc --storage-layout is empty on OZ5"
+    "summary": "OZ5: feeBps inserted between existing members of the ERC-7201 struct on a proxied UUPS contract; member offsets shift."
   },
   {
     "id": "N3b-oz5-01",

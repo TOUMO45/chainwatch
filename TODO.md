@@ -20,3 +20,13 @@
       Sequential storage does not imply OZ 4.x; Monetrix uses OZ 5 paths
       (utils/ not security/) with sequential storage. Cost this time: 4 of 20
       files unmeasured, including MonetrixVault.
+- [ ] 3c-oz5-L1 — build an OZ 5 __gap fixture, THEN implement exclusion 3c.2
+      for the namespaced-struct path. Fixture first: shipping an untested
+      exclusion trades a false positive for a silent false negative. Today,
+      shrinking a __gap inside an ERC-7201 struct fires as an FP. Exposure low
+      (per-contract namespacing reduces gap usage) but real.
+- [ ] 3c-oz5-L2 — handle hybrid contracts holding BOTH declared state variables
+      and a namespaced struct. Mode selection keys on whether solc's layout is
+      empty, so a hybrid takes the OZ 4 path and its namespaced struct is never
+      compared. Fix: run both comparators when a namespaced struct is present
+      rather than treating the modes as mutually exclusive.

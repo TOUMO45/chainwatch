@@ -232,6 +232,55 @@ machinery structurally — a modifier that reads a constant namespace slot and
 writes through an assembly storage pointer. Tracked in TODO.md; it is the single
 unlock for OZ 5 support in both rules.
 
+**STATUS UPDATE — both modes now built.** Signal A recognises ERC-7201 init
+machinery, so Rule 3b fires on OZ 5 (P3b-oz5-01), and Rule 3c gained an
+AST struct-offset comparator for namespaced structs (P3c-oz5-01), both scoring
+precision 1.00 / recall 1.00 on `fixtures-oz5/` with the OZ 4 set unchanged at
+1.00/1.00. One correction to the note above: fixing Signal A was the unlock for
+Rule 3b only. Rule 3c needed a **second, independent** piece of work, because
+`solc --storage-layout` reports an empty layout for namespaced contracts and so
+the comparator had nothing to diff even once the proxy gate worked. The
+remaining gaps in the OZ 5 path are 3c-oz5-L1 and 3c-oz5-L2 below.
+
+### 3c-oz5-L1 — exclusion 3c.2 (`__gap` consumption) is not implemented on the OZ 5 path
+
+**Type: FALSE POSITIVE risk. Rule 3c, OZ 5 mode only.**
+
+The OZ 4 path forgives a reserved `__gap` that shrinks by exactly the space an
+inserted variable consumes, because every pre-existing slot is preserved
+(fixture N3c-02). The OZ 5 namespaced-struct comparator has **no equivalent
+exclusion**: it compares member offsets only. Shrinking a `__gap` member inside
+an ERC-7201 struct while adding a member before it is a safe, intentional
+pattern, and it would currently be reported as a collision.
+
+**Exposure is low but real.** ERC-7201 gives each contract its own storage
+namespace, which is precisely the problem `__gap` existed to solve, so gap
+members inside namespaced structs are uncommon. That is a reason to defer the
+work, not a reason to consider the rule complete.
+
+**Deliberately not implemented yet.** There is no OZ 5 gap fixture, and shipping
+an untested exclusion is how a rule quietly acquires a false *negative* while
+fixing a false positive. The order must be: build the fixture first, then
+implement 3c.2 for the namespaced path against it — the same fixtures-first
+discipline used for every rule so far. Tracked in TODO.md.
+
+### 3c-oz5-L2 — hybrid contracts take the OZ 4 path only
+
+**Type: FALSE NEGATIVE risk. Rule 3c.**
+
+Mode selection is per contract and keyed on whether `solc --storage-layout`
+returned anything: a non-empty layout takes the OZ 4 path, an empty one falls
+through to the OZ 5 namespaced comparator. A contract holding **both** declared
+state variables **and** an ERC-7201 namespaced struct therefore reports a
+non-empty layout, takes the OZ 4 path, and its namespaced struct is never
+compared. Changes inside that struct are missed silently.
+
+This hybrid is unlikely — a project adopting namespaced storage normally moves
+all of its state there — and it is recorded for completeness rather than as a
+live concern. The fix is to run both comparators whenever a namespaced struct is
+present, instead of treating the two modes as mutually exclusive. Tracked in
+TODO.md.
+
 ---
 
 ## Capability 11 — On-chain liveness (the decisive gate)
