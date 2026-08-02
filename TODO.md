@@ -47,3 +47,17 @@
       Rule 3b by the 3b-L-ratelimit constant-write discriminator, since a
       set-once setter is configuration, not SC10 proxy initialization. Needs a
       positive fixture: a set-once-address guard removed across a commit.
+- [ ] DESIGN-L1 — when building Rules 5/6 (both diff-based), apply the
+      canonical_name rule for ANY cross-commit set operation: `before.sol` and
+      `after.sol` are separate Slither compilations, so StateVariable/Function
+      objects are distinct instances and identity-based set ops never cancel
+      shared entities (this fired Rule 2b's N2b-02 as a false positive). Diff by
+      `canonical_name`, keep same-compilation objects only for within-commit
+      intersections. Add a guard/test that an entity present in both commits
+      cancels. See DESIGN-L1 in LIMITATIONS.md.
+- [ ] Rule 2b 2.9 sub-case — a var moved after the call but read back only by a
+      DIFFERENT state-changing function (not this function's own guard, not a
+      view) currently routes to quiet. No fixture exercises it; the choice is
+      precision-safe (a miss, not a false alarm). Revisit — extend the
+      re-entry-path read set to all external entry points — if a real case
+      appears.

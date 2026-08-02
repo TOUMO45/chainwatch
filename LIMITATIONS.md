@@ -456,3 +456,67 @@ legacy-slot resolution, and no beacon or clone tested against live data.
 | X-L1 | **No CANDIDATE state exists yet.** `src/verdict.py` is still empty; rules return a binary fire/quiet. Every exclusion RULES.md designates as "CANDIDATE, needs human read" (3a.1, and later 2.10 and 5.3) is currently a silent discard. The three-state model is specified but not implemented. | **[FN risk]** |
 | X-L2 | **The fixture set is small and narrow.** Precision 1.00 across 10 hand-written single-file cases, all OpenZeppelin 4.9.6, all solc 0.8.20. This demonstrates the rules do what they were designed to do; it is **not** evidence of precision on real repositories. Charter success criteria 6 and 7 (a CONFIRMED finding on a real independent repo, and a real-world false positive root-caused and added as a permanent negative fixture) remain unmet. | **[FP risk]** |
 | X-L3 | **Single-file analysis.** Every fixture is one self-contained file. Real repos spread contracts, bases, and proxies across directories and imports; multi-file resolution and per-commit `pragma`/solc-version switching via solc-select are not yet exercised by the history walker (`src/history.py` is empty). | **[FN risk]** |
+
+---
+
+## Architectural design lessons
+
+Not a per-rule failure but an implementation invariant that every future rule
+must honour. Recorded here because violating it silently produces false
+positives, and because it is invisible until a rule crosses commits.
+
+### DESIGN-L1 — cross-commit set operations MUST diff by canonical_name, never by object identity
+
+**Type: FALSE POSITIVE risk. Applies to every diff-based rule.**
+
+`before.sol` and `after.sol` are compiled by **two separate Slither
+invocations**. Slither returns fresh Python objects for each compilation, so the
+same source-level entity — a `StateVariable`, a `Function`, a `Contract` — is a
+**distinct object instance** in the before-parse and the after-parse. Those
+objects use default (identity) hashing and equality, so a set built from one
+compilation shares no members with a set built from the other, even for entities
+that are byte-for-byte identical in source.
+
+The trap:
+
+```python
+# WRONG — compares by object identity across two compilations.
+moved = state_writes_after_calls(fn_after) - state_writes_after_calls(fn_before)
+# `balances` written after the call in BOTH commits does NOT cancel:
+# balances@after and balances@before are different objects, so the set
+# difference keeps balances@after -> `moved` is non-empty -> false positive.
+```
+
+```python
+# RIGHT — diff by a stable cross-commit key, keep after-commit objects.
+before_names = {v.canonical_name for v in state_writes_after_calls(fn_before)}
+moved = {v for v in state_writes_after_calls(fn_after)
+         if v.canonical_name not in before_names}
+```
+
+`canonical_name` (e.g. `Bank.balances`) is stable across compilations of the
+same source entity and is the correct join key. Keep the **after-commit** objects
+in the result so any *within-commit* intersection that follows
+(`moved & own_guard_state_reads(fn_after)`, `_reads_by_repo_view(contract_after,
+moved)`) still compares objects from a single compilation, where identity is
+valid again.
+
+**The rule of thumb:** identity comparison is only ever valid **within one
+compilation**. The moment a computation spans before and after, every set/dict
+join, membership test, and difference must go through `canonical_name` (or an
+equivalent stable key), and only same-compilation objects may be intersected.
+
+**How it was found.** Rule 2b's first implementation. Fixture **N2b-02** — CEI
+already broken at N-1 and still broken at N, i.e. no ordering *change* — fired as
+a false positive because `balances` failed to cancel across the two
+compilations. The fix was to diff by `canonical_name`; N2b-02 then went quiet and
+2b reached precision 1.00.
+
+**Who is and isn't exposed.** Rules that inspect a **single** compilation never
+hit this: Rule 1, Rule 2a, and Rules 3a/3b/3c all reason about the after-commit
+(or one commit at a time) and their set operations stay within one parse. The
+exposed rules are the ones that **compare per-commit sets**: Rule 2b today, and
+the two diff-based rules still to come — **Rule 5** (return-value check removed)
+and **Rule 6** (input-validation guard removed). Both must apply DESIGN-L1 to any
+cross-commit set operation from the outset, with a guard/test that a shared
+entity present in both commits cancels. Tracked in TODO.md.
