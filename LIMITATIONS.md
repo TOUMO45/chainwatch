@@ -76,6 +76,20 @@ rests on a declaration of intent rather than a deployment fact.
 
 ---
 
+## Rule 1 — SC01 access control
+
+### 1-N1 — Rule 1 needs NO OZ 5-specific handling (design note, not a limitation)
+
+Unlike Rules 3b and 3c (see [3x-L3](#3x-l3--rules-3b-and-3c-cannot-fire-at-all-on-openzeppelin-5x)), Rule 1 required **zero OZ 5-specific code**. There is no OZ 4/OZ 5 branch, no namespace-pointer handling, no per-version switch — the OZ 4 detection resolves OZ 5 `onlyOwner`/`onlyRole` unchanged.
+
+**Reason.** Rule 1 detects a lost access constraint through `constrains_msg_sender`, which is data-dependency based and only needs the **`msg.sender` side** of an access check — and OZ 5 never namespaces that side. OZ 5's `_checkOwner` is `if (owner() != _msgSender()) revert …`: `owner()` reads `_owner` from the ERC-7201 `OwnableStorage` namespace, but `_msgSender()` is plain `msg.sender`, so the guard node is data-dependent on `msg.sender` regardless of where `owner()` reads from. `onlyRole` behaves the same way — `_checkRole(role, _msgSender())`.
+
+**Why 3b differed.** Rule 3b had to identify **which** namespaced slot the one-shot init flag (`_initialized` / `_initializing`) occupied, in order to prove the modifier was a real init guard — that read *is* the namespaced value, which is why 3b needed the ERC-7201 pointer machinery. Rule 1 never inspects the owner/role storage read, only the `msg.sender` comparison, so the OZ 5 indirection is irrelevant to it.
+
+**Verified, not asserted.** `fixtures-r1-oz5` (OZ 5.7.0: `OwnableUpgradeable`, `AccessControlUpgradeable`, UUPS v5, ERC-7201) scores Rule 1 **1.00/1.00** with no rule change — 2 positives fire, both negatives stay quiet (N1-oz5-02's `_authorizeUpgrade` regression is Rule 3a's, declared via `also_fires`), while OZ 4 (`fixtures-r1`) and all Rule 3 sets remain 1.00/1.00.
+
+---
+
 ## Rule 3a — Upgrade authorization weakened
 
 | # | Limitation | Direction |
