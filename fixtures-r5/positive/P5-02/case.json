@@ -1,0 +1,8 @@
+{
+  "id": "P5-02",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "disburse() checked the bool return of a raw ERC20 transfer at N-1 (require(token.transfer(to, amt), ...)); at N the transfer is called bare and its return value is discarded. The only change is the removed check.",
+  "why_labeled": "Rule 5 trigger explicitly includes a raw ERC20 transfer/transferFrom whose bool return was checked at N-1 and is not at N. Non-reverting tokens (the ERC20 standard permits a return-false-on-failure token) will silently no-op the transfer while the function reports success, so dropping the check is a real SC06 regression. Exclusion 5.1 does NOT apply - the call is a raw IERC20.transfer, not SafeERC20.safeTransfer (contrast N5-01). Not checked later (5.2), not a test path (5.6). CONFIRMED."
+}

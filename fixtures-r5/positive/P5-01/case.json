@@ -1,0 +1,8 @@
+{
+  "id": "P5-01",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "pay() captured and checked the success flag of a value-bearing low-level call at N-1 ((bool ok, ) = recipient.call{value: address(this).balance}(\"\"); require(ok, ...)); at N the return value is ignored entirely (bare recipient.call{value: address(this).balance}(\"\");). recipient is a constructor-set state variable and the value is the contract balance, so the call takes no function parameters. The only change is the removed check.",
+  "why_labeled": "Rule 5 trigger: the return value of a .call that was checked at N-1 is unchecked at N. This is the strongest form - the call forwards ETH ({value: address(this).balance}), so a silent failure means value is considered sent when it was not, a classic SC06 loss. Value-bearing (or ERC20-transfer) calls whose check is dropped are CONFIRMED, distinct from a best-effort no-value notification hook which RULES caps at CANDIDATE (see N5-05). No exclusion applies (not SafeERC20-wrapped, not checked later, target is an arbitrary externally-set address not address(this)/precompile, not a test path). The function is deliberately parameter-free and msg.sender-free so this is an isolated Rule 5 case, not an input-validation (Rule 6) or access-control (Rule 1) one. CONFIRMED."
+}

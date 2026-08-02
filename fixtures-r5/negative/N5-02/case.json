@@ -1,0 +1,8 @@
+{
+  "id": "N5-02",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "5.2",
+  "description": "The inline require(token.transfer(...)) is gone at N, but the transfer's bool return is assigned to a local (bool ok = token.transfer(to, amt)) and still checked later in the same function (require(ok, ...) after the bookkeeping write).",
+  "why_labeled": "Exclusion 5.2: the return value is assigned and checked later in the function. The success flag is captured and a require(ok) still gates the call's outcome before the function completes, so no check was lost - it relocated. A rule keying on the disappearance of the inline require(token.transfer(...)) form would false-positive; it must follow the assigned return value and see it is still required. Rule 5 MUST stay quiet."
+}

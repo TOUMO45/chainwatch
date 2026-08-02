@@ -1,0 +1,8 @@
+{
+  "id": "N5-01",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "5.1",
+  "description": "The manual require(token.transfer(to, amt), ...) is gone at N, but the raw transfer is replaced by token.safeTransfer(to, amt) using OpenZeppelin's SafeERC20 (using SafeERC20 for IERC20). to and amt are constructor-set state variables, so disburse() takes no parameters.",
+  "why_labeled": "Exclusion 5.1: the call is wrapped in SafeERC20 at N, so the success check is internal to the library - safeTransfer reverts on a false return or on non-standard tokens. Removing the manual require is not a loss of checking; it moved into the library. A rule that only sees the require vanish would false-positive; it must recognise the safeTransfer wrapper as an equivalent (stronger) check. The function is parameter-free so this is an isolated Rule 5 case (no Rule 6 input-validation overlap). Rule 5 MUST stay quiet."
+}

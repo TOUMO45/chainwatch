@@ -1,0 +1,84 @@
+[
+  {
+    "id": "P5-01",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P5-01",
+    "summary": "Value-bearing low-level call: (bool ok,) = recipient.call{value: balance}(\"\"); require(ok) at N-1 -> bare recipient.call{value: balance}(\"\") at N. Return ignored. Parameter-free (recipient is a state var). Only the check changed."
+  },
+  {
+    "id": "P5-02",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P5-02",
+    "summary": "Raw ERC20 transfer: require(token.transfer(to, amt)) at N-1 -> bare token.transfer(to, amt) at N. Bool return discarded. Only the check changed."
+  },
+  {
+    "id": "P5-03",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P5-03",
+    "summary": "try/catch around cb.onEvent(x) removed at N; the external call is now bare so a revert propagates. Distinct try/catch-removal trigger. Only the guard changed."
+  },
+  {
+    "id": "N5-01",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "5.1",
+    "path": "negative/N5-01",
+    "summary": "Manual require(token.transfer(...)) replaced by token.safeTransfer(...) (SafeERC20) at N; checking is internal to the library. Exclusion 5.1 -> quiet."
+  },
+  {
+    "id": "N5-02",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "5.2",
+    "path": "negative/N5-02",
+    "summary": "Return value assigned to `ok` and still require(ok) later in the same function (moved, not removed). Exclusion 5.2 -> quiet."
+  },
+  {
+    "id": "N5-03",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "5.4",
+    "path": "negative/N5-03",
+    "summary": "Success check dropped on a staticcall to address(0x04), the identity precompile (a known non-reverting target); returned data still used. Exclusion 5.4 -> quiet."
+  },
+  {
+    "id": "N5-04",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "5.6",
+    "path": "negative/N5-04",
+    "source_path": "test/mocks/DisburserMock.sol",
+    "summary": "Genuine unchecked-return regression (diff-identical to P5-02) but path is test/mocks/DisburserMock.sol; exclusion 5.6 keys on the path segment, not the 'Mock' name substring."
+  },
+  {
+    "id": "N5-05",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "candidate",
+    "exclusion_ref": "5.3",
+    "path": "negative/N5-05",
+    "summary": "require(ok) dropped on a best-effort onFlush notification hook (no value forwarded, no msg.sender, result feeds no further logic). Non-security-relevance not provable from one repo -> CANDIDATE, never CONFIRMED."
+  },
+  {
+    "id": "N5-06",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "5-no-change",
+    "path": "negative/N5-06",
+    "summary": "Raw transfer unchecked at N-1 and still unchecked at N (only an added event); no change in checking. Regression, not pre-existing state. Quiet."
+  }
+]

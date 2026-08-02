@@ -1,0 +1,8 @@
+{
+  "id": "N5-06",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "5-no-change",
+  "description": "The raw ERC20 transfer's bool return is ignored at N-1 (bare token.transfer(to, amt)) and still ignored at N. The only diff between commits is an added Disbursed event; the checking status of the call did not change.",
+  "why_labeled": "Rule 5 detects a REGRESSION - a return value checked at N-1 and unchecked at N - not a pre-existing unchecked call. Here the call is unchecked in BOTH commits, so there is no change in checking for the rule to fire on. (Whether the standing unchecked transfer should be reported at all is a full-scan concern, not a commit-regression one; Rule 5 is a diff rule.) This is the boundary analogue of Rule 2b's N2b-02. Rule 5 MUST stay quiet."
+}

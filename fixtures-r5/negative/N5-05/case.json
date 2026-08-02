@@ -1,0 +1,8 @@
+{
+  "id": "N5-05",
+  "sub_rule": null,
+  "label": "candidate",
+  "exclusion_ref": "5.3",
+  "description": "flush() checked the success of a notification hook call at N-1 ((bool ok, ) = address(hook).call(onFlush...); require(ok, ...)); at N the return is ignored so the hook is best-effort. The call carries no value and passes no return data back into the function's logic - it is a fire-and-forget onFlush notification. No parameters and no msg.sender are involved.",
+  "why_labeled": "Exclusion 5.3: the dropped check is on a best-effort notification hook, whose failure is plausibly intentional and non-security-relevant - but that cannot be PROVEN from a single repo, so RULES.md caps it at CANDIDATE (human decides), never a plain CONFIRMED fire. The structural signal separating this from P5-01/P5-02: the call forwards no value ({value:} absent) and is not an ERC20 transfer, and its result feeds no subsequent control flow or value movement - it is a pure notification. label:\"candidate\" documents the intended verdict ceiling; scored as a non-positive, exactly like N2a-06 / N2b-05. The function is msg.sender-free and parameter-free so it does not overlap Rule 1 or Rule 6."
+}

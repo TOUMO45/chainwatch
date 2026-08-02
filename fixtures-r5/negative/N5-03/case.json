@@ -1,0 +1,8 @@
+{
+  "id": "N5-03",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "5.4",
+  "description": "compute() checked the success flag of a staticcall to address(0x04) at N-1 (require(ok, ...)); at N the flag is ignored ((, bytes memory out) = address(0x04).staticcall(payload)). The call target is the identity precompile and the input is a constructor-set state variable (payload), so compute() takes no parameters.",
+  "why_labeled": "Exclusion 5.4: the call is to a known non-reverting target (a precompile - here the identity precompile at address(0x04); address(this) qualifies likewise). Such targets cannot fail under normal operation, so a dropped success check has no security consequence - the returned data is still consumed (last = keccak256(out)). The detector must recognise the literal precompile address (0x01..0x09) / address(this) as a non-reverting target and stay quiet. The function is parameter-free so no Rule 6 overlap. Rule 5 MUST stay quiet."
+}

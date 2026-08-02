@@ -1,0 +1,8 @@
+{
+  "id": "P5-03",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "notify() wrapped the external cb.onEvent(x) call in try/catch at N-1, isolating its failure so lastNotified = x still executed. At N the try/catch is removed and the call is made bare, so a revert in cb.onEvent now propagates and changes the function's failure semantics. The only change is the removed try/catch.",
+  "why_labeled": "Rule 5's trigger explicitly lists 'try/catch around an external call removed'. This is a distinct trigger from the return-value-check path: the try/catch was the failure-handling construct, and removing it alters how the contract behaves when the callee reverts (previously isolated, now propagating and blocking the subsequent state write). Detected structurally as a try-statement node present at N-1 and absent at N around the same call, so it is a plain CONFIRMED regression - not subject to the best-effort-hook CANDIDATE downgrade that applies to a dropped return-value check (N5-05)."
+}

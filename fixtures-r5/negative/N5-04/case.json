@@ -1,0 +1,9 @@
+{
+  "id": "N5-04",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "5.6",
+  "source_path": "test/mocks/DisburserMock.sol",
+  "description": "A genuine unchecked-return regression on a raw ERC20 transfer - diff-identical to the P5-02 positive - but the contract's repo-relative path is test/mocks/DisburserMock.sol.",
+  "why_labeled": "Exclusion 5.6: test/mock/script paths are not production and are discarded (same segment-based match set used by Rules 1.6 / 2a.2.8 / 2b / 6.7: test/, mock(s)/, script/, *.t.sol, *Mock*, *Harness*). The exclusion must key on the path SEGMENTS (`test`, `mocks`), not the 'Mock' name substring. Because the underlying change is a real Rule 5 regression, this fixture asserts the rule suppresses on path and does not fire on non-production code."
+}
