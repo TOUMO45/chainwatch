@@ -103,6 +103,16 @@ def score(rules: dict, cases: list[dict], default_remaps: str = "oz4") -> tuple[
             # is not built yet. It is still run and still shown, but a miss is
             # reported as KNOWN-UNSUPPORTED rather than counted as a failure.
             unsupported = owns_case and bool(case.get("known_unsupported"))
+            # A case may DECLARE, via manifest `also_fires`, that a NON-owning
+            # rule is EXPECTED to fire on it - a legitimate cross-rule detection
+            # (e.g. N1-05 is Rule 1's negative but the same diff as P3a-01, so
+            # Rule 3a rightly fires). Such a declared fire is counted as neither
+            # TP nor FP. A fire by any rule that is neither the owner nor listed
+            # in also_fires is STILL a false positive - this exception narrows
+            # nothing else.
+            declared_cross = not owns_case and rule_id in {
+                str(r) for r in case.get("also_fires", [])
+            }
             fired = bool(rule_fn(case["_before"], case["_after"], case))
             if fired:
                 total_detections += 1
@@ -122,14 +132,21 @@ def score(rules: dict, cases: list[dict], default_remaps: str = "oz4") -> tuple[
                     stats[rule_id]["tp"] += 1
                 else:
                     stats[rule_id]["fn"] += 1
+            elif fired and declared_cross:
+                # Declared, expected cross-rule detection (manifest `also_fires`):
+                # counted as neither TP nor FP for this rule.
+                pass
             elif fired:
                 # Fired on a negative case, or on a case belonging to another
-                # rule: false positive either way.
+                # rule with no also_fires declaration: false positive.
                 stats[rule_id]["fp"] += 1
-            ok = fired == expected_fire
+            if fired and declared_cross:
+                ok, note = True, "  EXPECTED (also_fires cross-rule)"
+            else:
+                ok, note = fired == expected_fire, ""
             print(
                 f"  [{rule_id}] {case['id']:<7} expected={'FIRE' if expected_fire else 'quiet':<5} "
-                f"got={'FIRE' if fired else 'quiet':<5} {'OK' if ok else '** WRONG **'}"
+                f"got={'FIRE' if fired else 'quiet':<5} {'OK' if ok else '** WRONG **'}{note}"
             )
     return stats, total_detections
 

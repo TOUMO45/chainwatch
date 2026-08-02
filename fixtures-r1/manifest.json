@@ -61,7 +61,9 @@
     "label": "negative",
     "exclusion_ref": "1.10",
     "path": "negative/N1-05",
-    "summary": "onlyOwner removed from _authorizeUpgrade in a real UUPS contract; Rule 3a territory, Rule 1 must stay quiet (boundary case)."
+    "also_fires": ["3a"],
+    "also_fires_reason": "N1-05 is a NEGATIVE for Rule 1 but a genuine POSITIVE for Rule 3a: the diff is the same as P3a-01 (a real UUPS _authorizeUpgrade losing onlyOwner), so Rule 3a correctly fires. Declaring 3a here marks that cross-rule detection as expected (neither TP nor FP), while any undeclared non-owner fire remains a false positive.",
+    "summary": "onlyOwner removed from _authorizeUpgrade in a real UUPS contract; Rule 3a territory (also_fires: 3a), Rule 1 must stay quiet (boundary case)."
   },
   {
     "id": "N1-06",

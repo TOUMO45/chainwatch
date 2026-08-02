@@ -48,6 +48,33 @@ def is_test_path(path: str) -> bool:
     return any(m in Path(p).name for m in TEST_NAME_MARKERS)
 
 
+TEST_PATH_SEGMENTS = {"test", "tests", "mock", "mocks", "script", "scripts"}
+
+
+def is_test_path_segments(path: str) -> bool:
+    """Segment-based test/mock path classifier (finding 3x-L1).
+
+    Matches whole path SEGMENTS, never substrings: `contracts/latest/Foo.sol`
+    is NOT a test path even though it contains the letters "test", whereas
+    `test/mocks/Treasury.sol` is (segments `test`, `mocks`). This is the
+    classifier Rule 1 keys exclusion 1.6 on, reading the repo-relative
+    `source_path` a case declares so the rule sees the file the way the real
+    repo walk would.
+
+    The `.t.sol` suffix and `*Mock*`/`*Harness*` patterns are matched against
+    the file BASENAME only (a filename, part of the path) - never against a
+    Slither contract name, per the charter's no-name-matching stance.
+    """
+    p = str(path).replace("\\", "/")
+    segments = [s for s in p.split("/") if s]
+    if any(s in TEST_PATH_SEGMENTS for s in segments):
+        return True
+    name = segments[-1] if segments else ""
+    if name.endswith(".t.sol"):
+        return True
+    return any(m in name for m in TEST_NAME_MARKERS)
+
+
 def declared_in_repo(fn: Function) -> bool:
     """False for functions inherited from node_modules (library code)."""
     decl = str(fn.contract_declarer.source_mapping.filename.absolute).replace("\\", "/")
