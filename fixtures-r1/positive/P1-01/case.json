@@ -1,0 +1,8 @@
+{
+  "id": "P1-01",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "setFee() loses its onlyOwner modifier with no inline replacement; any caller can now overwrite the protocol fee. setFeeRecipient() keeps onlyOwner, isolating the regression to a single function.",
+  "why_labeled": "A previously owner-only state-changing function became callable by anyone, and no compensating access check (inline require, upstream gate, visibility change) was added in the same commit. This is the canonical SC01 access-control regression on an ordinary state-changing function and must fire."
+}

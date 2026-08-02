@@ -1,0 +1,9 @@
+{
+  "id": "N1-04",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "1.6",
+  "source_path": "test/mocks/Treasury.sol",
+  "description": "onlyOwner is genuinely removed from setFee(), but the contract's repo-relative path is test/mocks/Treasury.sol. The exclusion signal is the path, not the contract name (renamed to plain Treasury). The Rule 1 detector reads source_path and matches the test and mocks path segments.",
+  "why_labeled": "The change is real but the file is not production code. Exclusion 1.6 discards changes whose path contains a test/mock/script segment (test/, mock(s)/, script/, *.t.sol, *Mock*, *Harness*). Matching must be segment-based, not substring (finding 3x-L1): 'test' here is a genuine path segment. Because the only test/mock signal is the path, this fixture asserts the rule stays quiet on path, not on name."
+}

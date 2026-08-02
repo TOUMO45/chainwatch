@@ -1,0 +1,8 @@
+{
+  "id": "N1-05",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "1.10",
+  "description": "onlyOwner is removed from _authorizeUpgrade in a real UUPS contract (Initializable + UUPSUpgradeable + OwnableUpgradeable, _disableInitializers in constructor). withdraw() is untouched and still onlyOwner.",
+  "why_labeled": "This is a genuine access-control regression, but it belongs to Rule 3a (upgrade authorization weakened), NOT Rule 1. _authorizeUpgrade is the UUPS upgrade-authorization hook; exclusion 1.10 and the upgrade carve-out route it to Rule 3a so the two rules do not double-report. Rule 1 MUST stay quiet here. The identical diff is a CONFIRMED positive under Rule 3a (see fixtures/positive/P3a-01) — this fixture asserts Rule 1's silence on that boundary. Note withdraw() keeps onlyOwner, so there is no ordinary-function regression to distract a correct detector."
+}

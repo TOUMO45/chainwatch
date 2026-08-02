@@ -1,0 +1,8 @@
+{
+  "id": "N1-03",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "1.4",
+  "description": "accrue() drops onlyOwner but simultaneously becomes view in the same commit; it no longer writes the pokes counter and only returns fee.",
+  "why_labeled": "A view function changes no state and moves no value, so the CONFIRMED requirement 'function must write state or move value' fails. Removing access control from a read-only accessor is not a security regression. Exclusion 1.4."
+}

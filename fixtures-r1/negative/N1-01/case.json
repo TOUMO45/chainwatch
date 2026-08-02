@@ -1,0 +1,8 @@
+{
+  "id": "N1-01",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "1.2",
+  "description": "onlyOwner is removed from setFee(), but an equivalent inline require(msg.sender == owner()) is added in the same function in the same commit.",
+  "why_labeled": "The protection was relocated, not removed. The inline require enforces exactly the constraint the modifier did (msg.sender must equal owner()). A name-only detector sees the modifier disappear and fires; a body-aware detector recognizes the inline check as an equivalent msg.sender constraint and stays quiet. Exclusion 1.2."
+}

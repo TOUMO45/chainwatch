@@ -1,0 +1,8 @@
+{
+  "id": "N1-06",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "1.1",
+  "description": "The custom modifier guarding setFee() is renamed onlyAdmin -> restricted, but its body (require(msg.sender == admin)) is identical. setFee() still carries the renamed modifier.",
+  "why_labeled": "The access constraint is unchanged; only the modifier identifier differs. Resolving the modifier through its body AST rather than by name string shows the same msg.sender == admin check applies at commit N. A name-string detector would fire on the vanished onlyAdmin; a body-aware one recognizes the pure refactor and stays quiet. Exclusion 1.1."
+}

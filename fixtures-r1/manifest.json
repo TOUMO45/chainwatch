@@ -1,0 +1,75 @@
+[
+  {
+    "id": "P1-01",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P1-01",
+    "summary": "setFee() loses onlyOwner with no inline replacement; ordinary state-changing function becomes callable by anyone."
+  },
+  {
+    "id": "P1-02",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P1-02",
+    "summary": "withdraw() loses onlyRole(TREASURER_ROLE) with no replacement; arbitrary caller can drain ETH."
+  },
+  {
+    "id": "N1-01",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "1.2",
+    "path": "negative/N1-01",
+    "summary": "onlyOwner removed but equivalent inline require(msg.sender == owner()) added in the same function."
+  },
+  {
+    "id": "N1-02",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "1.3",
+    "path": "negative/N1-02",
+    "summary": "Function changed external onlyOwner -> internal in the same commit; no external caller path remains."
+  },
+  {
+    "id": "N1-03",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "1.4",
+    "path": "negative/N1-03",
+    "summary": "Function became view in the same commit; no state written, nothing to protect."
+  },
+  {
+    "id": "N1-04",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "1.6",
+    "path": "negative/N1-04",
+    "source_path": "test/mocks/Treasury.sol",
+    "summary": "onlyOwner genuinely removed, but the contract's repo path is test/mocks/Treasury.sol; exclusion keys on the path segment, not the name."
+  },
+  {
+    "id": "N1-05",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "1.10",
+    "path": "negative/N1-05",
+    "summary": "onlyOwner removed from _authorizeUpgrade in a real UUPS contract; Rule 3a territory, Rule 1 must stay quiet (boundary case)."
+  },
+  {
+    "id": "N1-06",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "1.1",
+    "path": "negative/N1-06",
+    "summary": "Custom modifier renamed onlyAdmin -> restricted, body AST identical; pure refactor."
+  }
+]

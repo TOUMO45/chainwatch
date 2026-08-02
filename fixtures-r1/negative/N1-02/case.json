@@ -1,0 +1,8 @@
+{
+  "id": "N1-02",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "1.3",
+  "description": "setFee() drops onlyOwner but is simultaneously changed from external to internal (and renamed _setFee) in the same commit, with no external caller path.",
+  "why_labeled": "An internal function is not part of the external call surface, so the absence of an access modifier cannot be exploited by an outside caller. The regression requirement 'reachable at HEAD as an external entry point' fails. Exclusion 1.3."
+}

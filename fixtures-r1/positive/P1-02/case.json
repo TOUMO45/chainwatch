@@ -1,0 +1,8 @@
+{
+  "id": "P1-02",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "withdraw() loses its onlyRole(TREASURER_ROLE) constraint with no replacement; any caller can now drain ETH held by the Treasury to an arbitrary address.",
+  "why_labeled": "A value-moving function that required the TREASURER_ROLE at commit N-1 has no access control at commit N. The role check resolves through AccessControl to a require on _checkRole(msg.sender); its removal widens the caller set from role-holders to everyone. Value moves (arbitrary-send), so this is a CONFIRMED SC01 regression and must fire."
+}
