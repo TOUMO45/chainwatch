@@ -94,6 +94,11 @@ def score(rules: dict, cases: list[dict], default_remaps: str = "oz4") -> tuple[
         if case.get("remaps") or case.get("solc"):
             _apply_build_config(case.get("remaps", default_remaps), case.get("solc"))
         is_positive = case["label"] == "positive"
+        # A case may be labelled "candidate": the owning rule is expected to
+        # return a CANDIDATE verdict (e.g. read-only reentrancy, RULES.md 2.10) -
+        # neither a plain CONFIRMED fire nor silence. A rule returns the string
+        # "candidate" for that verdict; True still means FIRE, False still quiet.
+        is_candidate_case = case["label"] == "candidate"
         for rule_id, rule_fn in rules.items():
             # A rule id may be a whole rule ("3") or a sub-rule ("3a"); a case
             # is an expected positive for the rule that owns it.
@@ -113,10 +118,44 @@ def score(rules: dict, cases: list[dict], default_remaps: str = "oz4") -> tuple[
             declared_cross = not owns_case and rule_id in {
                 str(r) for r in case.get("also_fires", [])
             }
-            fired = bool(rule_fn(case["_before"], case["_after"], case))
+            # A case labelled "candidate" expects the owning rule to return the
+            # CANDIDATE verdict - not FIRE, not quiet.
+            expected_candidate = owns_case and is_candidate_case
+            raw = rule_fn(case["_before"], case["_after"], case)
+            is_candidate = raw == "candidate"
+            fired = bool(raw) and not is_candidate
             if fired:
                 total_detections += 1
                 stats[rule_id]["detections"].append(case["id"])
+            if expected_candidate:
+                # Correct CANDIDATE counts as neither TP nor FP (like a declared
+                # cross-rule fire). A plain FIRE here is an over-confident
+                # CONFIRMED -> false positive (breaks precision, enforcing "never
+                # CONFIRMED"). Silence is a miss -> false negative (breaks recall).
+                if is_candidate:
+                    pass
+                elif fired:
+                    stats[rule_id]["fp"] += 1
+                else:
+                    stats[rule_id]["fn"] += 1
+                got = "CAND" if is_candidate else ("FIRE" if fired else "quiet")
+                ok = is_candidate
+                print(
+                    f"  [{rule_id}] {case['id']:<7} expected={'CAND':<5} "
+                    f"got={got:<5} {'OK' if ok else '** WRONG **'}"
+                )
+                continue
+            if is_candidate:
+                # A CANDIDATE verdict on a case the rule does not own as a
+                # candidate case (a negative, or another rule's case) is a
+                # wrongful flag -> false positive, same as an unexpected fire.
+                stats[rule_id]["fp"] += 1
+                print(
+                    f"  [{rule_id}] {case['id']:<7} "
+                    f"expected={'FIRE' if expected_fire else 'quiet':<5} "
+                    f"got={'CAND':<5} ** WRONG **"
+                )
+                continue
             if expected_fire and unsupported:
                 if fired:
                     stats[rule_id]["tp"] += 1
