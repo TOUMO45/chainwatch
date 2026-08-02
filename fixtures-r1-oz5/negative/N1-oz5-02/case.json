@@ -1,0 +1,9 @@
+{
+  "id": "N1-oz5-02",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "1.10",
+  "description": "OZ 5 equivalent of N1-05. onlyOwner is removed from _authorizeUpgrade on a real OZ 5 UUPS contract (Initializable + OwnableUpgradeable + UUPSUpgradeable v5.7.0, ERC-7201 namespaced state, _disableInitializers in constructor, deployed behind ERC1967Proxy by VaultFactory). withdraw() is untouched and still onlyOwner.",
+  "why_labeled": "This is a genuine access-control regression, but it belongs to Rule 3a (upgrade authorization weakened), NOT Rule 1. _authorizeUpgrade is the UUPS upgrade-authorization hook; exclusion 1.10 and the upgrade carve-out route it to Rule 3a so the two rules do not double-report. Rule 1 MUST stay quiet here. The identical diff is a CONFIRMED positive under Rule 3a, so the manifest declares also_fires:[\"3a\"] (3a rightly fires; it is neither TP nor FP noise). withdraw() keeps onlyOwner, so there is no ordinary-function regression to distract a correct detector.",
+  "why_oz5_matters": "Confirms Rule 1's Rule-3 boundary (defer to 3a on upgrade-auth functions) holds under OZ 5 as well as OZ 4, so an OZ 5 upgrade regression is reported once by Rule 3a and never double-counted by Rule 1."
+}

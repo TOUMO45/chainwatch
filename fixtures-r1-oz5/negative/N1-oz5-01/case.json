@@ -1,0 +1,9 @@
+{
+  "id": "N1-oz5-01",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "1.2",
+  "description": "OZ 5 equivalent of N1-01. onlyOwner is removed from setFee(), but an equivalent inline require(msg.sender == owner()) is added in the same function in the same commit. owner() reads _owner from OZ 5's ERC-7201 OwnableStorage namespace.",
+  "why_labeled": "The protection was relocated, not removed. The inline require enforces exactly the constraint the modifier did (msg.sender must equal owner()). A name-only detector sees onlyOwner disappear and fires; a body-aware detector recognizes the inline check as an equivalent msg.sender constraint and stays quiet. The OZ 5 wrinkle: owner() resolves through the namespaced OwnableStorage, so constrains_msg_sender must follow that indirection to see the check is still present. Exclusion 1.2.",
+  "why_oz5_matters": "Guards against a false positive where the inline replacement's msg.sender dependency is lost because owner() reads namespaced storage instead of a plain state variable."
+}

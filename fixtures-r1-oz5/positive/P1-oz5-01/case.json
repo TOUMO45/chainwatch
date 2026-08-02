@@ -1,0 +1,9 @@
+{
+  "id": "P1-oz5-01",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "OZ 5 equivalent of P1-01. setFee() loses its onlyOwner modifier on an OwnableUpgradeable (v5.7.0) contract, with no inline replacement; any caller can overwrite the protocol fee. setFeeRecipient() keeps onlyOwner, isolating the regression to one function.",
+  "why_labeled": "A previously owner-only state-changing function became callable by anyone and no compensating access check was added. The only OZ 5 difference from P1-01 is that onlyOwner resolves through OwnableUpgradeable._checkOwner, which reads _owner from the ERC-7201 namespace (chainwatch has no bearing; it is OZ's own OwnableStorage). Rule 1 must still detect the lost msg.sender constraint through that namespaced indirection, exactly as it does for OZ 4's direct _owner read.",
+  "why_oz5_matters": "Confirms Rule 1's msg.sender-constraint detection resolves through OZ 5's namespaced _checkOwner (the same ERC-7201 indirection already handled for Rule 3b in _shared.py), not just OZ 4's plain storage read."
+}

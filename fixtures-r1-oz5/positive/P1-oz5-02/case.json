@@ -1,0 +1,9 @@
+{
+  "id": "P1-oz5-02",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "OZ 5 equivalent of P1-02. withdraw() loses its onlyRole(TREASURER_ROLE) constraint on an AccessControlUpgradeable (v5.7.0) contract, with no replacement; any caller can drain ETH held by the Treasury to an arbitrary address.",
+  "why_labeled": "A value-moving function that required TREASURER_ROLE at N-1 has no access control at N. In OZ 5 the role check resolves through AccessControlUpgradeable.onlyRole -> _checkRole(role) -> _checkRole(role, _msgSender()), which reads role membership from the ERC-7201 AccessControlStorage namespace. Its removal widens the caller set from role-holders to everyone; value moves, so this is a CONFIRMED SC01 regression that Rule 1 must fire on, resolving the constraint through OZ 5's namespaced _checkRole.",
+  "why_oz5_matters": "Confirms Rule 1 resolves an onlyRole msg.sender constraint through OZ 5's namespaced AccessControl storage, the AccessControl analogue of the OwnableUpgradeable indirection."
+}

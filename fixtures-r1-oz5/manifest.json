@@ -1,0 +1,48 @@
+[
+  {
+    "id": "P1-oz5-01",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P1-oz5-01",
+    "remaps": "oz5",
+    "solc": "0.8.27",
+    "summary": "OZ5: setFee() loses onlyOwner (OwnableUpgradeable) with no inline replacement; onlyOwner resolves through the namespaced _checkOwner."
+  },
+  {
+    "id": "P1-oz5-02",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P1-oz5-02",
+    "remaps": "oz5",
+    "solc": "0.8.27",
+    "summary": "OZ5: withdraw() loses onlyRole(TREASURER_ROLE) (AccessControlUpgradeable) with no replacement; arbitrary caller can drain ETH."
+  },
+  {
+    "id": "N1-oz5-01",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "1.2",
+    "path": "negative/N1-oz5-01",
+    "remaps": "oz5",
+    "solc": "0.8.27",
+    "summary": "OZ5: onlyOwner removed but equivalent inline require(msg.sender == owner()) added; owner() reads namespaced OwnableStorage."
+  },
+  {
+    "id": "N1-oz5-02",
+    "rule": 1,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "1.10",
+    "path": "negative/N1-oz5-02",
+    "remaps": "oz5",
+    "solc": "0.8.27",
+    "also_fires": ["3a"],
+    "also_fires_reason": "N1-oz5-02 is a NEGATIVE for Rule 1 but a genuine POSITIVE for Rule 3a: onlyOwner removed from a real OZ 5 UUPS _authorizeUpgrade is an upgrade-authorization regression that Rule 3a correctly fires on. Declaring 3a marks that cross-rule detection as expected (neither TP nor FP); any undeclared non-owner fire remains a false positive.",
+    "summary": "OZ5: onlyOwner removed from _authorizeUpgrade on a real UUPS contract; Rule 3a territory (also_fires: 3a), Rule 1 must stay quiet (boundary case, OZ 5 twin of N1-05)."
+  }
+]
