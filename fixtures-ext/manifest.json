@@ -1,0 +1,24 @@
+[
+  {
+    "id": "N3b-ratelimit-oz4",
+    "rule": 3,
+    "sub_rule": "3b",
+    "label": "negative",
+    "exclusion_ref": null,
+    "path": "negative/N3b-ratelimit-oz4",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "OZ4: rate-limited rotateGuardian (block.timestamp guard) has init-guard shape; removing it must NOT fire Rule 3b."
+  },
+  {
+    "id": "N3b-ratelimit-oz5",
+    "rule": 3,
+    "sub_rule": "3b",
+    "label": "negative",
+    "exclusion_ref": null,
+    "path": "negative/N3b-ratelimit-oz5",
+    "remaps": "oz5",
+    "solc": "0.8.27",
+    "summary": "OZ5: same rate-limit trap through the ERC-7201 namespaced init-guard detector; removing it must NOT fire Rule 3b."
+  }
+]

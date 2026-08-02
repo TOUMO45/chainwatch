@@ -1,0 +1,12 @@
+{
+  "id": "N3b-ratelimit-oz4",
+  "sub_rule": "3b",
+  "label": "negative",
+  "oz_major": 4,
+  "oz_version": "4.9.6",
+  "solc": "0.8.20",
+  "exclusion_ref": null,
+  "description": "OZ 4 UUPS proxied contract with rotateGuardian(), a rate-limited critical-config change. The require reads lastRotation and the body writes lastRotation = block.timestamp. The commit REMOVES that rate-limit guard. Rule 3b must NOT fire: removing a rate limit is not removing an initializer.",
+  "why_labeled": "This is the false positive documented in finding 3b-L-ratelimit. A rate-limit guard has the identical structural shape to a one-shot init guard: it gates on a state variable it also writes. The current (pre-fix) Rule 3b classifies rotateGuardian as init-guarded and, because it writes the msg.sender-checked `guardian` var, as critical-config too; removing the require then reads as an initializer regression. It is not. The discriminator: an init flag is written ONCE to a compile-time constant and monotonically CLOSES the gate (initializer writes _initialized = 1), whereas lastRotation is rewritten from block.timestamp every successful call and REOPENS the gate. Confirmed: the pre-fix rule fires on this before/after pair (a real false positive); the fixed rule must stay quiet.",
+  "diff_summary": "before.sol -> after.sol: the two-line rate-limit block (the require + `lastRotation = block.timestamp`) is removed from rotateGuardian; everything else identical."
+}

@@ -41,3 +41,9 @@
       storage in its OWN contracts and run the 3c OZ5 comparator against it.
       Monetrix did not exercise that path at all (all contracts took OZ4 mode),
       so the comparator is fixture-validated only.
+- [ ] Rule 6 (input validation) — when built, ensure removal of a
+      set-once-address guard (VaultAlreadySet-style: `if (x != address(0))
+      revert; x = arg`) is covered there. It was deliberately excluded from
+      Rule 3b by the 3b-L-ratelimit constant-write discriminator, since a
+      set-once setter is configuration, not SC10 proxy initialization. Needs a
+      positive fixture: a set-once-address guard removed across a commit.

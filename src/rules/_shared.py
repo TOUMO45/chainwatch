@@ -10,7 +10,9 @@ from pathlib import Path
 from slither import Slither
 from slither.core.declarations import Function, SolidityVariableComposed, Structure
 from slither.core.solidity_types import UserDefinedType
+from slither.core.variables.state_variable import StateVariable
 from slither.slithir.operations import Assignment, InternalCall, Member
+from slither.slithir.variables import Constant, ReferenceVariable
 from slither.analyses.data_dependency.data_dependency import is_dependent
 
 REMAPS = [
@@ -127,17 +129,24 @@ def _is_namespace_pointer_function(fn) -> bool:
     return False
 
 
-def _namespaced_member_access(fn: Function, transitive: bool = True) -> tuple[set, set]:
-    """(member names read, member names written) through a namespaced pointer.
+def _namespaced_member_access(
+    fn: Function, transitive: bool = True
+) -> tuple[set, set, set]:
+    """(member names read, member names written, members written-to-constant)
+    through an ERC-7201 namespaced pointer.
 
     Tracks which IR values are ERC-7201 storage pointers, then classifies each
     member access on them. A member REF used as an Assignment lvalue is a write;
-    a member REF appearing in any operation's reads is a read. This is the
-    namespaced-struct analogue of "which declared state variables does this
-    touch", which is what the OZ 4 path uses.
+    a member REF appearing in any operation's reads is a read. If that write's
+    rvalue is a compile-time Constant, the member is also recorded as
+    written-to-constant, which the init-guard discriminator needs to separate a
+    monotonic init flag from a per-call rate-limit member (finding
+    3b-L-ratelimit). This is the namespaced-struct analogue of "which declared
+    state variables does this touch", which is what the OZ 4 path uses.
     """
     reads: set = set()
     writes: set = set()
+    const_writes: set = set()
     for f in (reachable(fn) if transitive else [fn]):
         pointers: set = set()
         ref_to_member: dict = {}
@@ -156,11 +165,44 @@ def _namespaced_member_access(fn: Function, transitive: bool = True) -> tuple[se
         for node in f.nodes:
             for ir in node.irs:
                 if isinstance(ir, Assignment) and ir.lvalue in ref_to_member:
-                    writes.add(ref_to_member[ir.lvalue])
+                    member = ref_to_member[ir.lvalue]
+                    writes.add(member)
+                    if isinstance(getattr(ir, "rvalue", None), Constant):
+                        const_writes.add(member)
                 for v in getattr(ir, "read", []):
                     if v in ref_to_member:
                         reads.add(ref_to_member[v])
-    return reads, writes
+    return reads, writes, const_writes
+
+
+def _state_vars_written_to_constant(fn: Function) -> set:
+    """Declared state variables assigned a compile-time Constant somewhere in
+    fn's reachable body.
+
+    Verified against OZ 4.9.6 / 5.7.0 IR: `initializer` writes `_initialized = 1`
+    and `_initializing = true/false` (all Constants), so the init flag lands
+    here; `reinitializer` writes `_initialized = version` (a parameter, NOT a
+    Constant) but still writes `_initializing = true/false`, so it too has a
+    constant-written gated flag. A rate-limit variable is only ever written from
+    `block.timestamp` / an argument, so it never appears here. This is the
+    discriminator behind finding 3b-L-ratelimit.
+    """
+    out: set = set()
+    for f in reachable(fn):
+        for node in f.nodes:
+            for ir in node.irs:
+                if isinstance(ir, Assignment) and isinstance(
+                    getattr(ir, "rvalue", None), Constant
+                ):
+                    lv = ir.lvalue
+                    origin = (
+                        lv.points_to_origin
+                        if isinstance(lv, ReferenceVariable)
+                        else lv
+                    )
+                    if isinstance(origin, StateVariable):
+                        out.add(origin)
+    return out
 
 
 def is_oneshot_init_guard(mod: Function) -> bool:
@@ -180,8 +222,13 @@ def is_oneshot_init_guard(mod: Function) -> bool:
         through an assembly storage pointer, so it is not a declared state
         variable at all (finding 3x-L3).
 
-    The OZ 4 test runs first and is untouched, so OZ 4 behaviour is unchanged;
-    the OZ 5 test can only add detections where the OZ 4 test found none.
+    Gate-on-and-write-same-var is NECESSARY but not SUFFICIENT: a rate-limit
+    guard has the identical shape (`require(block.timestamp >= lastX + N);
+    lastX = block.timestamp`). The discriminator (finding 3b-L-ratelimit): a
+    real init flag is written to a compile-time CONSTANT and monotonically
+    closes the gate; a rate-limit member is rewritten from a per-call value and
+    reopens it. So the gated-and-written variable must ALSO be written to a
+    constant somewhere.
     """
     if not isinstance(mod, Function):
         return False
@@ -189,31 +236,42 @@ def is_oneshot_init_guard(mod: Function) -> bool:
     # --- OZ 4 form: declared state variables.
     written = set(mod.all_state_variables_written())
     if written:
+        const_written = _state_vars_written_to_constant(mod)
         for node in guard_nodes(mod):
-            if set(node.state_variables_read) & written:
+            gated = set(node.state_variables_read) & written
+            if gated & const_written:
                 return True
 
     # --- OZ 5 form: ERC-7201 namespaced struct members.
     if not any(True for f in reachable(mod) for _ in guard_nodes(f)):
         return False
-    ns_reads, ns_writes = _namespaced_member_access(mod)
-    return bool(ns_reads & ns_writes)
+    ns_reads, ns_writes, ns_const = _namespaced_member_access(mod)
+    return bool(ns_reads & ns_writes & ns_const)
 
 
 def has_init_guard(fn: Function) -> bool:
     """True iff fn carries a one-shot init guard as a modifier, or implements
-    one inline in its own body (exclusion 3b.2)."""
+    one inline in its own body (exclusion 3b.2).
+
+    The inline checks apply the same rate-limit discriminator as
+    is_oneshot_init_guard: a gated-and-written variable only counts as an init
+    flag if it is also written to a compile-time constant (finding
+    3b-L-ratelimit), so an inline rate limit is not mistaken for a manual
+    initialized-bool guard.
+    """
     if any(is_oneshot_init_guard(m) for m in fn.modifiers):
         return True
     written = set(fn.all_state_variables_written())
+    const_written = _state_vars_written_to_constant(fn)
     for node in guard_nodes(fn):
-        if set(node.state_variables_read) & written:
+        gated = set(node.state_variables_read) & written
+        if gated & const_written:
             return True
     # Same inline check for an ERC-7201 namespaced flag. Restricted to fn's own
     # body so that a guard belonging to a callee is not credited to fn.
     if any(True for _ in guard_nodes(fn)):
-        ns_reads, ns_writes = _namespaced_member_access(fn, transitive=False)
-        if ns_reads & ns_writes:
+        ns_reads, ns_writes, ns_const = _namespaced_member_access(fn, transitive=False)
+        if ns_reads & ns_writes & ns_const:
             return True
     return False
 

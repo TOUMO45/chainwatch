@@ -65,7 +65,23 @@ def load_cases(fixtures_dir: Path = FIXTURES) -> list[dict]:
     return cases
 
 
-def score(rules: dict, cases: list[dict]) -> tuple[dict, int]:
+def _apply_build_config(remaps_key: str, solc: str | None) -> None:
+    """Point the analysis at one OpenZeppelin tree / solc version. Build config
+    only - which imports resolve and which compiler runs, never detection logic.
+    Allows a single fixture directory to mix OZ 4 and OZ 5 cases, each declaring
+    its own `remaps`/`solc` in the manifest."""
+    import os
+
+    import src.rules._shared as _shared
+    import src.rules._storage as _storage
+
+    _shared.REMAPS = list(REMAP_SETS[remaps_key])
+    _storage.REMAPPINGS = list(REMAP_SETS[remaps_key])
+    if solc:
+        os.environ["SOLC_VERSION"] = solc
+
+
+def score(rules: dict, cases: list[dict], default_remaps: str = "oz4") -> tuple[dict, int]:
     """Run every rule against every case. Returns (per-rule stats, total detections)."""
     stats = {
         rule_id: {"tp": 0, "fp": 0, "fn": 0, "unsupported": 0, "detections": []}
@@ -73,6 +89,10 @@ def score(rules: dict, cases: list[dict]) -> tuple[dict, int]:
     }
     total_detections = 0
     for case in cases:
+        # Per-case build config overrides the run default, so one directory can
+        # hold both OZ 4 and OZ 5 cases (e.g. fixtures-ext).
+        if case.get("remaps") or case.get("solc"):
+            _apply_build_config(case.get("remaps", default_remaps), case.get("solc"))
         is_positive = case["label"] == "positive"
         for rule_id, rule_fn in rules.items():
             # A rule id may be a whole rule ("3") or a sub-rule ("3a"); a case
@@ -164,7 +184,7 @@ def main() -> int:
     print()
     if rules:
         print("Per-case verdicts:")
-    stats, total_detections = score(rules, cases)
+    stats, total_detections = score(rules, cases, default_remaps=args.remaps)
     print()
     print(f"  detections      : {total_detections}/{len(cases)}")
     print()

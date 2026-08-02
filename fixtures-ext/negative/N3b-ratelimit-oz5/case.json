@@ -1,0 +1,12 @@
+{
+  "id": "N3b-ratelimit-oz5",
+  "sub_rule": "3b",
+  "label": "negative",
+  "oz_major": 5,
+  "oz_version": "5.7.0",
+  "solc": "0.8.27",
+  "exclusion_ref": null,
+  "description": "OZ 5 form of N3b-ratelimit-oz4. Same rotateGuardian() rate limit, but guardian/lastRotation live in an ERC-7201 namespaced struct reached through an assembly storage pointer. The require reads $.lastRotation and the body writes $.lastRotation = block.timestamp. The commit REMOVES the rate-limit guard. Rule 3b must NOT fire.",
+  "why_labeled": "Same false positive as the OZ 4 case (finding 3b-L-ratelimit), exercised through the OZ 5 namespaced-struct init-guard detector. The rate-limit guard reads-and-writes the same namespaced member, matching the one-shot init-guard shape structurally. The discriminator must apply to the namespaced path too: a member counts toward an init guard only if it is written to a compile-time constant somewhere (OZ 5 initializer writes _initialized = 1 through the pointer), which $.lastRotation = block.timestamp never is. Confirmed: the pre-fix rule fires on this before/after pair; the fixed rule must stay quiet.",
+  "diff_summary": "before.sol -> after.sol: the two-line rate-limit block (the require + `$.lastRotation = block.timestamp`) is removed from rotateGuardian; everything else identical."
+}

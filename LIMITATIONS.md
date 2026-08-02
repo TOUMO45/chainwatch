@@ -324,6 +324,46 @@ deliberately, to keep the two modes equivalent.
 Fixing this needs a rate-limit **negative** fixture first, per the
 fixtures-first discipline. Tracked in TODO.md.
 
+**RESOLVED.** Rate-limit negative fixtures were built (`fixtures-ext/negative/`,
+both `N3b-ratelimit-oz4` and `N3b-ratelimit-oz5`, each confirmed to fire on the
+pre-fix rule and go quiet after), and a discriminator was added to
+`is_oneshot_init_guard` / `has_init_guard`: a gate-on-and-write-same-var counts
+as an init guard only if **at least one gated-and-written variable is written to
+a compile-time constant somewhere** in the function. Verified against the OZ IR:
+`initializer` writes `_initialized = 1` (constant) and `reinitializer` writes
+`_initializing = true/false` (constant) even though its `_initialized = version`
+write is not — so both remain init guards — while a rate-limit member written
+only from `block.timestamp` does not. `MonetrixVault.keeperBridge` now classifies
+as not-an-init-guard, and all three fixture sets hold at precision 1.00.
+
+**Scope consequence, decided deliberately.** The discriminator also reclassifies
+the **set-once-address** pattern:
+
+```solidity
+if (vault != address(0)) revert VaultAlreadySet();   // gate on vault
+vault = _vault;                                        // written from an argument
+```
+
+Because `vault` is written from an argument rather than a compile-time constant,
+this now reads as **not** a Rule 3b init guard (it dropped `USDM.setVault`,
+`sUSDM.setVault`, `sUSDM.setEscrow` from the Monetrix init-guarded list, leaving
+only the six real `.initialize` functions). This is intended, not a regression:
+
+- A set-once setter is **configuration**, not proxy initialization. Sub-rule 3b
+  is specifically SC10 "initializer re-callable" (the OZ `initializer` modifier /
+  `_disableInitializers()`). Reporting removal of a `VaultAlreadySet`-style guard
+  under 3b would be a **mislabeled SC10 finding** — the same defect class as the
+  `keeperBridge` symptom this fix exists to remove.
+- Its correct home is **Rule 6 (input validation)**, which is not built yet.
+- No fixture treats set-once-address as a 3b positive, so nothing regressed; the
+  three fixture sets remain 1.00/1.00.
+
+The conceptual definition (monotonic-close vs reopen) would also cover
+set-once-address, since once `vault` is nonzero the guard reverts forever. The
+constant-write test is a deliberately narrower operational proxy that keeps 3b
+scoped to genuine proxy-initialization machinery. Retaining set-once-address
+under a "monotonic-close" discriminator was considered and deferred to Rule 6.
+
 ### 3c-oz5-realworld-gap — the OZ 5 comparator has no real-world evidence
 
 **Type: EVIDENCE GAP, not a defect.**
