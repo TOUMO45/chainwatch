@@ -61,3 +61,11 @@
       precision-safe (a miss, not a false alarm). Revisit — extend the
       re-entry-path read set to all external entry points — if a real case
       appears.
+- [ ] Rule 6 exclusion 6.4 (type-change makes the check redundant, e.g.
+      `uint256` → `uint8` bounding a range) — not implemented, no fixture. A
+      parameter-guard loss on such a narrowed type would currently fire as a
+      false positive. Build fixture + logic if a real case appears; shipping an
+      untested exclusion trades an FP for a silent FN.
+- [ ] Rule 6 exclusion 6.6 (enforced by the type system / a validated struct at
+      the call boundary) — not implemented, no fixture. Same posture as 6.4:
+      build the fixture first, then the logic, if a real case appears.

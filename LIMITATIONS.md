@@ -111,6 +111,42 @@ Unlike Rules 3b and 3c (see [3x-L3](#3x-l3--rules-3b-and-3c-cannot-fire-at-all-o
 
 ---
 
+## Rule 6 — SC05 input validation
+
+Rule 6 fires when a parameter-dependent guard (require / revert / custom-error
+whose condition is data-dependent on a function **parameter**, not on
+`msg.sender`) is present at N-1 and absent at N on a function that still changes
+state. It ships with the following coverage, all validated at precision 1.00 /
+recall 1.00 on `fixtures-r6/` (9 cases):
+
+**Implemented and proven by fixture:**
+
+- **6.1** check moved into a modifier on the same function (N6-01) — the
+  parameter stays guarded because the reachable set includes modifiers.
+- **6.2** check enforced downstream in an always-called function, on the same
+  value, before any state change (N6-02) — contract-level data dependency
+  propagates the parameter through the internal call.
+- **6.3** the parameter was removed entirely (N6-03) — the function's `full_name`
+  changes, so the N-1 function has no N match and is never compared.
+- **6.5** check replaced by an equivalent custom error, same condition (N6-04) —
+  compared semantically (a conditional guard node with the same parameter
+  dependency), not by text.
+- **6.7** test/mock path (N6-05) — segment-based `source_path` match.
+- **Rule 1 boundary** (N6-06) — a guard whose condition depends on `msg.sender`
+  is discarded from the parameter-guard set, so its removal never fires Rule 6;
+  Rule 1 owns it (declared via `also_fires`). The highest-severity sub-case
+  (slippage / `minAmountOut` removal, P6-02) surfaces as an ordinary
+  parameter-guard loss and fires CONFIRMED with no special-casing.
+
+**Deferred — untested, NOT implemented:**
+
+| # | Exclusion | Direction |
+|---|---|---|
+| 6-L1 | **6.4 — a type change makes the check redundant** (e.g. a parameter narrowed `uint256` → `uint8` that bounds a range). Not implemented and no fixture exercises it, so a guard removed alongside such a narrowing would currently fire as a **false positive**. Deliberately deferred: shipping an untested exclusion trades an FP for a silent FN. Build the fixture first, then the logic. Tracked in TODO.md. | **[FP risk]** |
+| 6-L2 | **6.6 — enforced by the type system or a validated struct at the call boundary.** Same posture as 6-L1: not implemented, no fixture, fixture-first before logic. Tracked in TODO.md. | **[FP risk]** |
+
+---
+
 ## Cross-rule — applies to 3a, 3b and 3c alike
 
 Both items below were found in Phase 5, running the rules against the real
