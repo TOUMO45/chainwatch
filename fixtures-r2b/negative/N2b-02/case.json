@@ -1,0 +1,8 @@
+{
+  "id": "N2b-02",
+  "sub_rule": "2b",
+  "label": "negative",
+  "exclusion_ref": "2b-no-change",
+  "description": "CEI is ALREADY broken at N-1: balances[msg.sender] -= amount is written after the external call in before.sol. At N it is still after the call - the ordering did not change. The only diff between commits is an added Withdrawn event emission, which does not touch the write/call ordering.",
+  "why_labeled": "2b detects a REGRESSION - a write crossing from before a call to after it between commits - not a pre-existing broken state. Here the read-affecting write is after the call in both commits, so there is no ordering change for 2b to fire on. (Whether the standing vulnerability should be reported at all is a full-scan concern, not a commit-regression one; 2b is a diff rule.) The guard situation is also unchanged (never present), so 2a is irrelevant too. 2b MUST stay quiet."
+}

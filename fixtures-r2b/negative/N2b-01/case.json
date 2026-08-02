@@ -1,0 +1,10 @@
+{
+  "id": "N2b-01",
+  "sub_rule": "2b",
+  "label": "negative",
+  "exclusion_ref": "2a-priority",
+  "also_fires": ["2a"],
+  "also_fires_reason": "N2b-01 is a NEGATIVE for Rule 2b but a genuine POSITIVE for Rule 2a: in the SAME commit the function both loses nonReentrant AND moves the balances write to after the external call. Per the agreed 2a-over-2b priority, this is reported once as a 2a finding, so Rule 2a correctly fires. Declaring 2a here marks that cross-rule detection as expected (neither TP nor FP for 2b); any fire by 2b itself remains a false positive.",
+  "description": "withdraw() loses its nonReentrant modifier AND moves the balances[msg.sender] -= amount write from before the external call to after it, both in the same commit. Guard removal and CEI break happen together.",
+  "why_labeled": "This is the 2a/2b arbitration boundary. Both signals are present, but 2a has priority: when a function both loses its guard and breaks CEI in one commit, it is a single 2a finding, not a separate 2b finding (avoids double-counting one regression). Rule 2b MUST stay quiet because the guard situation DID change (present at N-1, absent at N), which is exactly the condition that hands ownership to 2a. also_fires:[\"2a\"] records that 2a firing here is expected."
+}

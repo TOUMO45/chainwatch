@@ -1,0 +1,8 @@
+{
+  "id": "N2b-05",
+  "sub_rule": "2b",
+  "label": "candidate",
+  "exclusion_ref": "2.10",
+  "description": "A pure ordering change (nonReentrant present in both commits): at N-1 the totalShares and totalAssets writes precede the external call; at N they move to after it. shares[msg.sender] -= shareAmount, the variable the function's OWN guard checks, stays before the call. The moved variables (totalShares, totalAssets) are read by the view function pricePerShare().",
+  "why_labeled": "Read-only reentrancy under 2b (2.10 applies to 2b as it does to 2a). The CEI ordering genuinely regressed, but the after-call writes are to variables that only an external view (pricePerShare) reads, not variables that guard this function's own re-entry (that is shares, which stays before the call). A single-repo tool cannot prove a third-party protocol reads pricePerShare during the re-entrancy window, so this must be capped at CANDIDATE, never CONFIRMED. label:\"candidate\" documents the intended verdict ceiling; scored as a non-positive, exactly like N2a-06."
+}

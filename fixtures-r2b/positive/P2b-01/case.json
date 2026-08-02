@@ -1,0 +1,8 @@
+{
+  "id": "P2b-01",
+  "sub_rule": "2b",
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "The pure CEI-ordering regression. withdraw() reads balances in its own require and writes balances[msg.sender] -= amount. At N-1 that write precedes the external msg.sender.call{value:}; at N the ONLY change is that the write moves to after the call. nonReentrant is present in BOTH commits.",
+  "why_labeled": "Rule 2b triggers when a state write to a variable the function READS moves from before every external call (N-1) to after an external call (N). Here balances is read by the function (require(balances >= amount)) and its write crosses the call between commits. The guard status does not change (nonReentrant both commits), so this is NOT a 2a case; it is the clean ordering regression 2b exists to catch. Because balances is exactly the variable the function's own guard checks, a re-entrant call sees stale balances and can re-withdraw: CONFIRMED."
+}

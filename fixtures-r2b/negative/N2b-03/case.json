@@ -1,0 +1,8 @@
+{
+  "id": "N2b-03",
+  "sub_rule": "2b",
+  "label": "negative",
+  "exclusion_ref": "2.9",
+  "description": "Two state writes happen before the call at N-1: balances[msg.sender] -= amount (a variable the function READS in its require) and lastWithdrawAmount = amount (a pure write of a parameter; the function never reads lastWithdrawAmount). At N only lastWithdrawAmount moves to after the call. The read-affecting write to balances stays before the call.",
+  "why_labeled": "Exclusion 2.9: the variable whose write moved after the call (lastWithdrawAmount) is not read by the function and is not read anywhere in the reachable re-entry path (it has only an implicit public getter, no explicit reader), so its stale value during re-entry is not exploitable. 2b's trigger is specifically a write to a variable the function READS; balances is that variable and it did NOT move. lastWithdrawAmount is a write-affecting-nothing bookkeeping value. 2b MUST stay quiet. Guard unchanged (nonReentrant both), so 2a is irrelevant."
+}

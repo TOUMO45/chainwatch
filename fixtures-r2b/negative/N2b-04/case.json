@@ -1,0 +1,9 @@
+{
+  "id": "N2b-04",
+  "sub_rule": "2b",
+  "label": "negative",
+  "exclusion_ref": "2.8",
+  "source_path": "test/mocks/WithdrawBankMock.sol",
+  "description": "A genuine 2b ordering regression - diff-identical to the P2b-01 positive (balances write moves from before the call to after it, guard unchanged) - but the contract's repo-relative path is test/mocks/WithdrawBankMock.sol.",
+  "why_labeled": "Exclusion 2.8: test/mock/script paths are not production and are discarded (same segment-based match set as Rule 1.6 / Rule 2a.2.8: test/, mock(s)/, script/, *.t.sol, *Mock*, *Harness*). The exclusion must key on the path SEGMENTS (`test`, `mocks`), not the 'Mock' name substring. Because the underlying change is a real 2b regression, this fixture asserts 2b suppresses on path and does not fire on non-production code."
+}

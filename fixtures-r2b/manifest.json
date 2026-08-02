@@ -1,0 +1,68 @@
+[
+  {
+    "id": "P2b-01",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P2b-01",
+    "summary": "Pure CEI-ordering regression: balances write (a var the fn reads) moves from before the external call to after it; nonReentrant present in BOTH commits (guard unchanged). The clean 2b case."
+  },
+  {
+    "id": "P2b-02",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P2b-02",
+    "summary": "Same balances-write-crosses-the-call ordering break, but NO guard in either commit (guard never present). 2b fires independently of guard presence."
+  },
+  {
+    "id": "N2b-01",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": "2a-priority",
+    "path": "negative/N2b-01",
+    "also_fires": ["2a"],
+    "also_fires_reason": "Same commit loses nonReentrant AND moves the balances write after the call. 2a has priority over 2b, so this is a 2a finding; 2a is expected to fire (neither TP nor FP for 2b). Any 2b fire is a false positive.",
+    "summary": "Boundary: guard removed AND CEI broken in one commit -> owned by 2a, not 2b. 2b must stay quiet; 2a correctly fires (also_fires:[2a])."
+  },
+  {
+    "id": "N2b-02",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": "2b-no-change",
+    "path": "negative/N2b-02",
+    "summary": "CEI already broken at N-1 (balances write after the call) and still broken at N; ordering did not change (only an added event). 2b detects a regression, not a pre-existing state."
+  },
+  {
+    "id": "N2b-03",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": "2.9",
+    "path": "negative/N2b-03",
+    "summary": "The balances write (var the fn reads) stays before the call; only lastWithdrawAmount (a pure write the fn never reads, unread in any re-entry path) moves after the call. Exclusion 2.9 -> quiet."
+  },
+  {
+    "id": "N2b-04",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": "2.8",
+    "path": "negative/N2b-04",
+    "source_path": "test/mocks/WithdrawBankMock.sol",
+    "summary": "Genuine 2b break (diff-identical to P2b-01) but path is test/mocks/WithdrawBankMock.sol; exclusion 2.8 keys on the path segment, not the 'Mock' name substring."
+  },
+  {
+    "id": "N2b-05",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "candidate",
+    "exclusion_ref": "2.10",
+    "path": "negative/N2b-05",
+    "summary": "Ordering regression (guard unchanged) where the after-call writes (totalShares/totalAssets) are read only by a view (pricePerShare); shares, the fn's own guard var, stays before the call. Read-only reentrancy -> CANDIDATE, never CONFIRMED."
+  }
+]

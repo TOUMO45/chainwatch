@@ -1,0 +1,8 @@
+{
+  "id": "P2b-02",
+  "sub_rule": "2b",
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "Same CEI-ordering regression as P2b-01, but there is NO reentrancy guard in either commit. The balances[msg.sender] -= amount write (to a variable the function reads) moves from before the external call at N-1 to after it at N; nothing else changes.",
+  "why_labeled": "2b is about ordering, not guard presence. The guard situation does not change here (never present in either commit), so 2a is irrelevant and cannot own this. The read-affecting write to balances crossed the external call between commits, which is the 2b trigger, and balances is the variable the function's own guard checks, so re-entry reads stale state: CONFIRMED. This case exists to prove 2b fires independently of whether a guard was ever present."
+}
