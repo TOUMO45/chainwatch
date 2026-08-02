@@ -1,0 +1,8 @@
+{
+  "id": "N6-02",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "6.2",
+  "description": "register() no longer checks user != address(0) itself; the check moved into _store(), which register() always calls unconditionally, and it runs there before the state write (registered[user] = true). The same parameter value is validated, just one call deep.",
+  "why_labeled": "Exclusion 6.2: the check is enforced downstream in a function this one always calls, on the same value, before any state change. register() calls _store(user) unconditionally with the same user, and _store() requires user != address(0) before writing state, so every path that reaches the state change still passes the guard. No validation was lost - it relocated into the callee. Rule 6 MUST stay quiet."
+}

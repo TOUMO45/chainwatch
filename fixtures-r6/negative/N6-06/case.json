@@ -1,0 +1,10 @@
+{
+  "id": "N6-06",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "rule1-boundary",
+  "also_fires": ["1"],
+  "also_fires_reason": "N6-06 is a NEGATIVE for Rule 6 but a genuine POSITIVE for Rule 1: the removed guard is require(msg.sender == owner), a msg.sender access-control constraint on a state-changing function (setFee writes fee). Rule 1 correctly fires; declaring 1 here marks that as expected (neither TP nor FP for Rule 6). Any fire by Rule 6 itself is a false positive.",
+  "description": "setFee() had require(msg.sender == owner) at N-1 and does not at N. The removed check constrains msg.sender, not the newFee parameter; newFee itself was never validated and is unchanged.",
+  "why_labeled": "Boundary with Rule 1. Rule 6 targets validation on a function PARAMETER; the guard removed here is on msg.sender, which is access control - Rule 1's domain, explicitly excluded from Rule 6 by the trigger's own wording ('not on msg.sender - that's Rule 1'). No parameter guard was lost (newFee has none in either commit), so Rule 6 MUST stay quiet while Rule 1 fires (also_fires:[\"1\"]). This keeps one access-control regression from being double-reported as an input-validation finding."
+}

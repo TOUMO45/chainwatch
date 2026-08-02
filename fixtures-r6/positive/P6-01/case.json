@@ -1,0 +1,8 @@
+{
+  "id": "P6-01",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "setBeneficiary() had a zero-address guard on its parameter (require(newBeneficiary != address(0))) at N-1; at N the guard is gone. The parameter is still used in a state-changing way (beneficiary = newBeneficiary). The only change is the removed require.",
+  "why_labeled": "Rule 6 trigger: a require/revert/custom-error guard on a function PARAMETER present at N-1 and absent at N. The removed check is a zero-address check on newBeneficiary, one of the tracked classes, and the parameter feeds a state write, so its loss is a genuine SC05 input-validation regression. No exclusion applies (not moved to a modifier or downstream, param not removed, not a custom-error rewrite, not a test path, not a msg.sender check). CONFIRMED."
+}

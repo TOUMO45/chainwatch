@@ -1,0 +1,8 @@
+{
+  "id": "P6-02",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "swap() enforced a slippage minimum on its parameter at N-1 (require(amountOut >= minAmountOut)); at N the check is removed. The minAmountOut parameter is retained in the signature (now unused) so the ONLY change is the removed guard.",
+  "why_labeled": "This is the highest-severity Rule 6 sub-case named in RULES.md: removal of a slippage/minAmountOut check on a swap path, which maps directly to real 2025-2026 loss events and is always CONFIRMED when it genuinely survives the exclusions. minAmountOut is a function parameter and the removed require bounded amountOut against it; with the guard gone a swap can execute at any output, so the trade is sandwich/slippage-exploitable. No exclusion applies (the parameter is NOT removed - it is still declared - and the check is not relocated, not a custom-error rewrite, not a test path). CONFIRMED."
+}

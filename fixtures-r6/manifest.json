@@ -1,0 +1,86 @@
+[
+  {
+    "id": "P6-01",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P6-01",
+    "summary": "require(newBeneficiary != address(0)) zero-address check removed from setBeneficiary(); the parameter still feeds a state write. Only the guard changed."
+  },
+  {
+    "id": "P6-02",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P6-02",
+    "summary": "Highest-severity sub-case: slippage-minimum require(amountOut >= minAmountOut) removed on a swap path; minAmountOut param retained. Always CONFIRMED if it survives exclusions."
+  },
+  {
+    "id": "P6-03",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P6-03",
+    "summary": "Set-once-address guard removed (require(vault == address(0)); vault = _vault). The setVault case deferred from Rule 3b to Rule 6 (written from an argument, not a constant -> input validation, not SC10 init)."
+  },
+  {
+    "id": "N6-01",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "6.1",
+    "path": "negative/N6-01",
+    "summary": "Zero-address check moved into a notZero(address) modifier applied to the same function with the same parameter. Relocated, not removed. Exclusion 6.1 -> quiet."
+  },
+  {
+    "id": "N6-02",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "6.2",
+    "path": "negative/N6-02",
+    "summary": "Check moved downstream into _store(), which register() always calls, and runs before the state write on the same param. Exclusion 6.2 -> quiet."
+  },
+  {
+    "id": "N6-03",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "6.3",
+    "path": "negative/N6-03",
+    "summary": "The address parameter is removed entirely (setRecipient(address) -> setRecipient(), uses msg.sender); no input left to validate. Exclusion 6.3 -> quiet."
+  },
+  {
+    "id": "N6-04",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "6.5",
+    "path": "negative/N6-04",
+    "summary": "require(x != address(0)) replaced by if (x == address(0)) revert ZeroAddress() - same condition, custom-error form. Semantic equivalence, not text. Exclusion 6.5 -> quiet."
+  },
+  {
+    "id": "N6-05",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "6.7",
+    "path": "negative/N6-05",
+    "source_path": "test/mocks/RegistryMock.sol",
+    "summary": "Genuine zero-address guard removal (diff-identical to P6-01) but path is test/mocks/RegistryMock.sol; exclusion 6.7 keys on the path segment, not the 'Mock' name substring."
+  },
+  {
+    "id": "N6-06",
+    "rule": 6,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "rule1-boundary",
+    "path": "negative/N6-06",
+    "also_fires": ["1"],
+    "also_fires_reason": "Removed guard is require(msg.sender == owner) - access control, Rule 1's domain, not param validation. Rule 1 is expected to fire (neither TP nor FP for Rule 6); any Rule 6 fire is a false positive.",
+    "summary": "Boundary: require(msg.sender == owner) removed from setFee(). That is Rule 1 (access control), not Rule 6. Rule 6 must stay quiet; Rule 1 fires (also_fires:[1])."
+  }
+]

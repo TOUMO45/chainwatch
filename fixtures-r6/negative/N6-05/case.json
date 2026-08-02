@@ -1,0 +1,9 @@
+{
+  "id": "N6-05",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "6.7",
+  "source_path": "test/mocks/RegistryMock.sol",
+  "description": "A genuine zero-address guard removal on newBeneficiary - diff-identical to the P6-01 positive - but the contract's repo-relative path is test/mocks/RegistryMock.sol.",
+  "why_labeled": "Exclusion 6.7: test/mock/script paths are not production and are discarded (same segment-based match set used by Rules 1.6 / 2a.2.8 / 2b: test/, mock(s)/, script/, *.t.sol, *Mock*, *Harness*). The exclusion must key on the path SEGMENTS (`test`, `mocks`), not the 'Mock' name substring. Because the underlying change is a real Rule 6 regression, this fixture asserts the rule suppresses on path and does not fire on non-production code."
+}

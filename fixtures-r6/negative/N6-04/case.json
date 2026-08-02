@@ -1,0 +1,8 @@
+{
+  "id": "N6-04",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "6.5",
+  "description": "The zero-address guard on newBeneficiary is rewritten from require(newBeneficiary != address(0), \"...\") to a custom error: if (newBeneficiary == address(0)) revert ZeroAddress(). Same condition on the same parameter, different (gas-cheaper) form.",
+  "why_labeled": "Exclusion 6.5: the check was replaced by an equivalent custom error with the same condition - a semantic equivalence, not a text match. require(x != 0) and if (x == 0) revert are the same guard: both revert exactly when newBeneficiary is the zero address, before the state write. A text-diff rule would see the require vanish and false-positive; a semantic comparison must recognise the negated-condition custom-error form as the same validation. Rule 6 MUST stay quiet."
+}

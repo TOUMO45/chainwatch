@@ -1,0 +1,8 @@
+{
+  "id": "N6-01",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "6.1",
+  "description": "The zero-address check on newBeneficiary is no longer inline in setBeneficiary(); it moved into a new notZero(address) modifier applied to the same function, receiving the same parameter as its argument.",
+  "why_labeled": "Exclusion 6.1: the check moved into a modifier applied to the same function - relocated, not removed. The guard on the parameter still executes on every call (the modifier requires a != address(0) with a bound to newBeneficiary), so no validation was lost. A rule that keys on the inline require text would false-positive here; a semantic check must see the guard still constrains the parameter through the modifier. Rule 6 MUST stay quiet."
+}

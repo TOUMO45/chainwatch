@@ -1,0 +1,8 @@
+{
+  "id": "N6-03",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "6.3",
+  "description": "setRecipient(address recipient) validated recipient != address(0) at N-1. At N the address parameter is removed entirely and the function derives the recipient from msg.sender instead, so there is no external input left to validate.",
+  "why_labeled": "Exclusion 6.3: the parameter was removed entirely. With no attacker-supplied address parameter, there is nothing for a zero-address check to protect - msg.sender is never the zero address. The guard's disappearance is a consequence of removing the input, not a dropped validation on a surviving input. The function signature changed (setRecipient(address) -> setRecipient()), so no surviving overload carries an unvalidated recipient parameter. Rule 6 MUST stay quiet."
+}

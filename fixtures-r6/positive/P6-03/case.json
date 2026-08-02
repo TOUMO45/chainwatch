@@ -1,0 +1,8 @@
+{
+  "id": "P6-03",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "setVault() carried a set-once guard at N-1 (require(vault == address(0)) before vault = _vault), so the address could be set only once; at N the guard is removed and _vault can be overwritten at any time. The only change is the removed require.",
+  "why_labeled": "This is the set-once-address (VaultAlreadySet-style) guard that RULES.md / the 3b-L-ratelimit resolution deliberately DEFERRED from Rule 3b to Rule 6. It is NOT SC10 proxy initialization: `vault` is written from an argument, not a compile-time constant, so it is configuration validation, not an initializer, and the constant-write discriminator keeps Rule 3b quiet on it. Its correct home is SC05 input validation: the guard constrains when/whether the setter's input may be applied, and removing it lets an attacker (or a mistaken caller) overwrite a critical address. The condition reads the state variable `vault` rather than the parameter directly, but the guard governs acceptance of the `_vault` input, which is why this case is filed as a Rule 6 positive per the TODO note. CONFIRMED once Rule 6 is built."
+}
