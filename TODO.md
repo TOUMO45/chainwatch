@@ -30,3 +30,14 @@
       empty, so a hybrid takes the OZ 4 path and its namespaced struct is never
       compared. Fix: run both comparators when a namespaced struct is present
       rather than treating the modes as mutually exclusive.
+- [ ] 3b-L-ratelimit — add a discriminator separating set-once init flags from
+      per-call rate-limit writes. Today gate-on-and-write-same-var matches both,
+      so MonetrixVault.keeperBridge (block.timestamp rate limit) is classified
+      as init-guarded; removing such a require would be reported as an
+      initializer regression — a mislabeled finding. Affects OZ4 AND OZ5 paths.
+      Needs a rate-limit negative fixture first (N3b: function with a
+      block.timestamp rate-limit guard, must NOT fire).
+- [ ] 3c-oz5-realworld-gap — find a real protocol using ERC-7201 namespaced
+      storage in its OWN contracts and run the 3c OZ5 comparator against it.
+      Monetrix did not exercise that path at all (all contracts took OZ4 mode),
+      so the comparator is fixture-validated only.

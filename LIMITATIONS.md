@@ -281,6 +281,71 @@ live concern. The fix is to run both comparators whenever a namespaced struct is
 present, instead of treating the two modes as mutually exclusive. Tracked in
 TODO.md.
 
+### 3b-L-ratelimit — an init guard and a rate-limit guard are structurally identical
+
+**Type: FALSE POSITIVE risk. Rule 3b, BOTH the OZ 4 and OZ 5 paths.**
+
+Rule 3b identifies a one-shot initialization guard structurally: a guard that
+**gates on a storage value it also writes**. That test is *necessary but not
+sufficient*. A rate-limit guard has exactly the same shape:
+
+```solidity
+// MonetrixVault.keeperBridge - real code, Phase 5c full run
+require(block.timestamp >= lastBridgeTimestamp + config.bridgeInterval(), "too early");
+...
+lastBridgeTimestamp = block.timestamp;   // reads and writes the same var
+```
+
+`keeperBridge` is an operational bridging function
+(`onlyOperator, requireWired, whenNotPaused, whenOperatorNotPaused`), yet
+`has_init_guard()` returns **True** for it, and because it also writes
+`PausableStorageLocation` it is additionally counted as touching access-control
+state — so Rule 3b classified it as *init-guarded and critical-config*.
+
+**No false positive was produced**, because Phase 5c compares each contract to
+itself and nothing changed. The exposure is on a real diff: if a commit removed
+that rate-limit `require`, Rule 3b would report it as an **initializer
+regression**. The finding would be mislabeled — wrong rule, wrong explanation,
+and it would reach a triage team as an SC10 proxy-initialization issue when it is
+actually a rate-limiting change. RULES.md names credibility with triage teams as
+the actual asset, so a confidently mislabeled finding costs roughly what a false
+positive costs.
+
+**Root cause and the missing discriminator.** An initialization flag is *set once
+and never reset*: after the guard passes, the value is written to a state that
+can never satisfy the guard again. A rate-limit variable is *rewritten on every
+successful call*, and the guard is designed to pass again later. The current test
+does not distinguish "written once, monotonically closing the gate" from "written
+every call, reopening the gate", and that distinction is exactly what separates
+the two. Note this is not an OZ 5 regression — the OZ 4 declared-variable path
+has always had it; the OZ 5 namespaced path inherited the same semantics
+deliberately, to keep the two modes equivalent.
+
+Fixing this needs a rate-limit **negative** fixture first, per the
+fixtures-first discipline. Tracked in TODO.md.
+
+### 3c-oz5-realworld-gap — the OZ 5 comparator has no real-world evidence
+
+**Type: EVIDENCE GAP, not a defect.**
+
+Rule 3c's OZ 5 namespaced-struct comparator is validated **only** by
+`fixtures-oz5/`. No real-world code has ever exercised it.
+
+Phase 5c ran all 20 Monetrix contracts under OZ 5.7.0 with 0 false positives,
+and that result must not be read as evidence for the OZ 5 comparator. Every
+Monetrix contract reported `mode=OZ4 declared-vars` — the project imports OZ 5
+packages but declares its own state **sequentially**, so all 12 upgradeable
+contracts took the OZ 4 `solc --storage-layout` path. Their only ERC-7201
+structs are inherited from OpenZeppelin base contracts under `node_modules`,
+which the comparator excludes by design (3c-L7). The namespaced code path was
+therefore never entered, not even once, across the full run.
+
+**What would close this:** a real protocol that uses ERC-7201 namespaced storage
+in **its own** contracts, not merely via OZ 5 dependencies. Until then, treat
+Rule 3c's OZ 5 mode as fixture-validated only — the same standard applied to
+every other rule before real-world testing, and the reason charter criteria 6
+and 7 remain unmet. Tracked in TODO.md.
+
 ---
 
 ## Capability 11 — On-chain liveness (the decisive gate)
