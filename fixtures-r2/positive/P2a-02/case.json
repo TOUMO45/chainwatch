@@ -1,0 +1,8 @@
+{
+  "id": "P2a-02",
+  "sub_rule": "2a",
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "A hand-rolled mutex (require(!locked); locked = true; ... locked = false;) wrapped the withdraw body at commit N-1 and is removed at commit N; the external msg.sender.call{value:} remains, with the balance write after the call.",
+  "why_labeled": "Rule 2a treats an equivalent storage-lock mutex the same as nonReentrant: a bool set-then-cleared around the body. At N-1 the pattern (require(!locked) / locked = true prologue, locked = false epilogue) guarded the function; at N both the prologue and epilogue are gone (the `locked` variable is now dead but the set/clear are removed) while the value-bearing external call and the post-call state write persist. CEI is still violated, callee is msg.sender (attacker-controlled), non-view, production path. CONFIRMED 2a regression."
+}

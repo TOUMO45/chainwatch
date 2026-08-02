@@ -1,0 +1,8 @@
+{
+  "id": "N2a-01",
+  "sub_rule": "2a",
+  "label": "negative",
+  "exclusion_ref": "2.1",
+  "description": "withdraw() drops its nonReentrant modifier at commit N, but the same commit also removes the external call from that function: it is refactored to a pull pattern that only credits pending[] internally. The value-bearing call now lives in a separate claim() function that KEEPS nonReentrant.",
+  "why_labeled": "Rule 2a requires that the de-guarded function still contain an external call. After the refactor, withdraw() has no external call at all (nothing to re-enter through), so exclusion 2.1 discards it. The moved external call in claim() still carries nonReentrant, so it is not a de-guarded function either. The rule must stay quiet."
+}

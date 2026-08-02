@@ -1,0 +1,8 @@
+{
+  "id": "N2a-04",
+  "sub_rule": "2a",
+  "label": "negative",
+  "exclusion_ref": "2.5",
+  "description": "currentPrice() carried nonReentrant at commit N-1 (it wrote lastQueried = block.timestamp). At commit N it becomes a `view` function: the state write is dropped and it only returns feed.latestPrice(). The external call remains, but as a staticcall from a view context.",
+  "why_labeled": "Exclusion 2.5: the function is view at commit N, so it writes no state and there is nothing for a re-entrant call to corrupt. nonReentrant necessarily disappears because a view function cannot modify the guard's storage slot, so its absence is a consequence of the view conversion, not an unprotected regression. The external call still exists (satisfying the naive 2a trigger) which is exactly why 2.5 must be checked and the rule must stay quiet. Note: read-only reentrancy on this getter is out of scope for 2a and, per 2.10, would at most be a CANDIDATE (see N2a-06)."
+}

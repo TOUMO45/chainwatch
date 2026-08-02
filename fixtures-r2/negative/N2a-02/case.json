@@ -1,0 +1,8 @@
+{
+  "id": "N2a-02",
+  "sub_rule": "2a",
+  "label": "negative",
+  "exclusion_ref": "2.2",
+  "description": "withdraw() drops nonReentrant at commit N, but the function follows checks-effects-interactions: the only state write to a re-entrancy-relevant variable (balances[msg.sender] -= amount) executes BEFORE the external msg.sender.call{value:}. No state write follows the call except the require(ok) revert check.",
+  "why_labeled": "Exclusion 2.2: guard removed but CEI ordering is provably correct. This is a genuine CEI layout, not a toy — the balance is decremented first, so a re-entrant call sees the already-reduced balance and the require(balances >= amount) check fails on re-entry. Because every state write precedes every external call, removing nonReentrant introduces no exploitable inconsistency. This is the mandatory 2.2 negative and the rule MUST NOT fire."
+}

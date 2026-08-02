@@ -1,0 +1,9 @@
+{
+  "id": "N2a-05",
+  "sub_rule": "2a",
+  "label": "negative",
+  "exclusion_ref": "2.8",
+  "source_path": "test/mocks/ReentrantBankMock.sol",
+  "description": "nonReentrant is genuinely removed from withdraw() while the value-bearing external call and post-call state write remain — diff-identical to the P2a-01 positive — but the contract's repo-relative path is test/mocks/ReentrantBankMock.sol.",
+  "why_labeled": "Exclusion 2.8: test/mock/script paths are not production and are discarded (same pattern set as Rule 1.6 — segment-based match on test/, mock(s)/, script/, *.t.sol, *Mock*, *Harness*). Here two independent test/mock signals are present, but the exclusion must key on the path SEGMENTS (`test`, `mocks`), not the contract name substring 'Mock', per the segment-vs-substring guidance. Because the underlying change is a real 2a regression, this fixture proves the rule suppresses on path and does not fire on non-production code."
+}

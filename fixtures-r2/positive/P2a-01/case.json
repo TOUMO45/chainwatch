@@ -1,0 +1,8 @@
+{
+  "id": "P2a-01",
+  "sub_rule": "2a",
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "withdraw() loses its nonReentrant modifier while still making an external msg.sender.call{value:} before the balance is decremented; the classic reentrancy-guard-removal regression.",
+  "why_labeled": "At commit N-1 the function carried OpenZeppelin's nonReentrant; at commit N it does not, and the body still contains an external value-bearing call (msg.sender.call{value: amount}). The state write (balances[msg.sender] -= amount) executes AFTER the call, so CEI is violated and exclusion 2.2 does not apply. No immutable/trusted-callee, view, or test-path exclusion applies. This is a CONFIRMED SC08 2a regression and must fire."
+}

@@ -1,0 +1,8 @@
+{
+  "id": "N2a-06",
+  "sub_rule": "2a",
+  "label": "candidate",
+  "exclusion_ref": "2.10",
+  "description": "withdraw() loses nonReentrant while making an external msg.sender.call{value:} BEFORE totalShares/totalAssets are decremented. A public view getter pricePerShare() reads totalAssets/totalShares, so during the call's re-entrancy window an external reader observes ETH already sent but supply not yet reduced — inflated price-per-share. This is textbook read-only reentrancy.",
+  "why_labeled": "The 2a trigger genuinely matches (guard removed, external call remains, state written after the call), and the inconsistent view makes read-only reentrancy plausible. But exclusion 2.10 caps this at CANDIDATE: a single-repo tool cannot prove that a THIRD-PARTY protocol actually reads pricePerShare() inside the re-entrancy window, which is what turns read-only reentrancy from theoretical to exploitable. Per RULES.md the rule must downgrade to CANDIDATE and must NOT auto-confirm this as a positive. The `label` is 'candidate' so this fixture documents the intended verdict ceiling; the future detector will emit CANDIDATE here, never CONFIRMED. Scored as a non-positive for precision purposes (it must not be counted as a CONFIRMED true/false positive)."
+}

@@ -1,0 +1,8 @@
+{
+  "id": "N2a-03",
+  "sub_rule": "2a",
+  "label": "negative",
+  "exclusion_ref": "2.3",
+  "description": "sweep() drops nonReentrant and even writes state (collected -= amount) AFTER the external call, so CEI is deliberately NOT the reason it is safe. The only external call target is `treasury`, an immutable address fixed in the constructor to a known-trusted contract.",
+  "why_labeled": "Exclusion 2.3: the sole external-call callee is an immutable/constant trusted address set at construction, so an attacker cannot substitute a malicious contract to re-enter through. CEI is violated here on purpose (the state write follows the call) precisely to isolate 2.3 as the operative exclusion rather than 2.2 — if the rule leaned on ordering it would fire; it must instead recognise the immutable trusted callee and stay quiet."
+}

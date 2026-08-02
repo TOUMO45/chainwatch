@@ -1,0 +1,75 @@
+[
+  {
+    "id": "P2a-01",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P2a-01",
+    "summary": "withdraw() loses nonReentrant while still making msg.sender.call{value:} with the balance write after the call (CEI violated); classic guard-removal regression."
+  },
+  {
+    "id": "P2a-02",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P2a-02",
+    "summary": "Hand-rolled bool mutex (require(!locked)/locked=true ... locked=false) removed around withdraw() body; value-bearing external call and post-call write remain."
+  },
+  {
+    "id": "N2a-01",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "negative",
+    "exclusion_ref": "2.1",
+    "path": "negative/N2a-01",
+    "summary": "nonReentrant removed from withdraw() but same commit refactors it to a pull pattern with no external call; the moved call in claim() keeps its guard. Exclusion 2.1."
+  },
+  {
+    "id": "N2a-02",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "negative",
+    "exclusion_ref": "2.2",
+    "path": "negative/N2a-02",
+    "summary": "nonReentrant removed but genuine CEI: balances[msg.sender] -= amount executes before the external call, no state write after. Mandatory 2.2 negative."
+  },
+  {
+    "id": "N2a-03",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "negative",
+    "exclusion_ref": "2.3",
+    "path": "negative/N2a-03",
+    "summary": "nonReentrant removed and state written after the call (CEI deliberately violated), but the sole callee is `treasury`, an immutable trusted address set in the constructor. Exclusion 2.3."
+  },
+  {
+    "id": "N2a-04",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "negative",
+    "exclusion_ref": "2.5",
+    "path": "negative/N2a-04",
+    "summary": "currentPrice() becomes `view` at commit N (state write dropped); external call remains as a staticcall but there is no state to corrupt. Exclusion 2.5."
+  },
+  {
+    "id": "N2a-05",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "negative",
+    "exclusion_ref": "2.8",
+    "path": "negative/N2a-05",
+    "source_path": "test/mocks/ReentrantBankMock.sol",
+    "summary": "nonReentrant genuinely removed (diff-identical to P2a-01) but the file path is test/mocks/ReentrantBankMock.sol; exclusion 2.8 keys on the path segment, not the 'Mock' name substring."
+  },
+  {
+    "id": "N2a-06",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "candidate",
+    "exclusion_ref": "2.10",
+    "path": "negative/N2a-06",
+    "summary": "Read-only reentrancy: guard removed, external call before supply decrement, and a view pricePerShare() reads the mid-call-inconsistent state. Must be CANDIDATE, never CONFIRMED (cannot prove a third party reads the getter)."
+  }
+]
