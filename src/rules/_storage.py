@@ -8,10 +8,11 @@ to the pinned solc and returns the compiler's own layout, so slot arithmetic
 
 import json
 import math
+import os
 import subprocess
 from pathlib import Path
 
-from ._shared import _is_namespace_pointer_function
+from ._shared import _is_namespace_pointer_function, solc_candidates
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -21,6 +22,19 @@ REMAPPINGS = [
 ]
 
 _LAYOUT_CACHE: dict[str, dict] = {}
+
+
+def _run_layout(rel: str, version: str | None = None) -> subprocess.CompletedProcess:
+    """One `solc --combined-json storage-layout` invocation. `version` overrides
+    the compiler for this call only (build config, never detection logic)."""
+    env = dict(os.environ)
+    if version:
+        env["SOLC_VERSION"] = version
+    return subprocess.run(
+        ["solc", *REMAPPINGS, "--allow-paths", ".", "--combined-json",
+         "storage-layout", rel],
+        cwd=ROOT, capture_output=True, text=True, env=env,
+    )
 
 
 def storage_layouts(path) -> dict:
@@ -34,11 +48,15 @@ def storage_layouts(path) -> dict:
         return _LAYOUT_CACHE[key]
 
     rel = src.relative_to(ROOT).as_posix() if src.is_relative_to(ROOT) else str(src)
-    proc = subprocess.run(
-        ["solc", *REMAPPINGS, "--allow-paths", ".", "--combined-json",
-         "storage-layout", rel],
-        cwd=ROOT, capture_output=True, text=True,
-    )
+    proc = _run_layout(rel)
+    if proc.returncode != 0:
+        # Build config only: the ambient compiler refused this file's pragma
+        # (a pre-0.8 commit in a mixed-version fixture set). Same fallback as
+        # _shared._compile - try each installed solc, keep the first that works.
+        for version in solc_candidates(src):
+            proc = _run_layout(rel, version)
+            if proc.returncode == 0:
+                break
     if proc.returncode != 0:
         raise RuntimeError(f"solc --storage-layout failed for {rel}:\n{proc.stderr}")
 
@@ -49,6 +67,11 @@ def storage_layouts(path) -> dict:
         if "node_modules" in source.replace("\\", "/"):
             continue
         layout = payload.get("storage-layout") or {}
+        if isinstance(layout, str):
+            # solc <0.8 emits storage-layout as a JSON *string* inside
+            # combined-json, where 0.8.x emits a nested object. Same data,
+            # one more decode - a wire-format difference, not a layout one.
+            layout = json.loads(layout) if layout.strip() else {}
         out[cname] = {
             "storage": layout.get("storage", []),
             "types": layout.get("types") or {},

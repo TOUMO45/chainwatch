@@ -5,6 +5,7 @@ no modifier name-string matching (CHARTER.md rule 4, RULES.md Rule 1 note).
 """
 
 import logging
+import os
 from pathlib import Path
 
 from slither import Slither
@@ -39,11 +40,118 @@ for _name in ("CryticCompile", "Slither", "Printers", "Detectors"):
 _PARSE_CACHE: dict[str, Slither] = {}
 
 
+# --------------------------------------------------------------------------
+# BUILD CONFIGURATION - which compiler binary runs. Same category as scorer.py's
+# _apply_build_config: it decides how a file is compiled, never what is reported.
+# No detection logic reads anything below; Rule 4 compares pragmas through
+# Slither's parsed Pragma objects, not through source_pragma_expr().
+# --------------------------------------------------------------------------
+
+
+def source_pragma_expr(path) -> str:
+    """The file's raw `pragma solidity <expr>;` text (build config only).
+
+    This is the one place a Chainwatch helper looks at unparsed source, and it
+    has to: the compiler version must be known BEFORE the file can be compiled,
+    so no AST exists yet. It is used solely to rank which installed solc to try.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("pragma") and "solidity" in stripped:
+            body = stripped[len("pragma") :].strip()
+            if body.startswith("solidity"):
+                body = body[len("solidity") :].strip()
+            return body.split(";", 1)[0].strip()
+    return ""
+
+
+def version_tuple(text: str) -> tuple:
+    """('0.7.6') -> (0, 7, 6); unparseable -> ()."""
+    parts = text.split(".")
+    if not parts or not all(p.isdigit() for p in parts if p != ""):
+        return ()
+    return tuple(int(p) for p in parts if p != "")
+
+
+def solc_candidates(path) -> list[str]:
+    """Installed solc versions to try for `path`, most likely first.
+
+    Only consulted after the ambient compiler has already REFUSED the file.
+    The ranking is a speed heuristic, nothing more: correctness comes from solc
+    itself, which enforces the pragma and rejects a wrong pick, so a mis-ranked
+    guess costs one retry and can never produce a wrong analysis.
+    """
+    try:
+        from solc_select.solc_select import installed_versions
+
+        versions = list(installed_versions())
+    except Exception:  # solc-select absent -> no fallback available
+        return []
+
+    expr = source_pragma_expr(path)
+    floor = ()
+    digits = "0123456789."
+    token = ""
+    for ch in expr:
+        if ch in digits:
+            token += ch
+        elif token:
+            break
+    floor = version_tuple(token)
+
+    def rank(version: str) -> tuple:
+        vt = version_tuple(version)
+        same_line = bool(floor) and vt[:2] == floor[:2]
+        satisfies_floor = bool(floor) and vt >= floor
+        return (same_line, satisfies_floor, vt)
+
+    return sorted(versions, key=rank, reverse=True)
+
+
+def _compile(path) -> Slither:
+    """Compile with the ambient compiler; if it refuses the file's pragma, retry
+    with each installed solc until one accepts it.
+
+    Needed because a diff can legitimately span the 0.8.0 boundary (fixtures-r4
+    P4-03 / N4-01: one commit is <0.8.0 and the other >=0.8.0), which no single
+    SOLC_VERSION can compile. The ambient version is always tried first and is
+    always restored, so a run whose files all match the configured compiler
+    behaves exactly as before this fallback existed.
+    """
+    try:
+        return Slither(str(path), solc_remaps=REMAPS)
+    except Exception:
+        pass
+
+    saved = os.environ.get("SOLC_VERSION")
+    try:
+        for version in solc_candidates(path):
+            if version == saved:
+                continue
+            os.environ["SOLC_VERSION"] = version
+            try:
+                return Slither(str(path), solc_remaps=REMAPS)
+            except Exception:
+                continue
+    finally:
+        if saved is None:
+            os.environ.pop("SOLC_VERSION", None)
+        else:
+            os.environ["SOLC_VERSION"] = saved
+
+    # Nothing accepted the file: re-raise the ambient compiler's own error.
+    return Slither(str(path), solc_remaps=REMAPS)
+
+
 def parse(path) -> Slither:
     """Compile+analyze a file, memoized per absolute path."""
     key = str(Path(path).resolve())
     if key not in _PARSE_CACHE:
-        _PARSE_CACHE[key] = Slither(str(path), solc_remaps=REMAPS)
+        _PARSE_CACHE[key] = _compile(path)
     return _PARSE_CACHE[key]
 
 
