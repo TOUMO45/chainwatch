@@ -27,6 +27,15 @@
     "summary": "try/catch around cb.onEvent(x) removed at N; the external call is now bare so a revert propagates. Distinct try/catch-removal trigger. Only the guard changed."
   },
   {
+    "id": "P5-04",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P5-04",
+    "summary": "Arbitration proof: (bool ok,)=msg.sender.call{value: amount}(\"\"); require(ok) -> bare, where ok depends on both param `amount` and msg.sender. Rule 5 FIRES; Rules 1 and 6 must stay quiet (they skip external-call-return guards). Value-bearing -> CONFIRMED."
+  },
+  {
     "id": "N5-01",
     "rule": 5,
     "sub_rule": null,

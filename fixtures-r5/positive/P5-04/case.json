@@ -1,0 +1,8 @@
+{
+  "id": "P5-04",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "refund(uint256 amount) sends ETH with (bool ok, ) = msg.sender.call{value: amount}(\"\"); require(ok, ...) at N-1; at N the return value is ignored (bare msg.sender.call{value: amount}(\"\");). The checked value `ok` is data-dependent on BOTH the amount parameter (call arg) and msg.sender (call target). The only change is the removed check.",
+  "why_labeled": "Arbitration proof for the Rule 5 vs Rule 1/6 boundary. This is a CONFIRMED Rule 5 case (value-bearing low-level call whose return check was dropped). WITHOUT the boundary fix it would ALSO trip Rule 6 (the removed require(ok) is data-dependent on the parameter `amount`) and Rule 1 (ok is data-dependent on msg.sender, the call target) - both false positives, since the guard checks the CALL RESULT, not an input or the caller's identity. Rules 1 and 6 now skip guards that check an external-call return value, so Rule 5 owns this alone: Rule 5 FIRES, Rules 1 and 6 stay quiet. No also_fires is needed because the boundary is resolved by exclusion, not by declared cross-fire."
+}

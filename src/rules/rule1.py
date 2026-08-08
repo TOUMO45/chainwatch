@@ -135,8 +135,11 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
         # positive) never enters Rule 1.
         if _is_rule3_territory(fn_b):
             continue
-        # Had a msg.sender constraint at N-1?
-        if not constrains_msg_sender(fn_b, contract_b):
+        # Had a msg.sender constraint at N-1? (skip_call_return_guards: a
+        # require on an external-call RETURN value is SC06/Rule 5, not access
+        # control, even when the return is data-dependent on msg.sender via the
+        # call target - see the Rule 5 boundary.)
+        if not constrains_msg_sender(fn_b, contract_b, skip_call_return_guards=True):
             continue
         # Was it worth protecting at N-1 (wrote state / moved value)?
         if not _writes_state_or_moves_value(fn_b):
@@ -154,7 +157,7 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             continue
         # Exclusions 1.1 / 1.2 (and 3a.1-style inline timelock): still gated on
         # msg.sender at N -> protection intact or merely relocated -> quiet.
-        if constrains_msg_sender(fn_a, contract_a):
+        if constrains_msg_sender(fn_a, contract_a, skip_call_return_guards=True):
             continue
         # Exclusion 1.4: no longer changes state / moves value at N.
         if not _writes_state_or_moves_value(fn_a):

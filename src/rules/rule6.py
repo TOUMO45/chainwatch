@@ -51,6 +51,8 @@ from slither.analyses.data_dependency.data_dependency import is_dependent
 from slither.core.declarations import Function
 
 from ._shared import (
+    external_call_return_taint,
+    guard_checks_call_return,
     guard_nodes,
     is_test_path_segments,
     node_depends_on_msg_sender,
@@ -76,10 +78,16 @@ def _param_guarded_names(fn: Function, contract) -> set:
         return set()
     guarded: set = set()
     for f in reachable(fn):
+        taint = external_call_return_taint(f)
         for node in guard_nodes(f):
             # Rule 1 boundary: a guard constraining msg.sender is access control,
             # not input validation - it contributes no parameter guard here.
             if node_depends_on_msg_sender(node, contract):
+                continue
+            # Rule 5 boundary: a guard checking an external-call RETURN value is
+            # SC06 (unchecked external call), not input validation, even though
+            # the return may be data-dependent on a parameter (the call args).
+            if guard_checks_call_return(node, taint):
                 continue
             reads = node.variables_read
             for p in params:

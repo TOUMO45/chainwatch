@@ -11,7 +11,15 @@ from slither import Slither
 from slither.core.declarations import Function, SolidityVariableComposed, Structure
 from slither.core.solidity_types import UserDefinedType
 from slither.core.variables.state_variable import StateVariable
-from slither.slithir.operations import Assignment, InternalCall, Member
+from slither.slithir.operations import (
+    Assignment,
+    HighLevelCall,
+    InternalCall,
+    LibraryCall,
+    LowLevelCall,
+    Member,
+    Send,
+)
 from slither.slithir.variables import Constant, ReferenceVariable
 from slither.analyses.data_dependency.data_dependency import is_dependent
 
@@ -114,15 +122,87 @@ def node_depends_on_msg_sender(node, contract) -> bool:
     return False
 
 
-def constrains_msg_sender(fn: Function, contract) -> bool:
+# Raw ERC20 methods whose bool return is the Rule 5 (SC06) checkable value.
+ERC20_RETURN_FNS = ("transfer", "transferFrom")
+
+
+def is_return_checkable_call(ir) -> bool:
+    """True iff `ir` is an external call whose return value is the subject of a
+    Rule 5 unchecked-return check: any low-level .call/.staticcall/.delegatecall,
+    a .send, or a raw ERC20 transfer/transferFrom. Library calls (SafeERC20's
+    safeTransfer etc.) are excluded - their checking is internal - and generic
+    high-level typed calls (e.g. an internal owner() read, or an interface method)
+    are excluded so this never flags an access-control guard as a call-return
+    check (which would break Rules 1/3a)."""
+    if isinstance(ir, LibraryCall):
+        return False
+    if isinstance(ir, (LowLevelCall, Send)):
+        return True
+    if isinstance(ir, HighLevelCall):
+        return getattr(ir, "function_name", None) in ERC20_RETURN_FNS
+    return False
+
+
+def external_call_return_taint(fn: Function) -> set:
+    """Set of IR values that carry (transitively) the return value of a
+    return-checkable external call in fn's OWN body - the call's lvalue plus
+    everything forward-assigned from it. A guard reading any of these is checking
+    an external-call RESULT, not a function parameter or msg.sender, which is the
+    Rule 5 vs Rule 1/6 discriminator."""
+    seeds = set()
+    for node in fn.nodes:
+        for ir in node.irs:
+            if is_return_checkable_call(ir) and ir.lvalue is not None:
+                seeds.add(ir.lvalue)
+    if not seeds:
+        return set()
+    tainted = set(seeds)
+    changed = True
+    while changed:
+        changed = False
+        for node in fn.nodes:
+            for ir in node.irs:
+                lv = getattr(ir, "lvalue", None)
+                if lv is None or lv in tainted:
+                    continue
+                if any(r in tainted for r in getattr(ir, "read", [])):
+                    tainted.add(lv)
+                    changed = True
+    return tainted
+
+
+def guard_checks_call_return(node, taint: set) -> bool:
+    """True iff `node` (a guard node) reads a value tainted by an external-call
+    return - i.e. the guard is checking an external call's result."""
+    if not taint:
+        return False
+    for ir in node.irs:
+        for v in getattr(ir, "read", []):
+            if v in taint:
+                return True
+    return False
+
+
+def constrains_msg_sender(
+    fn: Function, contract, skip_call_return_guards: bool = False
+) -> bool:
     """True iff a guard node reachable from fn depends on msg.sender.
 
     NOTE: slither's own Function.is_protected() short-circuits on the modifier
     NAME "onlyOwner" (see slither/core/declarations/function.py) - exactly the
     name matching RULES.md forbids - so it is deliberately not used.
+
+    skip_call_return_guards (Rule 1 boundary with Rule 5): when True, a guard that
+    is checking an external-call RETURN value is ignored even if that value is
+    data-dependent on msg.sender (e.g. require(ok) after msg.sender.call{value:}).
+    Such a check is SC06 (Rule 5), not access control, so Rule 1 must not treat it
+    as a msg.sender constraint. Default False keeps Rule 3a's behaviour unchanged.
     """
     for f in reachable(fn):
+        taint = external_call_return_taint(f) if skip_call_return_guards else set()
         for node in guard_nodes(f):
+            if skip_call_return_guards and guard_checks_call_return(node, taint):
+                continue
             if node_depends_on_msg_sender(node, contract):
                 return True
     return False
