@@ -1,0 +1,8 @@
+{
+  "id": "N4-04",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "4.3/4.4",
+  "description": "transfer(address to, uint256 amount) reads the sender's balance into `bal`, then require(bal >= amount, \"insufficient balance\"). At N the subtraction `balanceOf[msg.sender] = bal - amount;` is wrapped in `unchecked { }`. The require is present unchanged in both commits, and the credit leg `balanceOf[to] = balanceOf[to] + amount;` is deliberately left outside the unchecked block and unchanged. Pragma unchanged (0.8.20).",
+  "why_labeled": "Exclusions 4.3 and 4.4: a uint256 subtraction whose minuend is provably >= the subtrahend via a preceding balance check cannot underflow. `bal` is a local copy read immediately before the require, the require establishes bal >= amount, and no statement between the require and the subtraction can modify either operand (straight-line code, no external call, no branch), so `bal - amount` is provably in range and the compiler's check was pure gas cost. This is the single most common legitimate `unchecked` in production DeFi code - the require-then-unchecked-subtract idiom used throughout ERC20 and vault implementations - and Rule 4 firing on it would flag every such contract. Rule 4 MUST stay quiet. The credit leg, whose bound is NOT provable, stays checked, so the fixture also asserts the rule evaluates the guard against the specific operands wrapped rather than treating the whole function as safe."
+}

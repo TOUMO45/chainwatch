@@ -1,0 +1,8 @@
+{
+  "id": "N4-03",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "4.2",
+  "description": "deposit(uint256 amount) is guarded by two require() statements that bound BOTH operands of the addition - require(amount <= MAX_DEPOSIT) and require(deposits[msg.sender] <= MAX_DEPOSIT), with MAX_DEPOSIT a constant 1e27. Both requires are present unchanged at N-1 and at N; the only diff is that the addition `deposits[msg.sender] = deposits[msg.sender] + amount;` is wrapped in `unchecked { }` at N. Pragma unchanged (0.8.20).",
+  "why_labeled": "Exclusion 4.2: a require() bounding the operands exists earlier in the same function, so the arithmetic was already checked manually and the compiler's check was redundant. Both operands are proven <= 1e27 before the addition executes, so the sum is at most 2e27, roughly 50 orders of magnitude below type(uint256).max (~1.16e77) - the unchecked block cannot wrap. The guards dominate the arithmetic (straight-line, no branch between them and the addition) and bound the operands, not merely some unrelated value, which is what makes this an exclusion rather than a coincidence. Rule 4 MUST stay quiet. Boundary with Rule 6: no parameter guard was removed here - both requires exist in BOTH commits - so Rule 6 has no trigger either and no also_fires declaration is needed."
+}

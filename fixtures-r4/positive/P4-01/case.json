@@ -1,0 +1,8 @@
+{
+  "id": "P4-01",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "description": "deposit(address account, uint256 amount) performed plain, compiler-checked arithmetic at N-1 (shares[account] = shares[account] + amount; totalShares = totalShares + amount;) under pragma 0.8.20. At N both statements are wrapped in an `unchecked { }` block. The pragma is unchanged (0.8.20 in both commits) and no other line differs: the only change is the removal of the built-in overflow revert.",
+  "why_labeled": "Rule 4 trigger, first form: an `unchecked { }` block ADDED around arithmetic that was checked at N-1 on solc >=0.8.0. Under 0.8.x the additions reverted on overflow; at N they wrap silently. The operands can realistically overflow and no exclusion applies: `amount` is an unbounded caller-supplied uint256 (not a loop counter, so 4.1 does not apply), there is no require()/revert bounding either operand anywhere in the function (4.2 does not apply), the operation is addition on two uint256 values with no provable ordering relation (4.3/4.4 are subtraction-guard exclusions and do not apply), no SafeMath is involved and the pragma did not move (4.5 does not apply), and the path is production (4.6 does not apply). A caller passing amount close to type(uint256).max wraps totalShares - and its own shares balance - to an arbitrary small value, corrupting every pro-rata accounting read that follows. This is the canonical SC09 regression. CONFIRMED. N4-05 is this exact diff on a test/mock path and must stay quiet."
+}

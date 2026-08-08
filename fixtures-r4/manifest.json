@@ -1,0 +1,101 @@
+[
+  {
+    "id": "P4-01",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P4-01",
+    "solc": "0.8.20",
+    "solc_before": "0.8.20",
+    "solc_after": "0.8.20",
+    "summary": "unchecked { } added at N around plain, previously compiler-checked additions on an unbounded caller-supplied amount (shares[account] + amount, totalShares + amount). Pragma 0.8.20 in both commits; the unchecked block is the whole diff. Not a loop counter, no bounding require -> CONFIRMED."
+  },
+  {
+    "id": "P4-02",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P4-02",
+    "solc": "0.7.6",
+    "solc_before": "0.7.6",
+    "solc_after": "0.7.6",
+    "summary": "SafeMath (vendored library, `using` directive, all .add()/.sub() call sites) removed at N while pragma STAYS ^0.7.6 in both commits. No compiler checks below 0.8.0, so debit() now underflows silently. Exclusion 4.5 does NOT apply - the pragma never crossed 0.8.0. Pair-mate of N4-01."
+  },
+  {
+    "id": "P4-03",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P4-03",
+    "solc": "0.7.6",
+    "solc_before": "0.8.20",
+    "solc_after": "0.7.6",
+    "cross_version": true,
+    "summary": "pragma LOWERED ^0.8.0 -> ^0.7.6 with the contract body byte-identical (plain +/-, no SafeMath, no unchecked in either commit). Global compiler checks silently removed; the pragma line is the entire diff. CROSS-VERSION: before needs 0.8.x, after needs 0.7.6."
+  },
+  {
+    "id": "N4-01",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "4.5",
+    "path": "negative/N4-01",
+    "solc": "0.8.20",
+    "solc_before": "0.7.6",
+    "solc_after": "0.8.20",
+    "cross_version": true,
+    "summary": "THE 4.5 CASE. SafeMath removed AND pragma raised ^0.7.6 -> ^0.8.0 in the same commit: protection swapped for built-in checks, a safe migration. before.sol is byte-identical to P4-02's, after.sol differs from P4-02's only in the pragma line - so pragma is the sole discriminator between fire and quiet. Rule 4 MUST stay quiet. CROSS-VERSION: before needs 0.7.6, after needs 0.8.x."
+  },
+  {
+    "id": "N4-02",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "4.1",
+    "path": "negative/N4-02",
+    "solc": "0.8.20",
+    "solc_before": "0.8.20",
+    "solc_after": "0.8.20",
+    "summary": "unchecked { ++i; } added for a loop counter bounded by the literal condition i < 10 (compile-time constant, max value reached 10, ~77 orders of magnitude below type(uint256).max). Standard gas optimisation. The unbounded sum accumulation stays OUTSIDE the unchecked block. Exclusion 4.1 -> quiet."
+  },
+  {
+    "id": "N4-03",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "4.2",
+    "path": "negative/N4-03",
+    "solc": "0.8.20",
+    "solc_before": "0.8.20",
+    "solc_after": "0.8.20",
+    "summary": "unchecked added around an addition whose BOTH operands are bounded <= MAX_DEPOSIT (1e27) by two require()s present unchanged in both commits; max sum 2e27 << type(uint256).max. Exclusion 4.2 -> quiet."
+  },
+  {
+    "id": "N4-04",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "4.3/4.4",
+    "path": "negative/N4-04",
+    "solc": "0.8.20",
+    "solc_before": "0.8.20",
+    "solc_after": "0.8.20",
+    "summary": "unchecked subtraction preceded by require(bal >= amount) (present in both commits) on a local copy of the sender's balance - the require-then-unchecked-subtract idiom used throughout production ERC20/vault code. The unbounded credit leg stays checked. Exclusions 4.3/4.4 -> quiet."
+  },
+  {
+    "id": "N4-05",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "4.6",
+    "path": "negative/N4-05",
+    "solc": "0.8.20",
+    "solc_before": "0.8.20",
+    "solc_after": "0.8.20",
+    "source_path": "test/mocks/RewardVaultMock.sol",
+    "summary": "Genuine unchecked-block regression (diff-identical to P4-01) but path is test/mocks/RewardVaultMock.sol; exclusion 4.6 keys on the path segments, not the 'Mock' name substring."
+  }
+]

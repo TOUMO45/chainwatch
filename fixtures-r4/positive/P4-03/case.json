@@ -1,0 +1,10 @@
+{
+  "id": "P4-03",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "solc_before": "0.8.20",
+  "solc_after": "0.7.6",
+  "description": "The pragma is lowered from ^0.8.0 at N-1 to ^0.7.6 at N. The contract body is byte-identical between the two commits: the same plain `+` and `-` on caller-supplied amounts, no SafeMath in either commit, no unchecked block in either commit. The pragma line is the entire diff.",
+  "why_labeled": "Rule 4 trigger, third form: pragma lowered from >=0.8.0 to <0.8.0, which silently removes the compiler's global overflow/underflow checks from every arithmetic expression in the file. At N-1 `credits[from] - amount` reverted on underflow; at N, compiled with 0.7.x, the identical source line wraps to near type(uint256).max. Nothing in the arithmetic itself changed, which is exactly what makes this dangerous - a reviewer diffing function bodies sees no change at all, and the regression is invisible unless the pragma is read. This is the mirror image of exclusion 4.5: 4.5 discards SafeMath removal because the pragma moved UP, so a pragma moving DOWN with no compensating SafeMath added back must fire. No exclusion applies: no loop counter (4.1), no bounding require anywhere in either function (4.2), no ordering guarantee for the subtraction (4.3/4.4), no SafeMath re-introduced to replace the lost checks (4.5 inverted), production path (4.6). CONFIRMED. Note for the detector: the two commits require different solc versions (0.8.x for before, 0.7.6 for after), so the pragma comparison must be read per file from the source's pragma directive."
+}

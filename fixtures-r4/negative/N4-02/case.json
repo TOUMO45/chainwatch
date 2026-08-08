@@ -1,0 +1,8 @@
+{
+  "id": "N4-02",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "4.1",
+  "description": "weightSum() iterated with `for (uint256 i = 0; i < 10; i++)` at N-1. At N the increment is moved into the loop body inside `unchecked { ++i; }` and the loop's third clause is left empty. Pragma unchanged (0.8.20). The accumulation `sum = sum + weights[i]` is deliberately left OUTSIDE the unchecked block and is byte-identical in both commits, so the counter increment is the only arithmetic whose checking changed.",
+  "why_labeled": "Exclusion 4.1: `unchecked` wraps a loop counter with a bound provably < type(uintN).max. The bound here is a literal, not an inferred one: the loop condition `i < 10` is evaluated before every iteration and 10 is a compile-time constant with no path that changes it, so `++i` executes at most 10 times and i never exceeds 10 - 77 orders of magnitude below type(uint256).max (~1.16e77). Overflow of i is unreachable. This is the standard gas optimisation applied across essentially every post-0.8 Solidity codebase (it saves the redundant overflow check per iteration), and RULES.md flags it as 'the trap that will hurt you most'. A Rule 4 that keys naively on 'unchecked block added around arithmetic that was previously checked' fires here, because that description is literally true - the discriminator must be whether the wrapped operands are provably bounded, not whether an unchecked block appeared. Rule 4 MUST stay quiet. Note that the sum accumulation, which is NOT provably bounded, remains checked - had it been moved inside the unchecked block this would be a positive, so the fixture also asserts the rule reasons per operand rather than per block."
+}

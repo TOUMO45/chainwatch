@@ -1,0 +1,10 @@
+{
+  "id": "N4-01",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "4.5",
+  "solc_before": "0.7.6",
+  "solc_after": "0.8.20",
+  "description": "The 0.8.x migration commit. At N-1 the contract is pragma ^0.7.6 and uses a vendored SafeMath (`using SafeMath for uint256;`, .add()/.sub()). At N the pragma is raised to ^0.8.0 AND the SafeMath library, the `using` directive and all .add()/.sub() call sites are removed in the SAME commit, replaced by plain `+`/`-`. before.sol here is byte-identical to fixtures-r4/positive/P4-02/before.sol, and after.sol is byte-identical to P4-02/after.sol except for the pragma line.",
+  "why_labeled": "Exclusion 4.5, and the case that makes or breaks Rule 4. SafeMath was removed, but the pragma was raised to >=0.8.0 in the same commit, so the compiler's own overflow/underflow checks now do exactly what SafeMath did - `balances[from] - amount` still reverts on underflow. Protection was swapped, not lost; the commit is a safe migration and the codebase is no less safe at N than at N-1. Thousands of repositories made precisely this commit when upgrading to 0.8.x, so a Rule 4 that fires here produces a false positive on nearly every mature Solidity repository and the tool is unusable (RULES.md: 'Pragma-aware analysis is mandatory, not optional'). The pair P4-02/N4-01 isolates the discriminator to a single line: identical SafeMath-removal diffs, differing only in whether the pragma crossed 0.8.0. Rule 4 MUST fire on P4-02 and MUST stay quiet here. Note for the detector: this case's two commits require different solc versions (0.7.6 for before, 0.8.x for after), so the pragma comparison has to be read from the source's pragma directive per file rather than from one compilation shared by both sides."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "N4-05",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "4.6",
+  "source_path": "test/mocks/RewardVaultMock.sol",
+  "description": "A genuine unchecked-block regression on unbounded arithmetic - diff-identical to the P4-01 positive, with only the contract name changed - but the contract's repo-relative path is test/mocks/RewardVaultMock.sol.",
+  "why_labeled": "Exclusion 4.6: test/mock/script paths are not production and are discarded, using the same segment-based classifier the other rules key on (Rules 1.6 / 2a.2.8 / 2b / 5.6 / 6.7): the segments test/, mock(s)/, script/, plus *.t.sol and *Mock*/*Harness* on the BASENAME only. The exclusion must key on the path SEGMENTS (`test`, `mocks`), never on the 'Mock' substring in the contract name - a production contract at contracts/latest/Foo.sol must not be suppressed for containing the letters 'test'. Because the underlying change is a real Rule 4 regression, this fixture asserts the rule suppresses on path and not merely that it happens to be quiet. Rule 4 MUST stay quiet."
+}

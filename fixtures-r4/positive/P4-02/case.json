@@ -1,0 +1,10 @@
+{
+  "id": "P4-02",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "solc_before": "0.7.6",
+  "solc_after": "0.7.6",
+  "description": "Ledger used a vendored SafeMath library at N-1 (`using SafeMath for uint256;`, balances[to].add(amount), balances[from].sub(amount)). At N the library, the `using` directive and every .add()/.sub() call site are gone, replaced by plain `+` and `-`. The pragma is ^0.7.6 in BOTH commits - it did not move. Nothing else in the file changed.",
+  "why_labeled": "Rule 4 trigger, second form: SafeMath usage removed on solc <0.8.0. Below 0.8.0 the compiler emits no overflow/underflow checks, so with SafeMath gone the arithmetic is genuinely unprotected: debit() now underflows to a near-type(uint256).max balance whenever amount > balances[from], the textbook SC09 loss. Exclusion 4.5 explicitly does NOT apply because the pragma stayed <0.8.0 - there is no migration to built-in checks to justify the removal, only the removal. No require() bounds the operands (4.2), no ordering guarantee exists for the subtraction (4.3/4.4), no loop counter is involved (4.1), and the path is production (4.6). CONFIRMED. This case is the discriminating pair-mate of N4-01: N4-01's after.sol is byte-identical to this one except for the pragma line, which is raised to ^0.8.0. Pragma is the ONLY thing separating a real regression from a safe migration, which is precisely what Rule 4 must key on."
+}
