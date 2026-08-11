@@ -69,3 +69,30 @@
 - [ ] Rule 6 exclusion 6.6 (enforced by the type system / a validated struct at
       the call boundary) — not implemented, no fixture. Same posture as 6.4:
       build the fixture first, then the logic, if a real case appears.
+- [ ] HIST-L1 mitigation option A — AST-only mode. **Superseded by measurement;
+      see AST-MODE in LIMITATIONS.md.** Measured outcome: 8 of 9 rule ids
+      (1, 2a, 2b, 3a, 3b, 4, 5, 6) give IDENTICAL verdicts on AST-only parse
+      across 621 comparisons; only 3c is full-compile-only (it needs
+      `solc --combined-json storage-layout`, a separate non-AST artifact).
+      BUT it does **not** mitigate HIST-L1: solc still resolves every import to
+      emit an AST, so a missing dependency tree still fails with `ParserError`.
+      Build it for speed (~21%) and codegen-failure immunity, NOT for coverage.
+- [ ] Implement the AST-only execution path, selectable per run, for the 8
+      AST-only-capable rule ids, falling back to full-compile for 3c (and for
+      any future rule needing a non-AST solc artifact). Trajectory output must
+      LABEL each finding with the mode it was detected in (ast-only vs
+      full-compile) so a reader can see the confidence basis of every finding.
+      Note the labels carry equal weight on the frozen sets — verdicts were
+      measured identical — so the label documents provenance, not reliability.
+- [ ] HIST-L1 mitigation option B — per-commit environment reconstruction: read
+      `package.json` / remappings / foundry config AT each commit, install that
+      commit's dependency set, and solc-select the compiler its pragma pins
+      (including exact pins like `0.8.28`, which no fallback can substitute).
+      Higher fidelity than option A and much slower; cache per dependency-set,
+      not per commit.
+- [ ] HIST-L1 — trajectory output must ALWAYS surface the analyzable/skipped
+      pair ratio, with a per-skip reason, so "0 detections" can never be
+      mistaken for "clean history". Treat a missing coverage ratio as a broken
+      report, not a clean one. This is a reporting invariant, not a nice-to-have
+      — it is the same failure mode as 3x-L1, where only timing revealed that a
+      confident clean result had analysed nothing.

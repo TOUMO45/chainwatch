@@ -485,6 +485,139 @@ legacy-slot resolution, and no beacon or clone tested against live data.
 
 ---
 
+## Trajectory mode — walking a real repository's commit history
+
+### HIST-L1 — historical COMPILATION, not rule logic, is the coverage limit
+
+**Type: SILENT COVERAGE LOSS. HIGH priority. Affects every rule in trajectory
+mode. Same class as 3x-L1 and 3x-L2: the output of a skipped analysis is
+indistinguishable from the output of a clean one.**
+
+**Priority rationale:** trajectory mode is the tool's headline use — point it at
+a repo, get its regression history. This limitation means that mode can report a
+confident, wrong answer, and nothing in the output reveals it.
+
+**Status of the walker itself.** `src/history.py` is **still empty** (0 bytes,
+created by the Phase 1 skeleton commit `0d47141`, never written). No commit
+walking or pair extraction exists in the codebase; see also X-L3. The first
+trajectory test therefore did **not** exercise history.py — pairs were extracted
+by an ad-hoc `git diff --name-status` script in a scratchpad, precisely so that a
+history-walk bug could be told apart from a rule bug.
+
+**What that test did establish.** Pair extraction is the easy half. Against a
+full clone of `reserve-protocol/protocol` (5577 commits, OZ 4.9.6, upgradeable),
+the last 30 commits touching `contracts/**/*.sol` yielded **29 consecutive pairs,
+28 with at least one modified `.sol`, and 46 modified-file comparisons** — cleanly
+and unambiguously, straight from git. Getting the pairs is not the problem.
+
+**The problem: none of those 46 comparisons could be compiled.** Reproducing an
+old commit's build requires **that commit's environment**, not the current one.
+Observed at the 30-commit window, in order of how immediately each one bites:
+
+| Cause | Evidence from the run |
+|---|---|
+| **Compiler version not available** | All 46 modified files pin `pragma solidity 0.8.28;` — an *exact* pin, which no fallback can satisfy from another release. Installed: 0.7.6 / 0.8.9 / 0.8.20 / 0.8.22 / 0.8.27. Raw error: `Source file requires different compiler version (current compiler is 0.8.27+commit.40a35a09…)`. Across the wider tree the pragma range also includes `0.6.12`, `^0.6.0` and `>=0.6.0 <0.8.0`, so a full-history walk needs a far broader compiler set than any one window suggests. |
+| **Dependency tree absent at that commit** | The clone has no `node_modules`. Every contract imports `@openzeppelin/…`, which resolves only against the dependency set *that commit* declared. |
+| **Contracts do not compile in isolation** | Files import sibling project paths (`../interfaces/IRToken.sol`), so `git show <sha>:<path>` into a temp file can never compile. The walk must materialise the **whole tree** at each commit (`git worktree`/checkout), not the changed files. |
+| **Layout, remappings and import paths drift** | The general form of the above: directory layout, remapping config and dependency versions all change over a repo's life, so a build recipe fixed at HEAD is wrong for most of history — and increasingly wrong the further back the walk goes. |
+
+**Consequence — the part that matters.** A trajectory run can report **"0
+detections"** not because the history is clean but because most pairs were never
+compiled, and therefore never analysed. Silence from an uncompiled pair is
+byte-identical to silence from a clean one.
+
+**Therefore: a trajectory result MUST report analyzable-vs-skipped pair counts
+alongside detections, with the reason for each skip. "0 detections" without a
+coverage ratio is not a result and must never be quoted as one.** For the run
+above the honest statement is *"0 of 29 pairs analyzable, 0 pairs analysed, no
+precision evidence produced"* — **not** "0 detections across 29 pairs".
+
+**The rules are not the bottleneck.** No rule failed, errored, or misfired on any
+historical pair — because no historical pair reached a rule. Trajectory mode has
+so far produced **no precision evidence at all, in either direction**. The
+existing 0-false-positive evidence comes from a different setup entirely: the
+Phase 5 Monetrix run, 20 real contracts compared self-against-self, all 9 rule
+ids engaged, 0 detections and 0 candidates. That result stands on its own and is
+not evidence about trajectory mode. What the trajectory test measured is that
+**historical compilation** — not detection logic — is what gates real-repo
+coverage, and it is the thing to fix first.
+
+### AST-MODE — measured: AST-only execution is real, but it is NOT a HIST-L1 mitigation
+
+**Type: DESIGN MEASUREMENT. Not a defect.** Recorded because the result
+contradicts the assumption that motivated it, and because a future reader will
+otherwise re-derive the wrong answer.
+
+**The mechanism (found by reading the installed source, not assumed).**
+`crytic_compile/platform/solc_standard_json.py:122` builds a solc standard-json
+input whose `settings.outputSelection` defaults to `["abi", "metadata",
+"devdoc", "userdoc", "evm.bytecode", "evm.deployedBytecode"]` plus `"": ["ast"]`.
+Overriding that key asks solc for the AST and nothing else:
+
+```python
+sj = SolcStandardJson()
+sj.add_source_file(path)
+for r in remaps:
+    sj.add_remapping(r)
+sj._json["settings"]["outputSelection"] = {"*": {"*": [], "": ["ast"]}}
+Slither(CryticCompile(sj))
+```
+
+This is the **only** reduced-build lever these versions expose. solc's
+`--stop-after parsing` is unreachable: `grep -rn "stop-after\|stop_after"` over
+slither 0.11.5 and crytic-compile 0.3.11 returns nothing. The plain `solc`
+platform hardcodes `--combined-json abi,ast,bin,bin-runtime,srcmap,…`
+(`_build_options`, solc.py:417) with no AST-only toggle. Verified the override
+actually skips code generation: with it, `contracts_with_runtime_bytecode=0` and
+`ast_present=1`; without it, `contracts_with_runtime_bytecode=2`.
+
+**Measured result — 69 fixture cases × 9 rule ids = 621 verdict comparisons**,
+across every frozen set (`fixtures`, `r1`, `r2`, `r2b`, `r4`, `r5`, `r6`, `oz5`,
+`r1-oz5`), each rule's `parse` swapped at runtime and restored, no rule modified:
+
+| rule | AST-only parse | AST-only + storage-layout denied | capability | reason |
+|---|---|---|---|---|
+| 1 SC01 | IDENTICAL 69/69 | IDENTICAL | AST-only-capable | CFG + data dependency are lowered from the AST |
+| 2a SC08 | IDENTICAL 69/69 | IDENTICAL | **AST-only-capable** | SlithIR comes from the AST, not from bytecode |
+| 2b SC08 | IDENTICAL 69/69 | IDENTICAL | **AST-only-capable** | same — CFG ordering is AST-derived |
+| 3a SC10 | IDENTICAL 69/69 | IDENTICAL | **AST-only-capable** | inheritance-resolved modifiers are resolved by Slither from the AST |
+| 3b SC10 | IDENTICAL 69/69 | IDENTICAL | **AST-only-capable** | same |
+| 3c SC10 | IDENTICAL 69/69 | **DIFFERS 63/69** | **full-compile-only** | needs a *second, non-AST* artifact: `solc --combined-json storage-layout`. Denying it turns 63 cases into `RuntimeError`, including the true positive `fixtures/P3c-01` (`FIRE` → `ERROR`) |
+| 4 SC09 | IDENTICAL 69/69 | IDENTICAL | AST-only-capable | `scope.is_checked`, pragma directives and Binary IR are all AST-derived |
+| 5 SC06 | IDENTICAL 69/69 | IDENTICAL | AST-only-capable | call IR + CFG dominators, AST-derived |
+| 6 SC05 | IDENTICAL 69/69 | IDENTICAL | AST-only-capable | guard structure is pure AST |
+
+**8 of 9 rule ids are AST-only-capable. Only 3c is full-compile-only.** The
+prior expectation — that 2a/2b need IR and 3a/3b need resolved modifiers, so all
+of them need a full compile — is **wrong, and was measured wrong**: SlithIR and
+the CFG are lowered by Slither *from the AST*, so removing bytecode removes
+nothing they use. 3c is the sole exception, and not because it needs IR: it
+shells out separately for the compiler's own storage layout.
+
+**Significance for HIST-L1: none. AST-only does not raise trajectory coverage.**
+Asking solc for only the AST does not relax import resolution — solc must still
+locate every import to parse and analyse, and fails before emitting anything:
+
+```
+OZ-importing file, remapping absent (HIST-L1's exact failure mode):
+  ParserError: Source "@openzeppelin/contracts/access/Ownable.sol" not found: File not found.
+```
+
+Checked against each cause recorded in HIST-L1: missing dependency tree — **not
+fixed**; sibling-path imports needing the whole tree — **not fixed**; exact-pinned
+compiler version unavailable — **not fixed** (AST-only changes what is asked of
+solc, not which solc exists). All 46 reserve-protocol comparisons would still
+fail, and coverage on that window stays 0/29 pairs. **Only per-commit environment
+reconstruction (TODO option B) addresses the coverage gap.**
+
+**What AST-only is actually worth**, and why it is still worth building:
+~21% less compile time (1.931s → 1.515s per OZ-importing file, 10-run mean); and
+immunity to *code-generation* failures — "stack too deep", optimizer crashes,
+contract-size limits — which are real historical build breakers, just not the
+ones HIST-L1 observed. It also frees 8 of 9 rule ids from ever needing bytecode.
+
+---
+
 ## Cross-cutting
 
 | # | Limitation | Direction |
