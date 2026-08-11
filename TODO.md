@@ -84,15 +84,45 @@
       full-compile) so a reader can see the confidence basis of every finding.
       Note the labels carry equal weight on the frozen sets — verdicts were
       measured identical — so the label documents provenance, not reliability.
-- [ ] HIST-L1 mitigation option B — per-commit environment reconstruction: read
-      `package.json` / remappings / foundry config AT each commit, install that
-      commit's dependency set, and solc-select the compiler its pragma pins
-      (including exact pins like `0.8.28`, which no fallback can substitute).
-      Higher fidelity than option A and much slower; cache per dependency-set,
-      not per commit.
+- [x] HIST-L1 mitigation option B — per-commit environment reconstruction.
+      **DONE, MEASURED.** Implemented in `src/history.py`; reserve-protocol's
+      failing window went **0/29 -> 28/29 analyzable** (28/28 of comparable
+      pairs), 43/46 file comparisons, 387 rule executions, 13.0 min wall clock.
+      Cache keyed on the resolved dependency set (lockfiles + package.json +
+      foundry.toml + .gitmodules + remappings.txt + solc pin), so the window's
+      single distinct yarn.lock cost ONE install (2m09s) and every later commit
+      was a zero-cost cache hit. Compiler pins resolved themselves via the
+      framework build (solc 0.8.28 + 0.6.12 in one build). See HIST-L1.
 - [ ] HIST-L1 — trajectory output must ALWAYS surface the analyzable/skipped
       pair ratio, with a per-skip reason, so "0 detections" can never be
       mistaken for "clean history". Treat a missing coverage ratio as a broken
       report, not a clean one. This is a reporting invariant, not a nice-to-have
       — it is the same failure mode as 3x-L1, where only timing revealed that a
-      confident clean result had analysed nothing.
+      confident clean result had analysed nothing. Now that coverage is high,
+      the report must carry a VERIFIED PRECISION figure beside it: the Reserve
+      run went 0 -> 10 false positives precisely because pairs started
+      compiling. Coverage without precision is not trustworthiness.
+- [ ] R5-L1 — Rule 5 fires on unchanged code when one function calls the same
+      method on the same destination more than once and any one site is inside a
+      `try/catch`: the `(kind, destination, method)` key is stable across commits
+      but NOT injective within one, so `before_checked` retains the try/catch
+      record and every other site matches it. 10 confirmed FPs on Reserve.
+      FIXTURE FIRST (the approve-reset idiom, unchanged across commits, must stay
+      quiet), then make the within-commit map injective (node id / source offset)
+      while keeping the cross-commit key stable. See R5-L1 in LIMITATIONS.md.
+- [ ] Trajectory finding attribution — a finding can be reported against the
+      changed file while actually living in an unchanged file pulled in via the
+      import closure (proven: BackingManager.sol credited with a fire inside
+      libraries/Allowance.sol). Filter findings to declarations in the changed
+      file, or report against the file that actually contains them.
+- [ ] HIST-L1 residual — repo-root-relative imports (`contracts/interfaces/…`)
+      fail under bare solc because only Hardhat resolves them implicitly from the
+      project root. 3 of 46 file comparisons on Reserve. Fix: emit
+      `<dir>/=<root>/<dir>/` remaps for top-level source dirs in `derive_remaps`.
+- [ ] Rule 3c cannot run in trajectory mode at all — 42/42 errors on the Reserve
+      window. `_storage.storage_layouts` builds paths relative to THIS repo's
+      root, so it cannot address a scratch worktree. Make the layout extractor
+      take the project root as a parameter.
+- [ ] HIST-L1 residual — `dep-gone-from-registry` was never exercised (the tested
+      window is 2 months old). Older history will hit unpublished/yanked
+      transitive deps; measure on a multi-year window before claiming "any repo".

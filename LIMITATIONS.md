@@ -493,16 +493,23 @@ legacy-slot resolution, and no beacon or clone tested against live data.
 mode. Same class as 3x-L1 and 3x-L2: the output of a skipped analysis is
 indistinguishable from the output of a clean one.**
 
+> **STATUS: MITIGATED AND MEASURED.** Per-commit environment reconstruction took
+> reserve-protocol/protocol's failing window from **0/29 to 28/29 analyzable
+> pairs**. Residual causes are listed below and are reported per pair, never
+> swallowed. The coverage barrier is broken; see the caveat at the end of this
+> entry — the same run exposed a *precision* defect (R5-L1), so "analyzable" now
+> outruns "trustworthy", and the two must not be conflated.
+
 **Priority rationale:** trajectory mode is the tool's headline use — point it at
 a repo, get its regression history. This limitation means that mode can report a
 confident, wrong answer, and nothing in the output reveals it.
 
-**Status of the walker itself.** `src/history.py` is **still empty** (0 bytes,
-created by the Phase 1 skeleton commit `0d47141`, never written). No commit
-walking or pair extraction exists in the codebase; see also X-L3. The first
-trajectory test therefore did **not** exercise history.py — pairs were extracted
-by an ad-hoc `git diff --name-status` script in a scratchpad, precisely so that a
-history-walk bug could be told apart from a rule bug.
+**Status of the walker itself.** `src/history.py` was **empty** (0 bytes, created
+by the Phase 1 skeleton commit `0d47141`) through the first trajectory test,
+which is why that test did not exercise it — pairs were extracted by an ad-hoc
+`git diff --name-status` script, deliberately, so a history-walk bug could be
+told apart from a rule bug. The walker and the reconstruction stage now exist in
+`src/history.py`.
 
 **What that test did establish.** Pair extraction is the easy half. Against a
 full clone of `reserve-protocol/protocol` (5577 commits, OZ 4.9.6, upgradeable),
@@ -541,6 +548,127 @@ ids engaged, 0 detections and 0 candidates. That result stands on its own and is
 not evidence about trajectory mode. What the trajectory test measured is that
 **historical compilation** — not detection logic — is what gates real-repo
 coverage, and it is the thing to fix first.
+
+#### MEASURED MITIGATION — per-commit environment reconstruction
+
+Implemented in `src/history.py`, measured on the identical 29-pair window that
+previously yielded nothing:
+
+| | before | after |
+|---|---|---|
+| **Analyzable pairs** | **0 / 29** | **28 / 29** |
+| File comparisons compiled on both sides | 0 / 46 | **43 / 46** |
+| Rule executions | 0 | **387** |
+| Wall clock (whole window) | — | **13.0 min** |
+
+The 29th pair is not a failure: it adds 7 files and modifies none, so no
+comparable N-1 side exists. Of *comparable* pairs the ratio is **28/28**.
+
+**How.** Check the commit out into a scratch worktree; detect the dependency
+system declared at that commit; install it (cached); derive remappings and the
+pinned compiler from the reconstructed tree; compile; hand the result to the
+rules. crytic-compile already knew how to build the project — the missing piece
+was only ever materialising the dependency set the commit declared. On the
+Reserve window, the framework build also resolved the compiler pin by itself,
+downloading **solc 0.8.28 (405 sources) and 0.6.12 (38 sources) in one build**,
+which the previous one-`SOLC_VERSION`-per-case model structurally could not do.
+
+**Caching — the thing that makes a walk affordable.** Keyed on the *resolved
+dependency set*, never on the commit: `sha256(package.json, yarn.lock,
+package-lock.json, pnpm-lock.yaml, foundry.toml, .gitmodules, remappings.txt,
+solc_pin)[:16]`. Reserve's 30 commits carry exactly **one** distinct `yarn.lock`,
+so the whole window cost **one** install (2m09s, 449 packages, 461 MiB, key
+`586f75487c86a6e5`); every later commit was a directory-junction cache hit at
+zero cost. The measured 13.0 min is therefore almost entirely Slither parse time,
+not installation.
+
+**Residual failing causes — this is the honest limit of "any repo".** Measured on
+this window:
+
+| Cause | Count | Note |
+|---|---|---|
+| `remapping` | **3 file comparisons** | Repo-root-relative imports (`contracts/interfaces/IAsset.sol`). Hardhat resolves these implicitly from the project root; bare solc does not. Fixable: emit `contracts/=<root>/contracts/` for top-level source dirs. |
+| `no-modified-sol` | 1 pair | Not a failure — added files only, no comparable pair. |
+| `dep-gone-from-registry` | 0 | Not exercised: this window is 2 months old. Expected to dominate on older history, where unpinned transitive deps get unpublished. |
+| `solc-absent` | 0 | Handled by the framework build, which fetches its own compilers. |
+| `needs-install-scripts` | 0 | — |
+| `timeout` | 0 | — |
+
+**"Any repo" means "most commits of most repos, transparently reported" — not
+100%, and it must never be stated as 100%.** This window is the easy case: one
+lockfile, one framework, no submodules, no registry decay. Older history, Foundry
+eras, and yanked packages are untested. The reporting invariant above is what
+makes the difference safe: every non-analyzed pair carries a cause.
+
+**Safety posture (recorded, per CHARTER rule 5).**
+- Dependency installs run with **lifecycle scripts disabled** — `npm ci
+  --ignore-scripts` / `npm install --ignore-scripts` for npm, `yarn install
+  --immutable --mode=skip-build` for yarn (the command actually used on Reserve,
+  which is a yarn project), `pnpm install --ignore-scripts` for pnpm. Installing
+  a historical dependency set means fetching arbitrary third-party code;
+  executing its postinstall hooks is a remote-code-execution surface that a
+  static analyser does not need. Native modules consequently do not build; if a
+  project genuinely requires scripts, `install()` records `NEEDS_SCRIPTS` and
+  stops rather than silently enabling them — a per-project human decision.
+- **Read-only on the target.** Only the repo's history is read. Nothing is
+  committed, pushed, or written to a tracked path. The one write is `git
+  worktree` bookkeeping inside the target's `.git`; an archive-based mode avoids
+  even that where submodules are not needed.
+- Worktrees, installs and build artifacts live in an **isolated scratch
+  directory** outside both the target repo and this one.
+
+**CAVEAT — coverage is solved, precision is now the open problem.** The same run
+produced **11 detections, of which 10 are proven false positives** from a genuine
+Rule 5 defect (see **R5-L1**), and 1 (Rule 2b) remains unverified. Rule 3c could
+not run at all across the window (42 errors — its `storage_layouts` helper builds
+paths relative to this repo's root, so it cannot address an external worktree).
+Raising the analyzable ratio raised the *false-positive* count from zero to ten,
+because pairs that never compiled also never produced a wrong answer. A
+trajectory report must therefore carry BOTH ratios: coverage, and a verified
+precision figure. Coverage alone is not trustworthiness.
+
+### R5-L1 — Rule 5's call key is not unique per call site
+
+**Type: FALSE POSITIVE, confirmed on real code. Rule 5.** Found by the first
+env-reconstructed trajectory run; no fixture exercises the shape.
+
+`_call_records` keys a call as `(kind, destination, method)`. That key is stable
+across commits, which is what DESIGN-L1 demands — but it is **not injective
+within a single commit**. When one function calls the same method on the same
+destination more than once and at least one of those sites sits inside a
+`try/catch`, `before_checked` (a dict on that key) retains only the try/catch
+record. Any unchecked after-record with the same key then matches it, `in_try` is
+True, and the rule reports "try/catch removed" **on code that did not change**.
+
+Proven on `reserve-protocol/protocol` at `5ad5ee8b→76ec1234`. The rule fired in
+`AllowanceLib.safeApproveFallbackToMax`, inside `contracts/libraries/Allowance.sol`
+— **a file unchanged in that commit** — whose before and after record sets are
+byte-identical. The source is the standard approve-reset idiom:
+
+```solidity
+token.approve(spender, 0);                                 // not in try
+try token.approve(spender, value) { ... } catch {}         // in try -> checked
+if (!success) { token.approve(spender, type(uint256).max); // not in try
+```
+
+All three collapse to one key, so the rule fires on every pair whose changed file
+transitively imports that library. Same signature confirmed in two further cases,
+both in genuinely changed files: `AssetRegistryP1.swapRegistered` (`erc20`) and
+`ReadFacet.basketBreakdown` (`main`).
+
+**Second-order finding, same run:** the fire above is attributed to
+`contracts/p1/BackingManager.sol`, the changed file, but lives in an unchanged
+library. Compiling a changed file pulls its whole import closure and the rules
+iterate every contract in the compilation, so a finding can be **attributed to
+the wrong file and commit**. Any trajectory finding must be filtered to
+declarations in the changed file, or reported against the file that actually
+contains it.
+
+**Fix order:** fixture first — a function with two same-method calls on one
+destination, one inside a `try/catch`, unchanged across commits, which must stay
+quiet — then make the key injective per call site (e.g. include the node id or
+source offset in the within-commit map while keeping the cross-commit key
+stable). Tracked in TODO.md.
 
 ### AST-MODE — measured: AST-only execution is real, but it is NOT a HIST-L1 mitigation
 
