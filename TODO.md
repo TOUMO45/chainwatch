@@ -110,11 +110,35 @@
       FIXTURE FIRST (the approve-reset idiom, unchanged across commits, must stay
       quiet), then make the within-commit map injective (node id / source offset)
       while keeping the cross-commit key stable. See R5-L1 in LIMITATIONS.md.
-- [ ] Trajectory finding attribution — a finding can be reported against the
-      changed file while actually living in an unchanged file pulled in via the
-      import closure (proven: BackingManager.sol credited with a fire inside
-      libraries/Allowance.sol). Filter findings to declarations in the changed
-      file, or report against the file that actually contains them.
+- [ ] DESIGN-L2 fix — 8 of 9 rule ids iterate `slither_obj.contracts_derived`
+      (the whole compilation, imports included) without a source-file scope. On
+      a real repo whose changed file transitively imports an unchanged file
+      containing the trigger pattern, the rule fires on the unchanged code and
+      attributes the finding to the changed file. Only Rule 4 is scoped
+      (`_file_of(contract) != target`); rules 1/2a/2b/3a/3b/3c/5/6 are exposed.
+      Confirmed source of FP1/FP2/FP4 on Reserve. Scope every rule's iteration
+      to declarations in the commit's changed files - either loop-side (harness
+      passes changed_files, filters each rule's findings) or rule-side (per-rule
+      `_file_of` filter, symmetric to Rule 4's).
+      **MUST be locked by MULTI-FILE fixtures first**: a changed `.sol` that
+      imports an unchanged `.sol` carrying the R5 approve-reset pattern (and one
+      per other exposed rule). Current single-file fixtures structurally cannot
+      exercise closure iteration, which is why DESIGN-L2 shipped past every
+      frozen set. Without such fixtures, a future refactor can silently
+      reintroduce this exposure. See DESIGN-L2 in LIMITATIONS.md.
+- [ ] Trajectory loop pairing — the walker builds pairs from consecutive
+      `.sol`-touching commits (`git log -- pathspec`). When a `.sol`-touching
+      commit's actual git parent does NOT touch `.sol`, the walker pairs it with
+      an older `.sol`-touching commit instead of the true parent. Measured on
+      Reserve: 2 of 4 fire commits were mispaired this way (e27227b2's true
+      parent is `f43202a3`, walker used `11c03f3f`; 7f65c030's true parent is
+      `cef2f655`, walker used `e27227b2`). Fix: for each `.sol`-touching commit,
+      pair it with its first git parent regardless of whether that parent
+      touched `.sol` (the `.sol` diff is identical either way for linear
+      history; for merges use first-parent). Note: this changes coverage
+      accounting but did not change any verdict in the observed run — all 6 FPs
+      persist under correct pairing, so this fix is precision-neutral for the
+      observed cases. Fix it anyway for report correctness.
 - [ ] HIST-L1 residual — repo-root-relative imports (`contracts/interfaces/…`)
       fail under bare solc because only Hardhat resolves them implicitly from the
       project root. 3 of 46 file comparisons on Reserve. Fix: emit

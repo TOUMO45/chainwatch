@@ -817,3 +817,95 @@ the two diff-based rules still to come — **Rule 5** (return-value check remove
 and **Rule 6** (input-validation guard removed). Both must apply DESIGN-L1 to any
 cross-commit set operation from the outset, with a guard/test that a shared
 entity present in both commits cancels. Tracked in TODO.md.
+
+### DESIGN-L2 — rules iterate the full import closure, mis-attributing phantom regressions to unchanged imported files
+
+**Type: FALSE POSITIVE risk. HIGH priority. Applies to every diff-based rule
+that iterates `slither_obj.contracts_derived` without a source-file filter.**
+
+`Slither(path)` compiles `path` **and its entire import closure**. `contracts`
+and `contracts_derived` therefore return every contract from every compiled
+source, not just those declared in the file passed in. A diff-based rule that
+walks `contracts_derived` examines transitively-imported libraries too.
+
+For a function declared in an **unchanged** imported file, its byte-image is
+identical between N-1 and N. Its per-function record set is identical on both
+sides. If the rule's cross-commit comparison has *any* within-commit
+non-injective key, dict-collapse, or ordering shortcut, it can manufacture a
+phantom "regression" out of **zero real change**. The mechanism fires on every
+pair whose changed file transitively imports the offending pattern, and the
+finding is falsely attributed to the *changed* file (the one Slither was called
+on) even though the code that "changed" lives elsewhere and did not change at
+all.
+
+**Measured on `reserve-protocol/protocol` under CORRECT git-parent pairing:**
+
+Three of the six false positives from the trajectory run are DESIGN-L2:
+
+| FP | Cur commit | Fired-on function | Declared in | Changed between parent and cur? |
+|---|---|---|---|---|
+| FP1 | `b2cfd51a` | `AllowanceLib.safeApproveFallbackToMax` | `contracts/libraries/Allowance.sol` | **NO** — `git diff --name-only 43533959 b2cfd51a -- contracts/libraries/Allowance.sol` → empty |
+| FP2 | `b2cfd51a` | `AllowanceLib.safeApproveFallbackToMax` | `Allowance.sol` | NO (same as FP1) |
+| FP4 | `e27227b2` | `AllowanceLib.safeApproveFallbackToMax` | `Allowance.sol` | **NO** — `git diff --name-only f43202a3 e27227b2 -- contracts/libraries/Allowance.sol` → empty |
+
+Each fire was attributed to the *changed* file (ActFacet.sol / RevenueTrader.sol /
+ActFacet.sol respectively), reported against `contracts/facade/facets/…` and
+`contracts/p1/…`, while the code Rule 5 actually iterated to produce the fire
+lives in an unchanged library. The R5-L1 key-collision (RC-1) is the *proximate*
+trigger for these three; DESIGN-L2 is the *enabler* — without closure iteration
+Rule 5 would never have opened `Allowance.sol` on either side.
+
+**The other three FPs from that run are NOT DESIGN-L2.** FP5 (RC-2, `in_try`
+mis-scoping on a hoisted argument-eval call) and FP6 (RC-5, canonical_name diff
+misses renames) fire on functions declared in the *changed* file. FP3 is a genuine
+try/catch removal on a facade view — a true trigger with wrong severity per
+RULES.md 5.3. DESIGN-L2 explains a class, not the whole run.
+
+**Which rules are exposed** (measured, `grep` over `src/rules/`):
+
+| Rule | Iterates | Exposure |
+|---|---|---|
+| **1**  | `slither_obj.contracts_derived` via `_candidate_map` (rule1.py:107)  | **YES** |
+| **2a** | own `_candidate_map` (rule2a.py:59)                                 | **YES** |
+| **2b** | reuses rule2a's `_candidate_map`                                    | **YES** |
+| **3a** | `slither_obj.contracts_derived` (rule3a.py:48)                      | **YES** |
+| **3b** | `slither_obj.contracts_derived` (rule3b.py:83, 119, 157)            | **YES** |
+| **3c** | iterates `storage_layouts()` output over every contract solc emitted | **YES** — mitigated by the `node_modules` path skip in `storage_layouts()`, which suppresses OZ-base contributions but not first-party imports |
+| **4**  | `_own_functions` with `_file_of(contract) != target` filter (rule4.py:214) | **NO — scoped** |
+| **5**  | reuses rule1's `_candidate_map` (rule5.py:71)                       | **YES** — confirmed by FP1/FP2/FP4 |
+| **6**  | reuses rule1's `_candidate_map` (rule6.py:62)                       | **YES** |
+
+**8 of 9 rule ids are closure-exposed. Only Rule 4 scopes to the changed file.**
+Rule 4 was written after the AllowanceLib class was already known, which is why
+the filter was added there; the earlier rules pre-date the finding.
+
+**Why it hid until now.** Every frozen fixture is a **single self-contained
+`.sol`** — no imports, no closure to walk into. The Monetrix real-world run was
+self-vs-self, so before-map == after-map function-by-function and any
+well-behaved diff cancelled. **Only a real repo with a changed file that
+transitively imports an unchanged file containing the trigger pattern exposes
+this.** The multi-file precondition is the reason DESIGN-L2 could ship past the
+frozen sets, past Monetrix, and past the 29-pair recent-window Reserve slice
+without triggering — the 29-pair window happened to change small files whose
+imports did not include AllowanceLib often enough. The 191-pair slice hit
+`Allowance.sol` transitively three times.
+
+**Fix principle (not yet implemented).** A rule must only attribute a finding to
+a function/declaration that lives in a file **actually changed in this commit**.
+Findings whose declaring file is unchanged between the two commits are not
+regressions introduced by this commit and must be suppressed. Two viable
+implementations:
+
+- **Loop-side, one change:** the trajectory harness passes the set of changed
+  files, and filters each rule's findings to declarations in that set. Rule
+  modules stay untouched. Preserves the ability to run the same rule on a
+  single-file fixture (where "changed set" = the one file).
+- **Rule-side, nine changes:** each rule adds a `_file_of(x) in changed_files`
+  filter to its own iteration, symmetrical to Rule 4's `_own_functions`. Higher
+  cost, but the guard travels with the rule.
+
+Either fix must be **locked by a MULTI-FILE fixture** — a changed file that
+imports an unchanged file containing the trigger pattern for the rule under test
+— because the current single-file fixture set structurally cannot exercise this
+shape. Without such a fixture, a future refactor could reintroduce the exposure
+silently. Tracked in TODO.md.
