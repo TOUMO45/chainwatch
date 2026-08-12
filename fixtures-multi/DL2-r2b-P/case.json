@@ -1,0 +1,13 @@
+{
+  "id": "DL2-r2b-P",
+  "rule": 2,
+  "sub_rule": "2b",
+  "label": "positive",
+  "exclusion_ref": null,
+  "changed_files": ["before.sol", "after.sol"],
+  "unchanged_imports": ["Registry.sol"],
+  "source_path": "contracts/vault/Vault.sol",
+  "description": "Multi-file positive for Rule 2b. Vault (before.sol/after.sol) contains the CEI break — balances write moved from before to after the hook.notify call. Registry.sol is unchanged. This case does not currently produce a phantom DESIGN-L2 fire (Rule 2b requires an actual diff, and Registry.sol has none), so its role is a REGRESSION LOCK for the RC-1 fix: after the file-scope filter is applied, the fire on Vault.withdraw (declared in the changed file) must survive. Also cross-checks that a plain-mutex nonReentrant is treated identically to OZ's ReentrancyGuard in existing P2b-01, since neither is a set-clear-mutex-status change per the 2a/2b boundary.",
+  "why_labeled": "This is exactly the RULES.md Rule 2b trigger: at N-1 every state write to a variable the function reads (balances) preceded every external call; at N one such write moved to after the hook.notify call, while the mutex status did not change (nonReentrant in both commits). balances is read in the function's own require, so a re-entrant call would see stale balances. Under-suppressing this pair after the RC-1 fix would silently break Rule 2b on any multi-file project — the fix must scope to changed files, not exclude them from firing.",
+  "notes": "Second-rule DESIGN-L2 NEGATIVE (a currently-firing phantom on Rule 2b) is not achievable with today's Rule 2b logic: an unchanged imported file has moved = writes_at_n - writes_at_n1_names = empty, so 2b intrinsically stays quiet on unchanged imports. This POSITIVE therefore serves as the closest available lock for Rule 2b under the RC-1 fix. If Rule 2b later gains a within-commit non-injectivity (analogous to R5-L1), a matching NEGATIVE fixture will need to be added."
+}

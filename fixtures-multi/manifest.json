@@ -1,0 +1,82 @@
+[
+  {
+    "id": "DL2-r5",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "DESIGN-L2",
+    "path": "DL2-r5",
+    "changed_files": ["before.sol", "after.sol"],
+    "unchanged_imports": ["AllowanceLib.sol"],
+    "source_path": "contracts/facade/Facet.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "MULTI-FILE. Changed Facet imports byte-identical AllowanceLib carrying the Reserve-shape approve-reset idiom (3 same-key .approve calls, middle in try/catch). Rule 5 currently phantom-fires on the unchanged library via DESIGN-L2 + R5-L1 and mis-attributes to Facet.sol. EXPECTED: quiet after the RC-1 (loop-side file-scope filter) fix. Locks CAUSE 1 for Rule 5."
+  },
+  {
+    "id": "DL2-r2b-P",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "DL2-r2b-P",
+    "changed_files": ["before.sol", "after.sol"],
+    "unchanged_imports": ["Registry.sol"],
+    "source_path": "contracts/vault/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "MULTI-FILE. Changed Vault imports byte-identical Registry utility. CEI regression is in Vault (balances write moves after hook.notify; nonReentrant unchanged; balances read in own require). Currently: FIRE. EXPECTED: FIRE (regression-lock — RC-1 file-scope filter must not over-suppress the fire on a declaration inside the changed file). Locks CAUSE 1 for Rule 2b (positive-only; a currently-firing 2b DESIGN-L2 phantom is not producible today, see case.json notes)."
+  },
+  {
+    "id": "R5L1-N",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "R5-L1",
+    "path": "R5L1-N",
+    "changed_files": ["before.sol", "after.sol"],
+    "source_path": "contracts/Approver.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "SINGLE-FILE. Approver.safeApproveFallbackToMax with three same-key .approve calls (middle in try/catch), unchanged between commits (only VERSION differs). Currently: FIRE (R5-L1 key collapse). EXPECTED: quiet after RC-2 (injective per-site key). Locks CAUSE 2."
+  },
+  {
+    "id": "R5L1-P",
+    "rule": 5,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "R5L1-P",
+    "changed_files": ["before.sol", "after.sol"],
+    "source_path": "contracts/Approver.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "SINGLE-FILE. Same three-call approve-reset structure; at N the middle site's try/catch is genuinely REMOVED (all three calls bare). Genuine Rule 5 try/catch-removal. EXPECTED: FIRE — the RC-2 injective-key fix must still catch the real removal on the middle site. Paired with R5L1-N."
+  },
+  {
+    "id": "R2B-SPELL-N",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": "RC-4",
+    "path": "R2B-SPELL-N",
+    "changed_files": ["before.sol", "after.sol"],
+    "source_path": "contracts/spells/EnableAssets.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "SINGLE-FILE. Governance-only enableAssets loops over assets, writes supported[a] moved after external hook.onEnable at N; supported[a] also read in loop-skip conditional (if (supported[a]) continue). Mirrors Reserve's Upgrade4_2_0.castSpell. Currently: FIRE. EXPECTED: quiet after either the admin-exclusion or own_guard_state_reads-tightening fix. Locks CAUSE 3 (mechanism to be selected at GATE 3 with hand-check of the real castSpell)."
+  },
+  {
+    "id": "R2B-SPELL-P",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "R2B-SPELL-P",
+    "changed_files": ["before.sol", "after.sol"],
+    "source_path": "contracts/vault/PayoutVault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "SINGLE-FILE. Non-admin claim(), owed[msg.sender] guarded by proper require(amt > 0), balance write moves after hook.onClaim at N (nonReentrant unchanged). Genuine CEI re-entrancy exploit. EXPECTED: FIRE — the CAUSE-3 fix (whichever direction) must not blind this. Paired with R2B-SPELL-N."
+  }
+]

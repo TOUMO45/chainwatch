@@ -1,0 +1,11 @@
+{
+  "id": "R5L1-N",
+  "rule": 5,
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "R5-L1",
+  "changed_files": ["before.sol", "after.sol"],
+  "source_path": "contracts/Approver.sol",
+  "description": "Single-file negative for RC-2 (Rule 5's within-commit key non-injectivity). Approver.safeApproveFallbackToMax has three .approve() calls that share the (kind, dest, method) key: two bare, one inside try/catch. The function's approval logic is byte-identical across the commit (the only source diff is VERSION 1 -> 2). Rule 5 currently fires because before_checked collapses to the in-try record and both unchecked after-records match it as 'try/catch removed'. The RC-2 fix makes the within-commit key injective (position-suffixed within the function's iteration order), so the two unchecked sites in after.sol have keys that never appear in before_checked, and the middle in-try site's key still matches its counterpart (still in try) — no fire.",
+  "why_labeled": "There is no try/catch removal, no return-check removal, and no other Rule 5 trigger between the two commits. The approve-reset idiom is a fixed pattern the Reserve codebase uses; a rule that reports it as a regression on any repo that imports it is a false alarm. Paired with R5L1-P below — a genuine try/catch removal on the middle site of the same idiom — so the RC-2 fix cannot pass by simply silencing the whole shape."
+}

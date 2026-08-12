@@ -1,0 +1,12 @@
+{
+  "id": "DL2-r5",
+  "rule": 5,
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "DESIGN-L2",
+  "changed_files": ["before.sol", "after.sol"],
+  "unchanged_imports": ["AllowanceLib.sol"],
+  "source_path": "contracts/facade/Facet.sol",
+  "description": "Multi-file negative for DESIGN-L2. Facet (before.sol/after.sol) is the changed file; the ONLY diff between the two is VERSION (1 -> 2). AllowanceLib.sol carries the Reserve-shape approve-reset idiom: three .approve() calls on the same destination with the middle site inside try/catch. The library is byte-identical in both commits; the change is confined to Facet. Under DESIGN-L2 (and while R5-L1 remains) Rule 5's closure walk hits AllowanceLib.safeApproveFallbackToMax on both sides, its three records collapse to one key with checked=[F,T,F], the retained checked record has in_try=True, and every unchecked after-record fires. The fire is then attributed to Facet.sol — a phantom regression the commit did not introduce.",
+  "why_labeled": "The Rule 5 signal 'try/catch removed' MUST be sourced from a file that actually changed in this commit. AllowanceLib is byte-identical between the two compilations; nothing about its behaviour changed. Any fire on this pair is therefore a mis-attribution — the RC-1 (DESIGN-L2) fix must suppress it. This case cannot be expressed by any single-file fixture: closure iteration is what makes an unchanged imported file visible to the rule at all."
+}

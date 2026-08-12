@@ -1,0 +1,11 @@
+{
+  "id": "R2B-SPELL-P",
+  "rule": 2,
+  "sub_rule": "2b",
+  "label": "positive",
+  "exclusion_ref": null,
+  "changed_files": ["before.sol", "after.sol"],
+  "source_path": "contracts/vault/PayoutVault.sol",
+  "description": "Single-file positive paired with R2B-SPELL-N. PayoutVault.claim is anyone-callable, guarded by a real require(amt > 0) on `owed[msg.sender]`. At N-1 the `owed -= amt` write precedes the hook.onClaim call; at N it moves to after the call, while the nonReentrant mutex status is unchanged. This is a textbook CEI regression — a hook that re-enters claim() sees stale owed and can drain the vault. Rule 2b must still FIRE after the CAUSE-3 fix, whether the fix takes the admin-exclusion path or the tighten-own_guard_state_reads path.",
+  "why_labeled": "RULES.md Rule 2b trigger: state write to a variable the function READS moved from before-every-call (N-1) to after-a-call (N), with mutex status unchanged. The variable is read by the function's own require guard, so a re-entrant call reads stale state and bypasses the check. The guard here is a genuine revert-based access gate (unlike SPELL-N's loop-skip continue), and the caller is untrusted (no onlyOwner), so both discriminators the CAUSE-3 fix might key on preserve this fire. If a fix silences this pair, it has over-suppressed."
+}

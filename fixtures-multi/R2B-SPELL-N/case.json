@@ -1,0 +1,12 @@
+{
+  "id": "R2B-SPELL-N",
+  "rule": 2,
+  "sub_rule": "2b",
+  "label": "negative",
+  "exclusion_ref": "RC-4",
+  "changed_files": ["before.sol", "after.sol"],
+  "source_path": "contracts/spells/EnableAssets.sol",
+  "description": "Single-file negative for CAUSE 3 (Rule 2b false-fire on Upgrade4_2_0.castSpell class). SpellVault.enableAssets is a governance-only, msg.sender=owner-gated function that iterates a list of assets, calls out per-asset, and writes supported[asset]=true. Between N-1 and N the write is moved from before to after the external call. supported is also read in a loop-skip conditional (if (supported[a]) continue) which is currently accepted as an own_guard_state_reads member, so Rule 2b fires today. Two plausible fix directions (to be decided at GATE 3 with hand-check of the real castSpell): (a) exclude one-shot admin-guarded functions from Rule 2b's re-entry analysis, or (b) tighten own_guard_state_reads so a loop-skip / continue-conditional is not treated as a re-entry guard. Either fix takes this pair to QUIET.",
+  "why_labeled": "A caller with msg.sender=owner is by construction the only re-entry vector, and re-entering from the same owner into the same function does not exploit the ordering — the RULES.md 2b threat model presumes a hostile external caller who can slip back in during the callback. The `if (supported[a]) continue;` conditional does not gate access to the state-changing path (it just skips work), so a stale read does not enable extra state changes. Paired with R2B-SPELL-P below (a genuine CEI break on a non-admin function with a proper require-guard) so no fix can pass by silencing the whole 'write after call' shape.",
+  "notes": "Provisional posture. Phase 1 catalog explicitly flagged this class as needing hand-check of the real Upgrade4_2_0.castSpell. The fixture reproduces the mechanically-observed pattern (admin-only + loop-skip conditional + write-after-call). If Phase 3 hand-check concludes the real castSpell is a TRUE positive (option c: real regression, RULES.md 5.3-style severity concern rather than an FP), this fixture's label may flip to `candidate` or the case may be retired in favor of a genuine spell-exclusion negative shape."
+}

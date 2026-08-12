@@ -1,0 +1,11 @@
+{
+  "id": "R5L1-P",
+  "rule": 5,
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "changed_files": ["before.sol", "after.sol"],
+  "source_path": "contracts/Approver.sol",
+  "description": "Single-file positive paired with R5L1-N. Same three-call approve-reset structure at N-1; at N the middle site's try/catch is genuinely removed, so all three calls are bare. This is a legitimate Rule 5 try/catch-removal fire. With injective site-keys (RC-2 fix), the middle site's key at N-1 (in_try=True, checked=True) matches only the middle site at N (unchecked, no longer in_try) — FIRE. Sites 0 and 2 keep their own keys on both sides and stay unchecked / not in_try — no fire from them, no spurious matching with the middle record.",
+  "why_labeled": "The middle .approve() call was isolated by try/catch at N-1 and is bare at N: a distinct RULES.md Rule 5 trigger ('try/catch around an external call removed'). If the RC-2 fix passes by suppressing the entire three-call shape, this fixture MISSES the genuine removal. Precision-first tie-break: the fix must preserve the try/catch removal signal per-site, not blanket-quiet the idiom."
+}
