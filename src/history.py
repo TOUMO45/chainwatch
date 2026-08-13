@@ -82,8 +82,37 @@ def sol_commits(repo, limit: int, pathspec: str = "**/*.sol") -> list[str]:
 
 
 def commit_pairs(shas: list[str]) -> list[tuple[str, str]]:
-    """[(N-1, N)] consecutive pairs from a newest-first commit list."""
+    """DEPRECATED — pairs consecutive members of a filtered commit list, which
+    are not necessarily git parent and child. When the previous filter step
+    dropped a commit's true git parent (e.g. `git log -- **/*.sol` skips a
+    commit that touched no .sol), this returns (older_ancestor, cur) instead of
+    (parent, cur). Kept for backward compatibility with a scratch script only;
+    new callers must use `sol_commit_pairs`.
+    """
     return [(shas[i + 1], shas[i]) for i in range(len(shas) - 1)]
+
+
+def sol_commit_pairs(repo, limit: int, pathspec: str = "**/*.sol") -> list[tuple[str, str]]:
+    """[(first_parent, cur)] for each commit that touches `pathspec`, newest first.
+
+    Fixes the mispairing in `commit_pairs`: each analysed commit is paired with
+    its ACTUAL git first parent, not the previous member of a filter-narrowed
+    list. `%P` on `git log` gives all parents; the first is the mainline
+    predecessor (git's `--first-parent` convention on a merge). The `.sol` diff
+    between (first_parent, cur) matches (older_ancestor, cur) for linear history
+    that touched no .sol in between; on merges or when the intervening tree
+    changed the build environment, first-parent is the correct N-1 side.
+
+    A root commit (no parent) is skipped: no comparable N-1 side exists.
+    """
+    out = _git(repo, "log", "--format=%H %P", f"-{limit}", "--", pathspec)
+    pairs: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue  # root commit
+        pairs.append((parts[1], parts[0]))
+    return pairs
 
 
 def changed_sol(repo, prev: str, cur: str, root: str = "") -> dict:
