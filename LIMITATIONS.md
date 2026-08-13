@@ -145,6 +145,73 @@ recall 1.00 on `fixtures-r6/` (9 cases):
 | 6-L1 | **6.4 — a type change makes the check redundant** (e.g. a parameter narrowed `uint256` → `uint8` that bounds a range). Not implemented and no fixture exercises it, so a guard removed alongside such a narrowing would currently fire as a **false positive**. Deliberately deferred: shipping an untested exclusion trades an FP for a silent FN. Build the fixture first, then the logic. Tracked in TODO.md. | **[FP risk]** |
 | 6-L2 | **6.6 — enforced by the type system or a validated struct at the call boundary.** Same posture as 6-L1: not implemented, no fixture, fixture-first before logic. Tracked in TODO.md. | **[FP risk]** |
 
+### RC-OZ5-R6 — Rule 6 false-positives on OZ5 assembly-assigned namespace pointers
+
+**Type: FALSE POSITIVE. Rule 6. HIGH real-world exposure — 2026 OZ 5.x is
+default. LATENT (surfaced by fixture, not yet by a real repo).**
+
+Rule 6 fires when a removed guard's condition reads an ERC-7201 namespace
+storage pointer (`$`, assigned via `assembly { $.slot := ... }`) even when the
+condition is provably parameter-independent. Slither's
+`is_dependent(local, param, contract)` returns spurious True for a local
+storage pointer assigned inside an inline-assembly block, and Rule 6's
+`_param_guarded_names` accepts that as evidence the guard depended on the
+parameter. Removing a parameter-INDEPENDENT rate-limit guard
+(`block.timestamp` + `$.namespacedStateMember`) then reads as a param-
+validation regression the commit never introduced.
+
+**Evidence, measured.** On `fixtures-ext/negative/N3b-ratelimit-oz5`:
+
+```
+--- before.sol: RateLimited.rotateGuardian(address) ---
+  guarded params (Rule 6 thinks): {'newGuardian'}
+    node EXPRESSION: require(bool,string)(block.timestamp >= $.lastRotation + ROTATION_COOLDOWN, ...)
+      hits: [('$', 'LocalVariable')]
+--- after.sol ---
+  guarded params (Rule 6 thinks): set()
+```
+
+The require reads `block.timestamp` (`SolidityVariable`) and `$.lastRotation`
+(a struct member reached through a storage pointer). `newGuardian` never
+appears in the guard's read set. Yet
+`is_dependent($, newGuardian, RateLimited)` is True, so Rule 6 counts
+`newGuardian` as guarded at N-1 and unguarded at N -> FIRE. The OZ 4 sibling
+`fixtures-ext/negative/N3b-ratelimit-oz4` — same rate-limit shape, but
+`lastRotation` is a plain declared state variable, not routed through an
+assembly-assigned local — stays quiet. The Rule 6 error is confined to the
+OZ 5 storage-pointer indirection; the rule's OZ 4 behaviour is unaffected.
+
+**Not a documented deferral.** No entry in this file or in TODO.md previously
+recorded this class. `fixtures-ext/negative/N3b-ratelimit-oz5/case.json`
+declares neither `also_fires` nor `known_unsupported` for Rule 6; the fixture
+was built to test Rule 3b's rate-limit discriminator, and its silence on Rule 6
+was the intended, currently-broken behaviour.
+
+**Scope, honestly.**
+- OZ 5-only, and only on functions whose guard condition dereferences an
+  assembly-assigned namespace pointer local. Any OZ 5 project using ERC-7201
+  namespaced storage in its own contracts (the default pattern in OZ 5.x) is
+  exposed.
+- LATENT: no real-repo hit has been measured. Monetrix ran under OZ 4 mode
+  (see 3x-L2 / 3c-oz5-realworld-gap); the Reserve trajectory slice did not
+  touch this pattern. But 2026 OZ 5.x is default, and rate-limit guards on
+  namespaced state are a common shape, so this WILL fire on a real OZ 5 repo
+  as soon as one is analysed.
+
+**Fix direction (not implemented — Phase-3 STEP 5, after Reserve fixes).**
+The rule must verify a REAL data path from the guard's condition to the
+parameter, not accept Slither's over-approximation on assembly-assigned
+locals. The simplest tightening: require the parameter (or a direct-storage
+read of a state variable the parameter was written into) to appear in the
+guard's transitive read set BEFORE the `is_dependent` fallback runs; treat a
+sole hit through an assembly-assigned local as inconclusive. A dedicated
+`fixtures-r6-oz5/` set is a prerequisite: a negative whose removed guard is
+verifiably parameter-independent through a namespace pointer (this current
+shape) AND a paired positive whose guard genuinely reads the parameter
+through the same pointer (so the fix cannot pass by blanket-silencing the
+namespace-pointer shape). `N3b-ratelimit-oz5` must not double as that
+fixture — it exists to test Rule 3b, not to lock a Rule 6 exclusion.
+
 ---
 
 ## Cross-rule — applies to 3a, 3b and 3c alike

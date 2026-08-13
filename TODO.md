@@ -1,5 +1,38 @@
 # Deferred (documented in LIMITATIONS.md, not yet fixed)
 
+## Phase 3 (Reserve FP loop) — remaining steps
+
+- [ ] **STEP 5 — RC-OZ5-R6: fix Rule 6 false-fire on OZ5 assembly-assigned
+      namespace pointers.** Ordered AFTER Reserve STEPS 2/3/4 (DESIGN-L2,
+      RC-2 R5-L1, RC-4 Rule 2b castSpell class), because it does not touch
+      the same rules or the walker. Mechanism, evidence and fix direction
+      recorded in LIMITATIONS.md under `RC-OZ5-R6`. Prerequisites:
+      - Build a dedicated `fixtures-r6-oz5/` set FIRST (fixtures-first
+        discipline).
+        - **Negative:** function whose removed guard reads only
+          `block.timestamp` and a namespaced state member reached via an
+          assembly-assigned `$` pointer, verifiably parameter-INDEPENDENT.
+          Expected: quiet after the fix (currently fires).
+        - **Paired positive:** function whose removed guard genuinely reads
+          the parameter through the same namespace-pointer indirection.
+          Expected: fires both before and after the fix, so the fix cannot
+          pass by blanket-silencing the namespace-pointer shape.
+      - Do NOT rely on `fixtures-ext/negative/N3b-ratelimit-oz5` doubling
+        as this fixture — it was built to test Rule 3b's rate-limit
+        discriminator and is scored under Rule 3b, not Rule 6.
+      - Fix in `rule6.py` (and possibly `_shared`'s data-dependency helper):
+        require a real read path from the guard's condition to the parameter
+        (the parameter itself, or a direct-storage read of a state variable
+        the parameter was written into) before accepting Slither's
+        `is_dependent` verdict; treat a sole hit through an assembly-assigned
+        local as inconclusive.
+      - Verify: fixtures-r6-oz5 goes negative→quiet / positive→fires; all
+        frozen fixture sets (including `fixtures-r6` and OZ 4 rate-limit
+        fixture `fixtures-ext/N3b-ratelimit-oz4`) still 1.00 / 1.00; the
+        pre-existing `fixtures-ext/N3b-ratelimit-oz5` Rule 6 fire clears.
+
+## Older deferred items
+
 - [ ] 3a-L2 — widen Rule 3a trigger from "constraint removed" to "caller set
       widened." Needs fixture: onlyOwner → require(msg.sender == mutablePublicVar).
       Real regression shape, currently invisible.
