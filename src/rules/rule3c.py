@@ -28,7 +28,7 @@ from pathlib import Path
 
 from slither.slithir.operations import LowLevelCall, NewContract
 
-from ._shared import defines_init_machinery, is_test_path, parse
+from ._shared import accept_finding, defines_init_machinery, is_test_path, parse
 from ._storage import (
     keyed_entries,
     namespaced_struct_layouts,
@@ -182,6 +182,10 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             if _namespaced_collision(
                 ns_layouts_b.get(cname, {}), ns_layouts_a.get(cname, {})
             ):
+                # DESIGN-L2: only attribute to a contract declared in a file
+                # actually changed in this commit.
+                if not accept_finding(contract_a, case_meta):
+                    continue
                 return True
             continue
 
@@ -203,6 +207,10 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                 end_a = int(entry_a["slot"]) + slot_span(entry_a, layout_a["types"])
                 if end_b == end_a:
                     continue
+            # DESIGN-L2: only attribute to a contract declared in a file
+            # actually changed in this commit.
+            if not accept_finding(contract_a, case_meta):
+                continue
 
             return True
     return False

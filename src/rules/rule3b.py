@@ -36,6 +36,7 @@ from pathlib import Path
 from slither.core.declarations import Function
 
 from ._shared import (
+    accept_finding,
     access_control_state_vars,
     constrains_msg_sender,
     declared_in_repo,
@@ -147,6 +148,10 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                     continue
                 if not _externally_reachable(fn_a, contract_a):
                     continue  # 3b.3
+                # DESIGN-L2: only attribute to a declaration in a file actually
+                # changed in this commit.
+                if not accept_finding(fn_a, case_meta):
+                    continue
                 return True
 
     # --- Trigger 2: constructor's _disableInitializers() removed.
@@ -163,6 +168,10 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
         if _constructor_disables_init(contract_b) and not _constructor_disables_init(
             contract_a
         ):
+            # DESIGN-L2: only attribute to a contract declared in a file
+            # actually changed in this commit.
+            if not accept_finding(contract_a, case_meta):
+                continue
             return True
 
     return False

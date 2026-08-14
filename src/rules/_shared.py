@@ -197,6 +197,62 @@ def declared_in_repo(fn: Function) -> bool:
     return "node_modules" not in decl
 
 
+def accept_finding(decl, case_meta) -> bool:
+    """DESIGN-L2 attribution guard: is `decl` declared in a file that ACTUALLY
+    changed in this commit? Returns True (accept fire) or False (suppress
+    phantom).
+
+    Rules iterate `slither_obj.contracts_derived`, which includes every contract
+    from every compiled source — including transitively-imported files that are
+    byte-identical between N-1 and N. A within-commit non-injectivity (e.g.
+    R5-L1) can then manufacture a phantom fire on unchanged imported code and
+    mis-attribute it to the changed file Slither was called on. This predicate
+    is the one universal filter: a rule that would fire on `decl` first asks
+    here whether `decl`'s file is in the commit's changed set; if not, the fire
+    is suppressed.
+
+    Backward compatibility: single-file frozen fixtures do not carry a
+    `changed_files` scope. Absence means "unscoped — accept everything", so
+    those fixtures' verdicts are unchanged. A trajectory walker MUST populate
+    `case_meta["changed_files"]` with the pair's repo-relative modified paths
+    (from `changed_sol()`); a multi-file fixture MUST list its own changed
+    files (typically `["before.sol", "after.sol"]`, since those are the pair
+    the scorer parses).
+
+    `decl` may be a Function (uses its `contract_declarer`) or a Contract
+    (uses its own `source_mapping`). Matching is by absolute-path suffix,
+    normalising Windows backslashes, so:
+      - a trajectory `changed_files = {"contracts/facade/facets/ActFacet.sol"}`
+        matches an absolute path ending in that suffix,
+      - a fixture `changed_files = ["before.sol", "after.sol"]` matches the
+        basename of a per-fixture path.
+    Substring-in-path is deliberately NOT used — it re-introduces the 3x-L1
+    class of silent false negatives.
+    """
+    if not isinstance(case_meta, dict):
+        return True
+    scope = case_meta.get("changed_files")
+    if not scope:
+        return True
+
+    # Resolve to the file that DECLARES this contract/function.
+    from slither.core.declarations import Contract as _Contract
+    if isinstance(decl, Function):
+        src_obj = decl.contract_declarer
+    elif isinstance(decl, _Contract):
+        src_obj = decl
+    else:
+        # Unknown declaration type — precision-first: pass through rather than
+        # over-suppress a fire whose attribution we can't reason about.
+        return True
+    decl_path = str(src_obj.source_mapping.filename.absolute).replace("\\", "/")
+    for p in scope:
+        p_norm = str(p).replace("\\", "/")
+        if decl_path == p_norm or decl_path.endswith("/" + p_norm):
+            return True
+    return False
+
+
 def reachable(fn: Function) -> list:
     """fn + its modifiers + transitively-called internal/library functions."""
     seen: list = []

@@ -51,6 +51,7 @@ from slither.analyses.data_dependency.data_dependency import is_dependent
 from slither.core.declarations import Function
 
 from ._shared import (
+    accept_finding,
     external_call_return_taint,
     guard_checks_call_return,
     guard_nodes,
@@ -138,6 +139,10 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
         # DESIGN-L1: diff by parameter NAME (strings from two separate
         # compilations), never by Slither object identity.
         if guarded_b - guarded_a:
+            # DESIGN-L2: only attribute to a declaration in a file actually
+            # changed in this commit.
+            if not accept_finding(fn_a, case_meta):
+                continue
             return True
 
     return False

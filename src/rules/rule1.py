@@ -34,6 +34,7 @@ from pathlib import Path
 from slither.core.declarations import Function
 
 from ._shared import (
+    accept_finding,
     constrains_msg_sender,
     declared_in_repo,
     has_init_guard,
@@ -164,6 +165,11 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             continue
         # Exclusion 1.3: no longer externally reachable at N.
         if not _externally_reachable(fn_a, contract_a):
+            continue
+        # DESIGN-L2: only attribute a fire to a declaration in a file actually
+        # changed in this commit (unchanged imported files are not regressions
+        # this commit introduced).
+        if not accept_finding(fn_a, case_meta):
             continue
 
         return True

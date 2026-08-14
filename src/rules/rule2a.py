@@ -46,7 +46,7 @@ from ._cfg import (
     own_guard_state_reads,
     state_writes_after_calls,
 )
-from ._shared import declared_in_repo, is_test_path_segments, parse
+from ._shared import accept_finding, declared_in_repo, is_test_path_segments, parse
 
 RULE_ID = "2a"
 
@@ -130,6 +130,12 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         # a CONFIRMED direct reentrancy and a CANDIDATE read-only reentrancy.
         writes_after = state_writes_after_calls(fn_a)
         own_guard_vars = own_guard_state_reads(fn_a)
+
+        # DESIGN-L2: only attribute a fire to a declaration in a file actually
+        # changed in this commit (unchanged imported files are not regressions
+        # this commit introduced).
+        if not accept_finding(fn_a, case_meta):
+            continue
 
         # Directly reentrant: a variable this function checks in its OWN guard is
         # written after the call, so a re-entrant call bypasses the check.

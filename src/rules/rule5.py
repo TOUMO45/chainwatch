@@ -63,6 +63,7 @@ from slither.slithir.variables import Constant
 
 from ._shared import (
     ERC20_RETURN_FNS,
+    accept_finding,
     external_call_return_taint,
     guard_checks_call_return,
     is_test_path_segments,
@@ -216,6 +217,12 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         if key not in after_map:
             continue
         fn_a, _ca = after_map[key]
+
+        # DESIGN-L2: only attribute a fire to a declaration in a file actually
+        # changed in this commit. Applied before the per-call loop so no
+        # confirmed / candidate flag is set from an unchanged imported file.
+        if not accept_finding(fn_a, case_meta):
+            continue
 
         brecs = _call_records(fn_b)
         arecs = _call_records(fn_a)

@@ -27,7 +27,7 @@ Exclusions handled:
 
 from pathlib import Path
 
-from ._shared import constrains_msg_sender, declared_in_repo, is_test_path, parse
+from ._shared import accept_finding, constrains_msg_sender, declared_in_repo, is_test_path, parse
 
 RULE_ID = "3a"
 
@@ -79,6 +79,10 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             continue
         fn_a, contract_a = targets_after[key]
         if not constrains_msg_sender(fn_a, contract_a):
+            # DESIGN-L2: only attribute to a declaration in a file actually
+            # changed in this commit.
+            if not accept_finding(fn_a, case_meta):
+                continue
             # Constrained at N-1, unconstrained at N. Any remaining msg.sender
             # check (e.g. an inline timelock require, exclusion 3a.1) would
             # have kept constrains_msg_sender True.

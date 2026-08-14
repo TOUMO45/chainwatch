@@ -51,7 +51,7 @@ from ._cfg import (
     own_guard_state_reads,
     state_writes_after_calls,
 )
-from ._shared import is_test_path_segments, parse
+from ._shared import accept_finding, is_test_path_segments, parse
 from .rule2a import _candidate_map, _reads_by_repo_view
 
 RULE_ID = "2b"
@@ -102,6 +102,11 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         if not moved:
             # No write crossed the call between commits. Covers N2b-02 (already
             # after the call at N-1, so present in both sets and cancelled).
+            continue
+
+        # DESIGN-L2: only attribute a fire to a declaration in a file actually
+        # changed in this commit.
+        if not accept_finding(fn_a, case_meta):
             continue
 
         # Directly reentrant: a variable this function checks in its OWN guard is
