@@ -48,7 +48,9 @@ positive for a silent false negative. Tracked for when a fixture exists.
 from pathlib import Path
 
 from slither.analyses.data_dependency.data_dependency import is_dependent
-from slither.core.declarations import Function
+from slither.core.declarations import Function, Structure
+from slither.core.solidity_types import UserDefinedType
+from slither.core.variables.local_variable import LocalVariable
 
 from ._shared import (
     accept_finding,
@@ -63,6 +65,29 @@ from ._shared import (
 from .rule1 import _candidate_map, _writes_state_or_moves_value
 
 RULE_ID = "6"
+
+
+def _is_storage_struct_pointer_local(v) -> bool:
+    """True iff `v` is a local storage pointer to a struct — the ERC-7201
+    namespaced-storage `$` shape (assigned via `assembly { $.slot := SLOT }`).
+
+    RC-OZ5-R6 (LIMITATIONS.md): Slither's `is_dependent(local_ptr, param,
+    contract)` over-approximates to True for such locals, so a rate-limit
+    guard that reads only `block.timestamp` + `$.namespacedMember` is falsely
+    treated as parameter-validating. This predicate gates the `is_dependent`
+    fallback in `_param_guarded_names` so a sole hit through a storage-struct
+    pointer is not counted; a direct read of the parameter (or of a plain
+    state variable) is unaffected and still counts.
+
+    Rule-6-specific: no other rule feeds parameters into `is_dependent`
+    today. If one does, promote to `_shared.py` at that point.
+    """
+    if not isinstance(v, LocalVariable):
+        return False
+    if not getattr(v, "is_storage", False):
+        return False
+    vtype = getattr(v, "type", None)
+    return isinstance(vtype, UserDefinedType) and isinstance(vtype.type, Structure)
 
 
 def _param_guarded_names(fn: Function, contract) -> set:
@@ -94,12 +119,25 @@ def _param_guarded_names(fn: Function, contract) -> set:
             for p in params:
                 if p.name in guarded:
                     continue
-                # Direct read of the parameter, or any read value data-dependent
-                # on it (covers modifier args, downstream call args, and a state
-                # var the parameter was just written into - e.g. the set-once
-                # `require(vault == address(0))` after `vault = _vault`).
-                if any((v == p) or is_dependent(v, p, contract) for v in reads):
+                # Direct read of the parameter always counts.
+                if any(v == p for v in reads):
                     guarded.add(p.name)
+                    continue
+                # Fallback: any read data-dependent on the parameter (covers
+                # modifier args, downstream call args, and a state var the
+                # parameter was just written into - e.g. the set-once
+                # `require(vault == address(0))` after `vault = _vault`).
+                # RC-OZ5-R6: an is_dependent hit through a storage-struct
+                # pointer local (ERC-7201 `$`) is a Slither over-approximation
+                # and is NOT accepted on its own — such a local must be paired
+                # with a real read path (the parameter itself, or a plain
+                # state variable that is_dependent trusts).
+                for v in reads:
+                    if _is_storage_struct_pointer_local(v):
+                        continue
+                    if is_dependent(v, p, contract):
+                        guarded.add(p.name)
+                        break
     return guarded
 
 
