@@ -132,6 +132,7 @@ def _call_records(fn) -> list:
     guard_nodes = list(_guard_nodes_all(fn))
 
     records = []
+    pos = 0  # RC-2: per-site ordinal within fn's own external-call iteration order.
     for node in fn.nodes:
         in_try = node.type == NodeType.TRY
         for ir in node.irs:
@@ -166,7 +167,7 @@ def _call_records(fn) -> list:
 
             records.append(
                 {
-                    "key": (kind if kind != "high" else "high", dest_key, str(fname)),
+                    "key": (kind if kind != "high" else "high", dest_key, str(fname), pos),
                     "kind": kind,
                     "checked": checked_by_return or in_try,
                     "in_try": in_try,
@@ -174,6 +175,7 @@ def _call_records(fn) -> list:
                     "trusted": trusted,
                 }
             )
+            pos += 1
     return records
 
 
