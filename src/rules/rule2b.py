@@ -45,16 +45,49 @@ exercises that shape.
 
 from pathlib import Path
 
+from slither.core.variables.state_variable import StateVariable
+from slither.slithir.operations import Binary, BinaryType
+
 from ._cfg import (
     has_external_call,
     has_setclear_mutex,
     own_guard_state_reads,
     state_writes_after_calls,
 )
-from ._shared import accept_finding, is_test_path_segments, parse
+from ._shared import MSG_SENDER, accept_finding, guard_nodes, is_test_path_segments, parse, reachable
 from .rule2a import _candidate_map, _reads_by_repo_view
 
 RULE_ID = "2b"
+
+_ADMIN_CMP_OPS = (BinaryType.EQUAL, BinaryType.NOT_EQUAL)
+
+
+def _admin_gated_by_state_addr(fn) -> bool:
+    """True iff fn's reachable scope contains a msg.sender vs state-address
+    equality gate — a require/if that admits only the caller stored in a state
+    variable (owner, admin, role holder). Distinguishes admin gates from
+    balance/allowance checks that merely INDEX with msg.sender (owed[msg.sender]
+    > 0), because in the latter msg.sender is inside an Index op and not a
+    direct operand of the equality Binary.
+
+    RC-4 (CAUSE 3, Rule 2b): the 2b threat model is a hostile external caller
+    who re-enters during a callback (docstring above). A function callable only
+    by a trusted admin address has no such caller — the admin is the sole
+    re-entry vector, and re-entering from the same admin does not exploit the
+    ordering. Suppress direct-reentrancy fires on admin-gated functions; the
+    read-only-reentrancy (2.10) and later paths are unaffected.
+    """
+    for f in reachable(fn):
+        for node in guard_nodes(f):
+            for ir in node.irs:
+                if not isinstance(ir, Binary) or ir.type not in _ADMIN_CMP_OPS:
+                    continue
+                reads = list(getattr(ir, "read", []))
+                has_sender = any(r == MSG_SENDER for r in reads)
+                has_state = any(isinstance(r, StateVariable) for r in reads)
+                if has_sender and has_state:
+                    return True
+    return False
 
 
 def run(before_path: Path, after_path: Path, case_meta: dict):
@@ -111,8 +144,10 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
 
         # Directly reentrant: a variable this function checks in its OWN guard is
         # now written after the call, so a re-entrant call reads stale state and
-        # bypasses the check (P2b-01, P2b-02).
-        if moved & own_guard_state_reads(fn_a):
+        # bypasses the check (P2b-01, P2b-02). RC-4: skip when the function is
+        # admin-gated by a msg.sender==state-address check — the caller set is
+        # narrowed to a trusted admin, so re-entry is not an attacker vector.
+        if moved & own_guard_state_reads(fn_a) and not _admin_gated_by_state_addr(fn_a):
             return True
 
         # 2.10 read-only reentrancy: the moved writes are not what guards this
