@@ -1,0 +1,10 @@
+{
+  "id": "N6-oz5-01",
+  "rule": 6,
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": "RC-OZ5-R6",
+  "source_path": "contracts/RateLimited.sol",
+  "description": "OZ5 ERC-7201 namespaced-storage negative for RC-OZ5-R6 (Rule 6 false-fire on assembly-assigned namespace pointers). rotateGuardian(address newGuardian) has a rate-limit require that reads block.timestamp + $.lastRotation only; newGuardian is never in the guard's variables_read. Slither's is_dependent($, newGuardian, contract) returns spuriously True because $ was assigned inside an inline-assembly block, and Rule 6's _param_guarded_names accepts that as evidence the guard depended on newGuardian. Currently FIRES; must be QUIET after the fix that requires a real read path from the guard's condition to the parameter before accepting the is_dependent verdict on assembly-assigned locals. Not paired with any positive here (see P6-oz5-01), so a fix that blanket-silences the namespace-pointer shape would pass this pair alone -- the positive is the guard against that.",
+  "why_labeled": "Removing a rate-limit gate on how often a config change may occur is not a RULES.md Rule 6 input-validation regression. The removed require read no function parameter; it read block.timestamp and a namespaced state member. Rule 6 owns the class 'guard on a function parameter removed', and no such guard was removed here. This mirrors the currently-broken behaviour on fixtures-ext/negative/N3b-ratelimit-oz5 (LIMITATIONS.md RC-OZ5-R6) with a minimal single-contract reproduction stripped of the OZ Initializable/UUPS/Ownable inheritance the sibling fixture carries for Rule 3b coverage."
+}
