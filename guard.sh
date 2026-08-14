@@ -15,7 +15,7 @@ HASH_FILE=".guard-hashes"
 
 protected_paths() {
     {
-        find fixtures -type f ! -path "*node_modules*" -print
+        find fixtures fixtures-* -type f ! -path "*node_modules*" -print
         echo "scorer.py"
     } | sed 's|\\|/|g; s|^\./||' | LC_ALL=C sort
 }
