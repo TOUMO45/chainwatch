@@ -16,12 +16,46 @@ Three states. Only one of them is ever shown as a finding.
 | Verdict | Condition | Action |
 |---|---|---|
 | **DISCARDED** | any exclusion in the rule's exclusion set matched | silently logged, never surfaced, never sent to LLM |
-| **CANDIDATE** | trigger matched, no exclusion matched, liveness not yet confirmed | logged for review, **not** a finding, **not** sent to LLM |
-| **CONFIRMED** | CANDIDATE + all required evidence present + liveness = LIVE | finding. Only this state reaches the LLM report layer. |
+| **CANDIDATE** | trigger matched, no exclusion matched, liveness not yet confirmed | logged for review, **not** a finding. Reaches the LLM report layer **only** through the constrained CANDIDATE template — see the amendment below |
+| **CONFIRMED** | CANDIDATE + all required evidence present + liveness = LIVE | finding. Only this state reaches the LLM's full disclosure template. |
 
-**Hard rule:** the LLM never sees CANDIDATE or DISCARDED. If it never sees a
-non-finding, it can never write a convincing report about one. This is the entire
-false-positive defence — architectural, not probabilistic.
+**Hard rule (original, superseded in part — retained verbatim for provenance):**
+
+> the LLM never sees CANDIDATE or DISCARDED. If it never sees a non-finding, it
+> can never write a convincing report about one. This is the entire
+> false-positive defence — architectural, not probabilistic.
+
+**AMENDMENT (2026-08-15, human-approved). Amended hard rule, verbatim:**
+
+> The LLM never sees a **DISCARDED** verdict, and never sees raw rule output. It
+> may see a **CANDIDATE** only through a template that is structurally incapable
+> of asserting a vulnerability: for a CANDIDATE the document's thesis is *"this
+> did not meet the bar, and here is precisely which evidence is missing."*
+
+**What "structurally incapable" means here, and it is not a prompt
+instruction.** The verdict framing is a **template wrapper the model's prose is
+injected into**, never text the model is asked to produce or preserve. For a
+CANDIDATE the renderer emits a hardcoded header — `NOT CONFIRMED — missing
+evidence: {missing_fields}` — and the model contributes only named prose slots
+inside that skeleton. The model cannot override, omit, or reword the framing,
+because it never authors it. The CANDIDATE skeleton additionally has **no
+severity and no impact section to fill**, so there is no slot in which
+"confirmed" or "exploitable" language could legitimately land. This is the same
+discipline as fact-slots in `draft_report`: facts come from code, narrative
+comes from the model, and the model is never the thing standing between a
+non-finding and an overclaim.
+
+**Why the original rule's purpose survives.** Its stated purpose is that the
+model can never write *a convincing vulnerability report about a non-finding*.
+A template that can only produce a "not confirmed, here is the missing
+evidence" dossier preserves that purpose exactly, while making the honest
+negative case reportable — which is itself a product capability, not a
+concession.
+
+**Implementing spec:** `AGENT-DESIGN.md` §3 (tool `draft_report`, the
+verdict-dispatched output table) and §2 (the five structural properties of the
+agent boundary). Any change to the CANDIDATE template's framing is a change to
+this rule and belongs here first.
 
 **Precision-first tie-break:** when a rule is uncertain between CANDIDATE and
 DISCARDED, it discards. You will miss real bugs this way. That is the correct

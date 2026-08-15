@@ -68,7 +68,26 @@ Five properties, each enforced structurally rather than by prompt:
    the Architectural Discipline point** — an agent that could disclose would be
    a worse product, not a more impressive one.
 
-### ⚠ Unresolved conflict the human must settle
+### RESOLVED — amendment approved 2026-08-15
+
+The conflict recorded below was settled: the amendment was approved **with a
+structural requirement**, and the amended rule now lives verbatim in
+**RULES.md** (the authoritative file), which cites this document as the
+implementing spec. The requirement, restated because it constrains tool 4:
+
+> The CANDIDATE framing is a **template wrapper the model's prose is injected
+> into**, never an instruction the model is asked to follow. The renderer emits
+> a hardcoded `NOT CONFIRMED — missing evidence: {missing_fields}` header; the
+> model contributes only named prose slots inside it. The CANDIDATE skeleton has
+> **no severity and no impact section**, so there is no slot in which
+> "confirmed" or "exploitable" language could land.
+
+`verify_report` (tool 5) gains a corresponding mechanical check: for a CANDIDATE
+draft, assert the hardcoded header is present and unmodified, and assert no
+severity/impact section was invented. A draft failing either is rejected the
+same way a hallucinated commit hash is.
+
+### ⚠ The conflict as originally raised (retained for provenance)
 
 RULES.md states a **hard rule**: *"the LLM never sees CANDIDATE or DISCARDED.
 If it never sees a non-finding, it can never write a convincing report about
