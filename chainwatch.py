@@ -31,6 +31,11 @@ from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 from src import verdict as V  # noqa: E402
 
 
+# Anything git can clone from. `file://` is included so the clone path itself
+# is testable without a network round trip.
+CLONE_SCHEMES = ("http://", "https://", "git@", "ssh://", "git://", "file://")
+
+
 def clone(url: str, dest: Path) -> Path:
     """Full-history read-only clone. Depth is NOT truncated: trajectory is the
     product, and a shallow clone has no trajectory."""
@@ -147,7 +152,7 @@ def main() -> int:
     args = ap.parse_args()
 
     repo = args.repo
-    if repo.startswith(("http://", "https://", "git@")):
+    if repo.startswith(CLONE_SCHEMES):
         repo = clone(repo, Path(tempfile.gettempdir()) / "chainwatch-clones")
     repo = Path(repo).resolve()
     if not (repo / ".git").exists():

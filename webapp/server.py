@@ -47,6 +47,8 @@ from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 STATIC = Path(__file__).resolve().parent / "static"
 CLONES = ROOT / ".webapp-clones"
 
+from chainwatch import CLONE_SCHEMES  # noqa: E402  (one definition, two callers)
+
 app = FastAPI(title="Chainwatch", docs_url=None, redoc_url=None)
 
 
@@ -133,7 +135,7 @@ def _run_job(job: Job, req: ScanRequest) -> None:
     with _RUN_LOCK:
         try:
             repo = req.repo.strip()
-            if repo.startswith(("http://", "https://", "git@")):
+            if repo.startswith(CLONE_SCHEMES):
                 path = _clone(repo, job)
             else:
                 path = Path(repo).expanduser()
