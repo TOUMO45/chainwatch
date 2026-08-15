@@ -203,6 +203,34 @@ enum-typed state variable, so no fixture could express the bug.
 
 **Live confirmation.** Reserve pair `cef2f655..7f65c030` (FP5), which fired
 Rule 3c before the fix, is quiet after it — all 9 rules quiet, zero errors.
+Independently re-derived from the retained walker artifacts: `.walker-out.json`
+(pre-fix) records `3c FIRED  cef2f655..7f65c030  contracts/p1/AssetRegistry.sol`,
+and `.walker-out-v3.json` (post-fix, same four pairs) records no Rule 3c fire at
+all. That also settles a question WALK-L2 raised: Rule 3c's solc invocation was
+working on this file, so RC-AST1 is provably independent of any
+compiler-invocation problem.
+
+**RETROACTIVE FIXTURE VALIDATION (2026-08-15).** The project's standing rule is
+fixtures before code, and for this finding that ordering could NOT be proven
+after the fact: the fixture and the fix arrived in one uncommitted working tree
+with no intermediate commits, and the code files' mtimes were later overwritten.
+Rather than assert compliance, the discriminating property was measured
+directly — `fixtures-r3c-ast1` was run against the **pre-fix** `_storage.py` and
+`rule3c.py` (restored from `fa0d214`) in a throwaway `git worktree`:
+
+```
+PRE-FIX                                    POST-FIX (HEAD)
+  [3c] N3c-ast1-01  got=FIRE  ** WRONG **    [3c] N3c-ast1-01  got=quiet  OK
+  [3c] P3c-ast1-01  got=FIRE  OK             [3c] P3c-ast1-01  got=FIRE   OK
+  [3c] P3c-ast1-02  got=FIRE  OK             [3c] P3c-ast1-02  got=FIRE   OK
+  3c  TP 2  FP 1  precision 0.67  FAIL       3c  TP 2  FP 0  precision 1.00  OK
+```
+
+This establishes what actually matters about a locking fixture, which is not its
+timestamp: the negative reproduces a genuine pre-existing false positive on the
+unfixed code, and both positives fire on BOTH sides, so the fix cannot have
+passed by blanket-silencing the contract-typed-state shape. Strict temporal
+ordering remains unprovable and is recorded as unprovable.
 
 ---
 
@@ -806,39 +834,67 @@ the walker has been shown to distinguish the commits it claims to compare.
 
 ---
 
-### WALK-L2 — Rule 3c ran solc in the WRONG DIRECTORY, and reported it as a pragma problem
+### WALK-L2 — Rule 3c's solc invocation resolves paths against the WRONG ROOT
 
-**Type: TOTAL COVERAGE LOSS for one rule in trajectory mode. Was 42/42 errors on
-the Reserve window. FIXED (PHASE 6).**
+**Type: LATENT correctness hazard in trajectory mode. NOT DEMONSTRATED — no run
+in this project has ever triggered it. Hardened in PHASE 6.**
+
+> **STATUS CORRECTION (recorded, not silently rewritten).** The first version of
+> this section was headed "ran solc in the WRONG DIRECTORY", typed as "TOTAL
+> COVERAGE LOSS … was 42/42 errors on the Reserve window", and closed as FIXED
+> on a before/after of "42/42 errors -> 0 errors". **All three of those claims
+> are retracted.** The 42/42 figure was inherited from a pre-existing TODO.md
+> entry describing a different, larger run (HIST-L1's 29-pair window) and was
+> paired with a 4-pair, 8-file PHASE 6 measurement — two different workloads.
+> The retained analysis below is a code reading, not a reproduction.
 
 `_storage._run_layout` invoked solc with `cwd=ROOT` and `--allow-paths .`, where
-`ROOT` is *Chainwatch's own* repository root. That is correct for the fixture
-scorer, whose files live inside this repo, and wrong for every trajectory run,
-whose files live in a scratch worktree of some other repository. The layout
-extraction therefore ran with the wrong current directory, could not read the
-target's sources under `--allow-paths`, and failed on every file.
+`ROOT` is *Chainwatch's own* repository root rather than the checkout that owns
+the file being compiled. For the fixture scorer that is correct, since fixtures
+live inside this repo.
 
-**What makes this worth writing down is the misdiagnosis, not the bug.** The
-failure was originally recorded in TODO.md as "`_storage.py` does not honor the
-walker's `SOLC_VERSION`, falls back to ambient 0.7.6". That reading was wrong in
-its mechanism and right in its symptom: `SOLC_VERSION` *was* being inherited
-(`env = dict(os.environ)` copies it), but the first invocation failed for the
-directory reason above, which dropped execution into the installed-version retry
-loop, which tried every solc on the box — and the error text the human saw came
-from whichever one happened to run last. A wrong compiler version is a plausible,
-self-consistent story for that output, and it survived a review because nobody
-re-derived it from the actual `subprocess` call.
+**Why it never fired.** The scratch worktrees live at
+`<chainwatch>/.walker-worktrees/…` — *inside* `ROOT`. So `--allow-paths ROOT`
+covered them, `src.is_relative_to(ROOT)` held, and the relative path solc
+received resolved correctly. The defect is real in the code but unreachable in
+every configuration this project has actually run. It becomes reachable the
+moment a worktree, a clone, or a dependency tree lives outside the Chainwatch
+root — which is a supported thing to ask for (`--worktrees`), and is why the
+hardening was kept rather than reverted.
 
-The lesson generalises past this file: **when a fallback path exists, the error
-you are shown is the fallback's error, not the original one.** Any diagnosis
-drawn from it describes the last thing that was tried, not the thing that broke.
-A retry loop that swallows the first failure is a diagnostic hazard even when it
-is a correctness feature.
+**What the artifacts actually show.** `.walker-out.json` / `-v2` / `-v3` (the
+4-pair Reserve window) record **6 errored comparisons for every one of the nine
+rules** — 3 Curve\* files x 2 pairs. Identical across rules means the cause is
+shared, not Rule 3c-specific: it is the repo-root-relative import failure
+(HIST-L1 residual, fixed separately in `derive_remaps`). On that same window
+Rule 3c completed its other 12 comparisons and fired correctly on FP5, which is
+direct evidence that its solc invocation was working.
 
-**Fix.** `_root_and_remaps(src)` resolves which registered checkout owns a file;
-solc then runs in that checkout with `--allow-paths <that root>`. Measured after
-the fix on a live 4-pair Reserve walk: 8/8 file comparisons, **0 rule errors**,
-Rule 3c included — from 42/42 errors before.
+**The misdiagnosis is still the most useful part of this entry.** The failure
+was originally recorded as "`_storage.py` does not honor the walker's
+`SOLC_VERSION`, falls back to ambient 0.7.6". `SOLC_VERSION` *is* inherited
+(`env = dict(os.environ)` copies it), so that mechanism was wrong — but the
+replacement mechanism proposed here was then asserted with the same confidence
+and the same absence of a reproduction. Two successive plausible stories, neither
+measured. The generalisable lesson stands and now cuts both ways:
+
+- **When a fallback path exists, the error you are shown is the fallback's
+  error, not the original one.** A retry loop that swallows the first failure is
+  a diagnostic hazard even when it is a correctness feature.
+- **A root cause is not established until the failing workload is re-run.**
+  Replacing one unreproduced explanation with another is not progress.
+
+**Hardening applied (not a fix for an observed failure).** `_root_and_remaps(src)`
+resolves which registered checkout owns a file; solc then runs in that checkout
+with `--allow-paths <that root>`. Verified non-regressive: all 14 frozen sets
+produce identical per-rule TP/FP/FN afterwards, and a live 4-pair Reserve walk
+gives 8/8 comparisons with 0 rule errors — an improvement attributable to the
+`derive_remaps` self-mapping fix, since that is what those 6 errors were.
+
+**To close this properly**, re-run the workload the 42/42 figure came from and
+capture Rule 3c's per-comparison error text; and add a case that puts a worktree
+OUTSIDE the Chainwatch root, which is the configuration under which this defect
+would actually bite. Tracked in TODO.md.
 
 ---
 

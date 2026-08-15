@@ -10,8 +10,21 @@ What shipped, each with the command whose raw output was read:
 | attribution contract | `pytest tests/test_attribution.py` | 14/14 — every fire attributable, every quiet rule silent |
 | verdict model | `pytest tests/test_verdict.py` | 11/11 |
 | real repo, 0 FP | `pytest tests/test_realworld_reserve.py` | **3/3 in 18m** — 4/4 pairs analysed, five fixed FPs quiet, the one true positive still fires |
-| Rule 3c in trajectory mode | live Reserve walk | **42/42 errors -> 0 errors** |
+| trajectory-mode file comparisons | live Reserve walk, 4 pairs | 8/8 comparisons OK, **0 rule errors** (was 6 errored comparisons per rule on the same window, all 3 Curve\* root-relative-import files — see the correction note below) |
 | end-to-end product path | web app on a seeded repo | 2/2 regressions found, attributed to function + line + commit, verdicts correct |
+| RC-AST1 fixture is genuine | `fixtures-r3c-ast1` against **pre-fix** `_storage.py`/`rule3c.py` in a throwaway worktree | pre-fix **FAIL**, precision 0.67 (`N3c-ast1-01` fires); post-fix **PASS**, precision 1.00 |
+
+**CORRECTION (recorded, not quietly edited).** An earlier version of this table
+claimed "Rule 3c in trajectory mode: 42/42 errors -> 0 errors". That pairing was
+wrong and is retracted. The 42/42 figure is a pre-existing entry describing a
+DIFFERENT, larger run — HIST-L1's 29-pair / 46-file-comparison window — and it
+was paired with a 4-pair, 8-file measurement from PHASE 6, which is not the same
+workload. The measured figure for the 4-pair window is **6 errored comparisons,
+identical for all nine rules** (3 Curve\* files x 2 pairs), recorded in
+`.walker-out.json` / `-v2` / `-v3`. Those errors are the root-relative-import
+failure (HIST-L1 residual), not a Rule 3c defect: Rule 3c completed 12 of its 18
+comparisons on that window and correctly fired on FP5 before the RC-AST1 fix.
+See LIMITATIONS.md §WALK-L2 for what this means for that finding's status.
 
 New surface: `src/scan.py` (the one pipeline), `chainwatch.py` (CLI, CHARTER
 success criterion 4), `webapp/` (FastAPI + SSE + UI), `src/verdict.py` (X-L1),
@@ -179,20 +192,28 @@ frozen fixtures unaffected. Do not fix without measurement first.
       `lib/`. Emitted only when the directory is really there, so it cannot
       mask a genuinely missing dependency.
 
-- [x] `rule3c.py`'s solc invocation (`_storage.py`) does not honor walker's
+- [ ] `rule3c.py`'s solc invocation (`_storage.py`) does not honor walker's
       `SOLC_VERSION` env var, falls back to ambient PATH solc (0.7.6) instead
       of the pinned 0.8.28. Same 3 Curve* files affected. Root-cause + fix
       needed before walker is trusted on repos with mixed pragma files.
-      **ROOT-CAUSED AND FIXED (PHASE 6), and the original diagnosis was
-      incomplete.** `SOLC_VERSION` *was* being inherited (`env = dict(os.environ)`);
-      the actual defect was that `_run_layout` ran solc with `cwd` and
-      `--allow-paths` hard-coded to CHAINWATCH's own root, so a file inside a
-      scratch worktree resolved every import against the wrong tree, failed,
-      and fell into the installed-version retry loop — which is where the
-      "0.7.6 instead of 0.8.28" symptom came from. Fixed by `WALK-L2` /
-      `WALK-L3` (see LIMITATIONS.md): solc now runs in the checkout that owns
-      the file, with that checkout's own remaps. Measured: Rule 3c went from
-      42/42 errors to **0 errors** on a live Reserve walk.
+      **STILL OPEN — the PHASE 6 entry that closed this is RETRACTED.**
+      PHASE 6 rewrote the solc invocation (`_root_and_remaps`, per-checkout
+      `cwd`/`--allow-paths`/remaps — see LIMITATIONS.md §WALK-L2/§WALK-L3) and
+      claimed this item as fixed on the strength of a "42/42 errors -> 0 errors"
+      measurement. That measurement was a mispairing of two different runs and
+      has been retracted; see the correction note at the top of this file.
+      What is actually established:
+      - `SOLC_VERSION` *is* inherited (`env = dict(os.environ)` copies it), so
+        the literal wording of the original entry was wrong.
+      - The 6 errored comparisons on the 4-pair window were the root-relative
+        import failure, affecting **all nine rules identically** — not a Rule 3c
+        or solc-version problem.
+      - **No run has ever demonstrated the 0.7.6 fallback symptom on a
+        reproducible workload.** Until one does, this stays open, and the
+        original "42/42 errors" observation is unexplained rather than fixed.
+      Next step is a measurement, not a code change: re-run the HIST-L1 29-pair
+      window (the workload the 42/42 figure came from) and record Rule 3c's
+      actual per-comparison error count and error text.
 
 ## Older deferred items
 
@@ -359,15 +380,22 @@ frozen fixtures unaffected. Do not fix without measurement first.
       project root. 3 of 46 file comparisons on Reserve. Fix: emit
       `<dir>/=<root>/<dir>/` remaps for top-level source dirs in `derive_remaps`.
       **FIXED (PHASE 6)** — implemented exactly as specified above.
-- [x] Rule 3c cannot run in trajectory mode at all — 42/42 errors on the Reserve
+- [ ] Rule 3c cannot run in trajectory mode at all — 42/42 errors on the Reserve
       window. `_storage.storage_layouts` builds paths relative to THIS repo's
       root, so it cannot address a scratch worktree. Make the layout extractor
       take the project root as a parameter.
-      **FIXED (PHASE 6), see LIMITATIONS.md §WALK-L2/WALK-L3.** The extractor
-      now resolves the checkout that owns the file (registered per worktree)
-      and runs solc there with that checkout's own remaps. Measured on a live
-      4-pair Reserve walk: 8/8 file comparisons, **0 rule errors**, Rule 3c
-      included.
+      **CODE CHANGE SHIPPED, CLAIM RETRACTED.** The extractor now resolves the
+      checkout that owns the file and runs solc there with that checkout's own
+      remaps (LIMITATIONS.md §WALK-L2/§WALK-L3), and a live 4-pair Reserve walk
+      showed 8/8 file comparisons with 0 rule errors. But that does NOT close
+      this item, because **the premise was never reproduced**: on the same
+      4-pair window BEFORE the change, Rule 3c errored on 6 of 18 comparisons —
+      the same 6 every other rule failed — and fired correctly on the other 12.
+      "Cannot run at all" is not what that window shows. Either the 42/42 came
+      from a different window (most likely HIST-L1's 29-pair run) or from a
+      configuration nobody recorded. Stays open until the 42/42 workload is
+      re-run and its error text captured. See the correction note at the top of
+      this file.
 - [ ] HIST-L1 residual — `dep-gone-from-registry` was never exercised (the tested
       window is 2 months old). Older history will hit unpublished/yanked
       transitive deps; measure on a multi-year window before claiming "any repo".
