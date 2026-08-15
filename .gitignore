@@ -38,3 +38,6 @@ realworld-test/reserve-src/
 # Repositories the web app cloned to analyse. Read-only targets, reproducible
 # from the URL the user submitted.
 .webapp-clones/
+
+# Agent layer: generated reports. Reproducible from a scan report + the agent.
+reports/

@@ -1,0 +1,136 @@
+{
+  "repo": "C:/Users/E16/AppData/Local/Temp/claude/B--Desktop-Chainwatch/90aeaca6-2208-47ee-a5c9-288944d6a20a/scratchpad/demo-repo",
+  "head": "3529a59a3635a65dd93d844c66eb47e49994f4b4",
+  "address": null,
+  "summary": {
+    "findings": 2,
+    "confirmed": 0,
+    "candidates": 2,
+    "pairs_analyzed": 2,
+    "pairs_total": 2,
+    "coverage_pct": 100.0,
+    "seconds": 16.1
+  },
+  "by_rule": {
+    "1": 1,
+    "6": 1
+  },
+  "coverage": {
+    "pairs_total": 2,
+    "pairs_analyzed": 2,
+    "pairs_skipped": 0,
+    "pairs_analyzed_pct": 100.0,
+    "files_total": 2,
+    "files_ok": 2,
+    "files_error": 0,
+    "files_ok_pct": 100.0,
+    "skips": [],
+    "rule_errors": []
+  },
+  "findings": [
+    {
+      "rule_id": "1",
+      "owasp": "SC01",
+      "severity_hint": "CONFIRMED",
+      "file": "contracts/Vault.sol",
+      "contract": "Vault",
+      "function": "sweep",
+      "signature": "sweep(uint256)",
+      "line": 29,
+      "detail": "Vault.sweep(uint256) was constrained on msg.sender at commit N-1 and is not at commit N, while still writing state or moving value and remaining externally reachable",
+      "raw_evidence": {
+        "owasp": "SC01",
+        "constrained_before": true,
+        "constrained_after": false,
+        "visibility_after": "external",
+        "writes_state_after": true
+      },
+      "commit": "20a5e8e94b3822ff6874660de033eb8b02ad4016",
+      "parent": "5612755317730c3b211a48d5c754bf4002520d8f",
+      "author": "Demo",
+      "date": "2026-08-15T18:19:14+01:00",
+      "line_range": "29-29",
+      "survives_to_head": true,
+      "fixed_at": null,
+      "liveness": null,
+      "liveness_reason": "",
+      "evidence": {
+        "regression_commit": {
+          "hash": "20a5e8e94b3822ff6874660de033eb8b02ad4016",
+          "author": "Demo",
+          "date": "2026-08-15T18:19:14+01:00",
+          "line_range": "29-29"
+        },
+        "pre_state": "constrained_before=True",
+        "post_state": "constrained_after=False",
+        "reachability": "visibility=external, writes state at commit N, still present at HEAD",
+        "no_compensating_control": "rule 1 exclusion set evaluated, none matched: 1.1, 1.2, 1.3, 1.4, 1.6, 1.10, upgrade-fn deferral (unimplemented exclusions for this rule are listed in LIMITATIONS.md)",
+        "liveness": null
+      },
+      "verdict": "CANDIDATE",
+      "downgrade_reasons": [
+        "missing evidence: liveness"
+      ]
+    },
+    {
+      "rule_id": "6",
+      "owasp": "SC05",
+      "severity_hint": "CONFIRMED",
+      "file": "contracts/Vault.sol",
+      "contract": "Vault",
+      "function": "setTreasury",
+      "signature": "setTreasury(address)",
+      "line": 24,
+      "detail": "Vault.setTreasury(address) validated parameter(s) t at commit N-1 and no longer does at commit N, while still writing state or moving value",
+      "raw_evidence": {
+        "owasp": "SC05",
+        "unguarded_parameters": [
+          "t"
+        ],
+        "guarded_before": [
+          "t"
+        ],
+        "guarded_after": [],
+        "visibility_after": "external",
+        "writes_state_after": true
+      },
+      "commit": "3529a59a3635a65dd93d844c66eb47e49994f4b4",
+      "parent": "20a5e8e94b3822ff6874660de033eb8b02ad4016",
+      "author": "Demo",
+      "date": "2026-08-15T18:19:15+01:00",
+      "line_range": "24-24",
+      "survives_to_head": true,
+      "fixed_at": null,
+      "liveness": null,
+      "liveness_reason": "",
+      "evidence": {
+        "regression_commit": {
+          "hash": "3529a59a3635a65dd93d844c66eb47e49994f4b4",
+          "author": "Demo",
+          "date": "2026-08-15T18:19:15+01:00",
+          "line_range": "24-24"
+        },
+        "pre_state": "guarded_before=['t']",
+        "post_state": "guarded_after=[]",
+        "reachability": "visibility=external, writes state at commit N, still present at HEAD",
+        "no_compensating_control": "rule 6 exclusion set evaluated, none matched: 6.1, 6.2, 6.3, 6.5, 6.7, RC-OZ5-R6 pointer gate (unimplemented exclusions for this rule are listed in LIMITATIONS.md)",
+        "liveness": null
+      },
+      "verdict": "CANDIDATE",
+      "downgrade_reasons": [
+        "missing evidence: liveness"
+      ]
+    }
+  ],
+  "rule_titles": {
+    "1": "SC01 Access control removed",
+    "2a": "SC08 Reentrancy guard removed",
+    "2b": "SC08 CEI ordering broken",
+    "3a": "SC10 Upgrade authorization weakened",
+    "3b": "SC10 Initializer re-callable",
+    "3c": "SC10 Storage layout collision",
+    "4": "SC09 Overflow protection removed",
+    "5": "SC06 External call return unchecked",
+    "6": "SC05 Input validation removed"
+  }
+}
