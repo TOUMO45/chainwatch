@@ -1693,3 +1693,96 @@ directly. Concretely, before that error may be used to diagnose anything:
 the FIRST failure alongside the last and report both, e.g.
 `first attempt (ambient 0.5.17): <error>; after N fallbacks (0.7.6): <error>`.
 Cheap, and it would have prevented all three instances. Tracked in TODO.md.
+
+---
+
+### HIST-L2 — the per-commit COMPILER is never provisioned, only the dependencies
+
+**Type: SILENT COVERAGE LOSS, severe. Affects every rule. MEASURED on a 25-pair
+Reserve stress run: 5 of 72 file comparisons completed (6.9%). NOT FIXED —
+documented first, per the fixtures-and-measurement-before-code discipline.**
+
+HIST-L1 built per-commit environment reconstruction and proved it on a 29-pair
+window: node/submodule installs, cached on the resolved dependency set. That
+machinery reconstructs **dependencies**. It does not reconstruct the
+**compiler**. `detect_env` reads a `solc_pin` out of the framework config and
+`_apply_build_config` exports it as `SOLC_VERSION`, but nothing ever installs
+it, and `solc_available()` is never consulted before a run.
+
+**Why it stayed invisible until now.** Every previous trajectory measurement —
+the whole FP1–FP6 loop — ran on commits whose pragma happened to match a locally
+installed compiler (0.8.28). The stress run was the first to walk *older*
+history, and older history pins older compilers.
+
+**Evidence.** Required pragma across the 25 stress pairs' 76 file comparisons:
+
+| pragma | comparisons | installed? |
+|---|---|---|
+| `0.8.19` (exact) | 45 | **NO** |
+| `0.8.17` (exact) | 12 | **NO** |
+| `0.8.28` | 11 | yes |
+| `0.8.9` | 4 | yes |
+| `^0.8.19` | 2 | yes (caret: any 0.8.x satisfies) |
+| `^0.8.17` | 2 | yes |
+
+**57 of 76 comparisons (75%) were uncompilable purely because two compiler
+versions were absent from the box.** The resulting error is
+`Solidity version not found` from solc-select's shim, surfaced through
+`_shared._compile`'s fallback loop after every installed candidate has been
+tried and rejected — because an EXACT pin (`pragma solidity 0.8.19;`, no caret)
+cannot be satisfied by any other version, by construction. Reserve pins exactly;
+so do most audited protocols.
+
+**The result this produced, and why it is the whole point of the coverage
+invariant.** The stress run reported `findings: 0`. Taken alone that reads as
+"25 pairs across nine contract families, zero false positives" — a headline
+result. The coverage line says `files 5/72 ok`. **The run tested the
+environment layer, not the rules.** Without that line in the report this would
+have been recorded as a precision success. It is the HIST-L1 lesson recurring
+with a different cause, and it is the second time in this project that a
+confident silence turned out to be an unmeasured one.
+
+**Scope.**
+- Any repository old enough that its pinned compiler is not on the analysis box
+  — which is most repositories, since trajectory analysis is by definition about
+  the past.
+- Exact pins are the common case in audited Solidity; caret ranges degrade
+  gracefully and are the minority (4 of 76 here).
+- Independent of HIST-L1: dependencies installed correctly on 23 of 25 pairs.
+
+**Fix direction (NOT implemented).** `solc-select install <pin>` on demand
+during env reconstruction, keyed and cached like the dependency install, with
+the pin taken from the file's own pragma when the framework config does not
+declare one. Two things must be got right before writing it:
+1. **Report, do not silently succeed.** An install that fails (no network, a
+   yanked build, an unsupported platform) must produce a per-pair skip reason,
+   not a compile error 200 lines later.
+2. **Bound it.** A multi-year walk can request a dozen compilers; the run should
+   say up front which versions it will fetch and how large that is.
+A pre-flight pass that reports "this walk needs solc 0.8.17, 0.8.19 — 2 not
+installed" *before* analysing anything would have turned this 69-minute run into
+a 5-second answer.
+
+---
+
+### HIST-L3 — the install command set predates Yarn Berry
+
+**Type: COVERAGE LOSS, small and precisely located. 2 of 25 pairs. NOT FIXED.**
+
+`INSTALL_CMDS["yarn"]` tries `yarn install --immutable --mode=skip-build`, then
+falls back to `yarn install --frozen-lockfile --ignore-scripts`. Yarn 2+ (Berry)
+rejects the second outright:
+
+```
+Unknown Syntax Error: Unsupported option name ("--ignore-scripts").
+```
+
+Both stress-run skips (`feab683c..6fed5516`, `55f24458..aab30189`) are this, and
+both were correctly reported as `env-reconstruction-failed (dep-missing)` with
+the reason attached — the skip accounting worked, the command set is stale.
+Berry disables lifecycle scripts through `enableScripts: false` in `.yarnrc.yml`
+or `YARN_ENABLE_SCRIPTS=0`, not a CLI flag. **The safety property matters more
+than the convenience here**: the whole reason `--ignore-scripts` is passed is
+CHARTER rule 5 (never execute a target repo's code), so the Berry path must set
+`YARN_ENABLE_SCRIPTS=0` in the environment rather than simply dropping the flag.
+Dropping it would silently trade a skipped pair for arbitrary code execution.

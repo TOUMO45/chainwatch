@@ -440,3 +440,28 @@ frozen fixtures unaffected. Do not fix without measurement first.
       an unrelated external setter.
 - [ ] Section 1c performance profiling is still not done; the 25-pair stress run
       gives a throughput number to start from once it completes.
+
+## Open after the 25-pair stress run (Section 1b, 2026-08-15)
+
+- [ ] **HIST-L2 — provision the per-commit compiler.** `solc-select install`
+      on demand during env reconstruction, cached like the dependency install,
+      falling back to the file's own pragma when the framework config declares
+      no pin. Must report a per-pair skip reason on failure, never a compile
+      error 200 lines later. See LIMITATIONS.md §HIST-L2. **This is the single
+      highest-value open item for trajectory coverage**: it cost 57 of 76 file
+      comparisons on the stress run.
+- [ ] **Pre-flight compiler report.** Before analysing anything, print which
+      solc versions the walk will need and which are missing. Would have turned
+      a 69-minute run into a 5-second answer.
+- [ ] **HIST-L3 — Yarn Berry install path.** `--ignore-scripts` is rejected by
+      yarn 2+. Use `YARN_ENABLE_SCRIPTS=0` in the environment, NOT simply drop
+      the flag: the flag exists to satisfy CHARTER rule 5, and dropping it
+      trades a skipped pair for arbitrary code execution.
+- [ ] **Section 1b must be re-run after HIST-L2.** The current result
+      (`findings: 0`) is UNMEASURED, not clean — 5/72 comparisons completed. It
+      says nothing about false positives and must not be cited as if it did.
+- [ ] **Section 1c is not answerable from this run.** Wall clock was 4150s for
+      25 pairs, but ~93% of comparisons failed fast rather than doing work, so
+      that is not a throughput baseline for rule execution. Re-profile after
+      HIST-L2, and split the measurement into env-install / Slither-compile /
+      rule-execution before proposing any optimisation.
