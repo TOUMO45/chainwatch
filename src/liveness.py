@@ -75,6 +75,19 @@ LIVE = "LIVE"
 PATCHED = "PATCHED"
 UNKNOWN = "UNKNOWN"
 
+# Every surface that shows a LIVE verdict must show this with it (CLI, web UI,
+# any report or submission material). LIVE is a statement about BYTECODE
+# IDENTITY and nothing else. Left unqualified it is routinely read as
+# "exploitable in production right now", which is a claim this module cannot
+# make and must never imply: it does not know whether the contract holds funds,
+# whether a guard elsewhere neutralises it, whether the project deprecated it,
+# or whether anything still calls it.
+LIVE_CAVEAT = (
+    "LIVE = this exact bytecode is present on-chain at this address and is what "
+    "executes there. It does NOT mean the contract is currently reachable, "
+    "funded, or exploitable - liveness compares code, not risk."
+)
+
 # EIP-1967 standardised slots.
 EIP1967_IMPL = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
 EIP1967_BEACON = "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50"

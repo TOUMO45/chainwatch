@@ -74,6 +74,17 @@ RULE_TITLES = {
 
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
+# Imported lazily-ish: liveness pulls in web3, which a repo-only scan does not
+# need. The text itself is a constant and must match liveness.LIVE_CAVEAT.
+try:
+    from .liveness import LIVE_CAVEAT as _LIVE_CAVEAT
+except Exception:  # noqa: BLE001 - web3 absent: the caveat text still ships
+    _LIVE_CAVEAT = (
+        "LIVE = this exact bytecode is present on-chain at this address and is "
+        "what executes there. It does NOT mean the contract is currently "
+        "reachable, funded, or exploitable - liveness compares code, not risk."
+    )
+
 
 # --------------------------------------------------------------------------- git
 
@@ -443,11 +454,29 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
         V.classify(f)
 
 
-def _runtime_bytecode(root: Path, rel: str, contract: str) -> Optional[str]:
-    """`solc --bin-runtime` for one contract in a checkout. Build config only."""
+def _runtime_bytecode(root: Path, rel: str, contract: str,
+                      optimize_runs: Optional[int] = None) -> Optional[str]:
+    """`solc --bin-runtime` for one contract in a checkout. Build config only.
+
+    `optimize_runs` matters for liveness and nothing else: deployed bytecode was
+    produced with whatever optimizer setting the project used, and comparing
+    against an unoptimized build guarantees a mismatch that 11-R3 must then
+    report as UNKNOWN. Passing the project's own setting is the one cheap thing
+    that can turn an uninformative UNKNOWN into a real answer.
+    """
     remaps = H.derive_remaps(root, absolute=True)
+    # Same widening as _storage._run_layout: since WALK-L4 the dependency remaps
+    # resolve to the cache directory, which lies outside the checkout.
+    allowed = [str(root)]
+    for rm in remaps:
+        dest = rm.partition("=")[2].rstrip("/")
+        if dest and dest not in allowed:
+            allowed.append(dest)
+    cmd = ["solc", *remaps, "--allow-paths", ",".join(allowed)]
+    if optimize_runs is not None:
+        cmd += ["--optimize", "--optimize-runs", str(optimize_runs)]
     proc = subprocess.run(
-        ["solc", *remaps, "--allow-paths", str(root), "--combined-json", "bin-runtime", rel],
+        [*cmd, "--combined-json", "bin-runtime", rel],
         cwd=str(root), capture_output=True, text=True,
     )
     if proc.returncode != 0:
@@ -485,4 +514,7 @@ def _report(opts: ScanOptions, cov: Coverage, findings: list[V.Finding],
         "coverage": cov.as_dict(),
         "findings": [f.as_dict() for f in findings],
         "rule_titles": RULE_TITLES,
+        # Shipped with the report so every consumer shows the same qualification
+        # next to a LIVE verdict rather than inventing its own wording.
+        "live_caveat": _LIVE_CAVEAT,
     }

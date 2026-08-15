@@ -216,7 +216,10 @@ function render(rep) {
       <td><span class="sha">${esc((f.commit || "").slice(0, 10))}</span><br>
           <small class="muted">${esc((f.date || "").slice(0, 10))} ${esc(f.author || "")}</small></td>
       <td>${headCell(f)}</td>
-      <td>${f.liveness ? esc(f.liveness) : '<span class="muted">not checked</span>'}</td>
+      <td>${f.liveness
+            ? `<span title="${esc((REPORT && REPORT.live_caveat) || "")}">${esc(f.liveness)}${
+                f.liveness === "LIVE" ? ' <span class="muted">(code, not risk)</span>' : ""}</span>`
+            : '<span class="muted">not checked</span>'}</td>
     </tr>`).join("");
 
   [...body.querySelectorAll("tr[data-i]")].forEach((tr) =>
@@ -289,7 +292,9 @@ function openDrawer(f) {
     </div>
 
     ${f.liveness ? `<h3 class="d-h">On-chain</h3>
-      <div class="d-detail">${esc(f.liveness)} — ${esc(f.liveness_reason)}</div>` : ""}
+      <div class="d-detail">${esc(f.liveness)} — ${esc(f.liveness_reason)}</div>
+      ${f.liveness === "LIVE" ? `<div class="caveat">${esc(
+        (REPORT && REPORT.live_caveat) || "")}</div>` : ""}` : ""}
 
     <h3 class="d-h">Required evidence (all six, or it is not CONFIRMED)</h3>
     <ul class="ev">${evRows}</ul>

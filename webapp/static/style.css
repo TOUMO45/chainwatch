@@ -199,6 +199,9 @@ h3.d-h { font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
 .ev .k { width: 190px; flex: none; color: var(--dim); font: 12px var(--mono); }
 .ev .val { flex: 1; word-break: break-word; }
 
+.caveat { border-left: 3px solid var(--candidate); background: rgba(240, 180, 41, .07);
+          padding: 8px 11px; border-radius: 4px; font-size: 12px; color: var(--dim);
+          margin-top: 8px; }
 .why { border: 1px solid var(--candidate); border-radius: 6px; padding: 10px 12px;
        background: rgba(240, 180, 41, .07); }
 .why ul { margin: 6px 0 0; padding-left: 18px; }

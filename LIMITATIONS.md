@@ -1651,3 +1651,45 @@ and destroys precision. **Fixtures before code, as always.**
 `a4c48d61661ae3d8ce5aadfda6e4de27c4f07a9e`; Immunefi bugfix review
 "88mph function initialization"; six affected mainnet addresses published there.
 Chainwatch run: 1/1 pairs analysed, 8/9 rules executed, 0 findings.
+
+---
+
+## METHODOLOGY — never diagnose from an error that came through a fallback
+
+**Project-level lesson, not tied to any one finding. Three instances so far, all
+in trajectory mode, all costly.**
+
+Chainwatch has two retry loops, both deliberate and both correct as features:
+`_shared._compile` retries every installed solc when the ambient one refuses a
+file, and `_storage.storage_layouts` does the same for the layout extractor.
+Each keeps the LAST attempt's error and discards the first. So the message a
+human eventually reads describes **the last thing that was tried, not the thing
+that broke** — and it is always a plausible, self-consistent story, which is
+precisely what makes it dangerous.
+
+| # | What was reported | What was actually wrong |
+|---|---|---|
+| 1 | "`_storage.py` does not honor the walker's `SOLC_VERSION`, falls back to ambient 0.7.6" (TODO.md, pre-PHASE 6) | Never established. The 0.7.6 text was the retry loop's last candidate. |
+| 2 | WALK-L2: "Rule 3c ran solc in the wrong directory — TOTAL COVERAGE LOSS, 42/42 errors, FIXED" | Also never reproduced. A second plausible mechanism asserted with the same confidence as the first, and a 42/42 figure from a different run pasted onto a 4-pair measurement. Retracted; the defect is real in code but latent. |
+| 3 | 88mph run: "current compiler is 0.7.6" on Rule 3c, with `SOLC_VERSION=0.5.17` explicitly set | `solc 0.5.17` has no `--combined-json storage-layout` **at all** (`Invalid option to --combined-json: storage-layout`). Nothing to do with versions. The first attempt failed on an unsupported option; 0.7.6 is simply last in the candidate ranking. |
+
+Instance 2 is the worst of the three, because it was produced *while
+investigating instance 1* — the fallback fooled the same investigation twice,
+in opposite directions.
+
+**The rule, applied from here on.** An error surfaced through a retry or
+fallback path is **not evidence** until the FIRST failure has been reproduced
+directly. Concretely, before that error may be used to diagnose anything:
+
+1. Run the failing command by hand, once, with no fallback, and read *that*
+   output. In instance 3 this took one command and gave the answer immediately.
+2. If a hypothesis cannot be reproduced on demand, it is a hypothesis. Label it
+   as one in this file. Do not tick a TODO item on it.
+3. Do not carry a measurement across workloads. A count from a 29-pair run says
+   nothing about a 4-pair run, and pairing them manufactures a before/after that
+   was never observed.
+
+**Structural fix direction (not implemented).** Both retry loops should retain
+the FIRST failure alongside the last and report both, e.g.
+`first attempt (ambient 0.5.17): <error>; after N fallbacks (0.7.6): <error>`.
+Cheap, and it would have prevented all three instances. Tracked in TODO.md.

@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 from src import verdict as V  # noqa: E402
+from src import liveness as L  # noqa: E402
 
 
 # Anything git can clone from. `file://` is included so the clone path itself
@@ -129,6 +130,9 @@ def print_report(rep: dict) -> None:
                  else "undetermined"))
         if f.get("liveness"):
             print(f"      on-chain   : {f['liveness']} - {f['liveness_reason']}")
+            if f["liveness"] == V.LIVE:
+                # Never print LIVE unqualified - see liveness.LIVE_CAVEAT.
+                print(f"                   {L.LIVE_CAVEAT}")
         if f["downgrade_reasons"]:
             print("\n    WHY NOT CONFIRMED")
             for r in f["downgrade_reasons"]:

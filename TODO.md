@@ -417,3 +417,26 @@ frozen fixtures unaffected. Do not fix without measurement first.
 - [ ] HIST-L1 residual — `dep-gone-from-registry` was never exercised (the tested
       window is 2 months old). Older history will hit unpublished/yanked
       transitive deps; measure on a multi-year window before claiming "any repo".
+## Open after the 88mph measurement (2026-08-15)
+
+- [ ] **Retry loops must report the FIRST failure, not just the last.**
+      `_shared._compile` and `_storage.storage_layouts` both keep only the last
+      candidate's error, which has now produced three wrong diagnoses (see
+      LIMITATIONS.md §METHODOLOGY). Retain and report both:
+      `first attempt (<ambient>): <error>; after N fallbacks (<last>): <error>`.
+      Cheap, and it would have prevented all three.
+- [ ] **Rule 3c needs a compiler floor, reported as UNSUPPORTED not an error.**
+      `--combined-json storage-layout` does not exist below roughly solc 0.6.x;
+      on 0.5.17 the rule raises, and one raising rule marks the whole file
+      errored in the coverage accounting even when the other eight produced
+      verdicts (88mph: `files 0/1` despite 8 rules running). Detect the
+      unsupported option and return a distinct not-applicable signal.
+- [ ] **RC-RENAME1 rule** — construct-time -> run-time control migration is
+      undetectable today (LIMITATIONS.md §RC-RENAME1). Needs a NEW rule keyed on
+      the contract's external surface, and its own fixture set FIRST: positive
+      (constructor deleted, unguarded external initializer added that writes an
+      access-control state var), plus negatives for a correctly-guarded
+      constructor->initializer migration and for a contract that merely gained
+      an unrelated external setter.
+- [ ] Section 1c performance profiling is still not done; the 25-pair stress run
+      gives a throughput number to start from once it completes.
