@@ -70,8 +70,18 @@ def _run_layout(rel: str, root: Path, remaps: list[str],
     env = dict(os.environ)
     if version:
         env["SOLC_VERSION"] = version
+    # Every remap target must be readable, not just the project root: since
+    # WALK-L4 the dependency remaps point at the junction's real target, which
+    # lives in the walker's cache OUTSIDE the checkout. Without these entries
+    # solc refuses the read as a path violation.
+    allowed = [str(root)]
+    for rm in remaps:
+        _, _, dest = rm.partition("=")
+        dest = dest.rstrip("/")
+        if dest and dest not in allowed:
+            allowed.append(dest)
     return subprocess.run(
-        ["solc", *remaps, "--allow-paths", str(root), "--combined-json",
+        ["solc", *remaps, "--allow-paths", ",".join(allowed), "--combined-json",
          "storage-layout", rel],
         cwd=str(root), capture_output=True, text=True, env=env,
     )

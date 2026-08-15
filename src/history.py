@@ -380,7 +380,18 @@ def derive_remaps(root, contracts_dir: str = "", absolute: bool = False) -> list
         for base in ("node_modules", "lib"):
             pkg_dir = root / base / Path(pkg)
             if pkg_dir.is_dir():
-                target = f"{pkg_dir.as_posix()}/" if absolute else f"{base}/{pkg}/"
+                # RESOLVE THE LINK (finding WALK-L4). `install()` materialises a
+                # cached dependency set as an NTFS junction at
+                # <worktree>/node_modules, and solc's import read callback
+                # cannot traverse it on older compilers: solc 0.5.17 reports
+                # `Source "..." not found: Unknown exception in read callback`
+                # for a file that demonstrably exists, which reads like a
+                # missing dependency and silently costs the whole file. Handing
+                # solc the junction's TARGET compiles the identical sources.
+                # Only meaningful for `absolute` (a relative remap is resolved
+                # by solc against its own cwd, junction and all).
+                real = pkg_dir.resolve() if absolute else pkg_dir
+                target = f"{real.as_posix()}/" if absolute else f"{base}/{pkg}/"
                 out.append(f"{pkg}/={target}")
                 break
         else:

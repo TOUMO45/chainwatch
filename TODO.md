@@ -208,12 +208,30 @@ frozen fixtures unaffected. Do not fix without measurement first.
       - The 6 errored comparisons on the 4-pair window were the root-relative
         import failure, affecting **all nine rules identically** — not a Rule 3c
         or solc-version problem.
-      - **No run has ever demonstrated the 0.7.6 fallback symptom on a
-        reproducible workload.** Until one does, this stays open, and the
-        original "42/42 errors" observation is unexplained rather than fixed.
-      Next step is a measurement, not a code change: re-run the HIST-L1 29-pair
-      window (the workload the 42/42 figure came from) and record Rule 3c's
-      actual per-comparison error count and error text.
+      - **RESOLVED BY MEASUREMENT (88mph run, 2026-08-15).** The symptom is now
+        reproducible, and the mechanism is neither SOLC_VERSION propagation nor
+        a cwd problem. `solc 0.5.17 --combined-json storage-layout` returns
+        `Invalid option to --combined-json: storage-layout` — **that compiler
+        has no storage-layout output at all** (`solc --help` lists none). The
+        first attempt therefore fails for a reason that has nothing to do with
+        versions, execution falls into `solc_candidates`' retry loop, and the
+        ranking tries 0.7.6 LAST — so `proc` holds 0.7.6's pragma complaint and
+        the human is shown "current compiler is 0.7.6". **The "falls back to
+        ambient 0.7.6" report was the retry loop's last attempt, exactly as
+        WALK-L2 predicted for a different failure.** Third instance in this
+        project of a fallback impersonating a root cause.
+      - Consequence, and it is a real limitation rather than a bug: **Rule 3c
+        has a compiler floor.** It cannot run on any commit pinned below the
+        solc version that first supports `--combined-json storage-layout`. On
+        such commits it must report UNSUPPORTED, not error — today it raises,
+        which costs the whole file's coverage accounting (the 88mph run reports
+        `files 0/1` even though eight rules produced verdicts). Fix direction:
+        detect the unsupported option and return a distinct "not applicable at
+        this compiler version" signal.
+      - Still unexplained: the original **42/42** figure. This measurement does
+        not account for it (that window was solc 0.8.x, where the option
+        exists). Re-running the HIST-L1 29-pair window is still the way to
+        settle what that number described.
 
 ## Older deferred items
 

@@ -921,6 +921,52 @@ per-rule TP/FP/FN counts after the change.
 
 ---
 
+### WALK-L4 — the dependency cache's own junction is unreadable to older solc
+
+**Type: TOTAL COVERAGE LOSS, silent, MEASURED AND REPRODUCED. Affects every
+rule on any repository pinned to an older compiler. FIXED.**
+
+`install()` materialises a cached dependency set by pointing
+`<worktree>/node_modules` at `<cache>/<key>/node_modules` with an NTFS junction
+(`_link_dir`) — the optimisation that collapses 30 commits' installs into one.
+**solc's import read callback cannot traverse that junction on older
+compilers.** Measured on solc 0.5.17:
+
+```
+$ solc "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/" ... contracts/NFT.sol
+contracts/NFT.sol:3:1: Error: Source ".../node_modules/@openzeppelin/contracts/token/ERC721/ERC721Metadata.sol"
+   not found: Unknown exception in read callback.
+
+$ ls node_modules/@openzeppelin/contracts/token/ERC721/ | grep Metadata
+ERC721Metadata.sol            <-- the file is right there
+
+$ solc "@openzeppelin/contracts/=<the junction's TARGET>/" ... contracts/NFT.sol
+{"contracts":{"contracts/NFT.sol:NFT":{}, ...              <-- identical sources, compiles
+```
+
+**Why this one is nasty.** The error says *"not found"* about a file that
+exists, so it reads as a missing dependency or a botched install — i.e. it
+impersonates HIST-L1, the failure mode this project already knows about and has
+machinery for. Two full scan attempts were spent on wrong hypotheses (path
+length, then drive) before the junction was checked. Both wrong hypotheses were
+disproven by measurement, which is the only reason the real cause was reached:
+a minimal copy of the SAME sources compiled fine at a short path on `C:`, then
+at a short path on `B:`, which eliminated both.
+
+**Fix.** `derive_remaps(absolute=True)` now emits `pkg_dir.resolve()` — the
+junction's target — so solc is handed a real directory. `_run_layout` widens
+`--allow-paths` to include every remap target, because the resolved dependency
+path legitimately lies outside the checkout. Effect on the 88mph measurement:
+**8 of 9 rules went from erroring to producing verdicts.**
+
+**Scope.** Windows-specific in this form (junction), but the same shape exists
+wherever the dependency tree is reached through a link. Not observed on
+solc 0.8.x, which traverses the junction without complaint — which is exactly
+why every previous run (all 0.8.x targets) missed it, and why "it works on our
+test repo" was never evidence.
+
+---
+
 ### HIST-L1 — historical COMPILATION, not rule logic, is the coverage limit
 
 **Type: SILENT COVERAGE LOSS. HIGH priority. Affects every rule in trajectory
@@ -1510,3 +1556,98 @@ the rename case to `None` instead of `False` — which needs a rename detector
 **Do not fix this by loosening the rules' matching key.** That key is what makes
 exclusion 1.12 (whole function deleted) work, and weakening it trades a wrong
 trajectory label for a real false positive.
+
+---
+
+### RC-RENAME1 — a control that moves from CONSTRUCT-TIME to RUN-TIME is invisible
+
+**Type: FALSE NEGATIVE, structural. Affects rules 1, 2a, 2b, 3a, 3b, 5, 6 (every
+name-keyed diff rule). MEASURED on a real, publicly disclosed, exploited
+regression. NOT FIXED — scoped only.**
+
+**Naming note.** This is a NEW label, deliberately not `RC-5`. `RC-5` was the
+hypothesised "rename breaks `canonical_name` matching" mechanism, which was
+retired as a mislabel of the admin-gate class (see TODO.md). RC-RENAME1 is a
+distinct, now-observed mechanism, and reusing the retired number would repeat
+the RC-4/RC-5 confusion this file already had to untangle once.
+
+**The case.** 88mph `contracts/NFT.sol`, commit `a4c48d61661a` ("integrate
+EIP-1167 into NFT deployment"), parent `5f52a2ead702`. Public, whitehat-reported
+via Immunefi, $6.5M at risk, funds returned, contracts deprecated. The diff:
+
+```solidity
+-    constructor(string memory name, string memory symbol)
+-        public ERC721Metadata(name, symbol)
+-    {}
++    function init(address newOwner, string calldata tokenName,
++                  string calldata tokenSymbol) external {
++        _transferOwnership(newOwner);
+```
+
+A one-shot, deployer-only entry point became a permanently callable external
+function that hands over ownership. It is exactly Chainwatch's claim shape — a
+control that existed at N-1 and does not at N.
+
+**Chainwatch is completely quiet on it.** All eight rules that could run
+returned quiet (Rule 3c could not run at all — solc 0.5.17 has no
+`--combined-json storage-layout`; irrelevant here, 3c is about storage
+collisions).
+
+**Mechanism, measured rather than reasoned.** Probing both sides directly:
+
+```
+N-1  5f52a2ea    constructor(string,string)     is_constructor=True   init_guard=False
+N    a4c48d61    init(address,string,string)    is_constructor=False  init_guard=False
+                                                writes=['_owner', '_tokenName', ...]
+
+rule3b._candidate_functions, NFT only:
+  N-1: [contractURI, mint, burn, setContractURI, setTokenURI, setBaseURI]
+  N:   [init, name, symbol, contractURI, mint, burn, setContractURI, ...]
+```
+
+Two independent reasons, either sufficient on its own:
+
+1. **No counterpart to diff against.** Every diff rule matches a function across
+   commits by `(contract, name)` or `(contract, full_name)`. `init` exists only
+   at N. There is no `('NFT','init')` at N-1 that could have "lost" anything, so
+   no trigger can evaluate.
+2. **The N-1 protection is not a modifier at all.** It is the *constructor
+   mechanism itself* — one-shot and deployer-only, enforced by the EVM, not by
+   any AST node a rule inspects. `has_init_guard(constructor)` is False, and
+   constructors are filtered out of Rule 3b's candidate map entirely, so even a
+   same-named counterpart would not satisfy trigger 1's precondition.
+
+**The generalisation, which is bigger than "renames".** Chainwatch detects a
+control removed from a *surviving, same-named function*. It does not detect
+**responsibility migrating between entry points** — construct-time to run-time,
+one function to another, a modifier's job absorbed into a caller. The protection
+did not lose a guard; the protected thing moved somewhere with no guard. Every
+proxy/clone migration has this shape, which is why it matters: EIP-1167 and
+upgradeable-proxy patterns *require* replacing a constructor with an
+initializer, and that refactor is precisely where the guard gets forgotten.
+
+**Scope.**
+- Any constructor -> `init`/`initialize` migration (EIP-1167 clones, UUPS,
+  Transparent proxies). Common and deliberate, not exotic.
+- Any commit that deletes a guarded function and adds an unguarded successor
+  under a different name or signature.
+- NOT limited to Rule 3b: Rule 1 also cannot fire here, because it defers every
+  constructor to Rule 3 (`_is_rule3_territory`) and likewise finds no N-1
+  counterpart for `init`.
+
+**Fix direction (deliberately NOT implemented).** A trigger keyed on the
+*contract's external surface* rather than on per-function name matching:
+a contract that had a constructor at N-1 and at N has a state-writing external
+function that is not one-shot-guarded and writes an access-control state
+variable (here `_owner`, via `_transferOwnership`). That is a NEW rule, not a
+tweak to 3b, and it inverts the matching direction, so it needs its own fixture
+set first: a positive (this exact shape) plus at least two negatives — a
+legitimate constructor->`initializer`-guarded migration, which must stay quiet,
+and a contract that simply gained an unrelated external setter. Without those
+negatives, the obvious implementation fires on every proxy migration ever made
+and destroys precision. **Fixtures before code, as always.**
+
+**Evidence trail.** Repo `github.com/88mphapp/88mph-contracts`, commit
+`a4c48d61661ae3d8ce5aadfda6e4de27c4f07a9e`; Immunefi bugfix review
+"88mph function initialization"; six affected mainnet addresses published there.
+Chainwatch run: 1/1 pairs analysed, 8/9 rules executed, 0 findings.
