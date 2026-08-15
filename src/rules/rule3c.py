@@ -28,8 +28,15 @@ from pathlib import Path
 
 from slither.slithir.operations import LowLevelCall, NewContract
 
-from ._shared import accept_finding, defines_init_machinery, is_test_path, parse
+from ._shared import (
+    accept_finding,
+    defines_init_machinery,
+    emit,
+    is_test_path,
+    parse,
+)
 from ._storage import (
+    canonical_type,
     keyed_entries,
     namespaced_struct_layouts,
     slot_span,
@@ -136,7 +143,11 @@ def _namespaced_collision(structs_b: dict, structs_a: dict) -> bool:
             if (
                 before["slot"] != after["slot"]
                 or before["offset"] != after["offset"]
-                or before["type"] != after["type"]
+                # RC-AST1: same identity-not-raw-string rule as the OZ 4 path.
+                # These come from Slither rather than solc so they carry no
+                # astId today, but normalising both paths keeps the comparison
+                # semantics identical and stops the trap reappearing here.
+                or canonical_type(before["type"]) != canonical_type(after["type"])
             ):
                 return True
     return False
@@ -186,6 +197,18 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                 # actually changed in this commit.
                 if not accept_finding(contract_a, case_meta):
                     continue
+                emit(
+                    case_meta, RULE_ID, decl=contract_a,
+                    detail=(
+                        f"{cname}'s ERC-7201 namespaced storage struct changed member "
+                        f"layout between commits on a proxy-deployed contract: an "
+                        f"upgrade would read existing storage through shifted offsets"
+                    ),
+                    evidence={
+                        "owasp": "SC10", "mode": "erc7201-namespaced",
+                        "proxy_deployed": True,
+                    },
+                )
                 return True
             continue
 
@@ -196,7 +219,13 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                           # the variables that did survive
             same_slot = entry_b["slot"] == entry_a["slot"]
             same_offset = entry_b["offset"] == entry_a["offset"]
-            same_type = entry_b["type"] == entry_a["type"]
+            # RC-AST1: compare type IDENTITY, not solc's raw string. The raw
+            # string embeds the declaring node's astId, which renumbers on any
+            # unrelated declaration added earlier in the file, so comparing it
+            # directly reports a type change on refactors that moved no storage.
+            same_type = canonical_type(entry_b["type"]) == canonical_type(
+                entry_a["type"]
+            )
             if same_slot and same_offset and same_type:
                 continue
 
@@ -212,5 +241,21 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             if not accept_finding(contract_a, case_meta):
                 continue
 
+            emit(
+                case_meta, RULE_ID, decl=contract_a,
+                detail=(
+                    f"{cname}.{key[0]} moved in the storage layout between commits "
+                    f"(slot {entry_b['slot']}->{entry_a['slot']}, offset "
+                    f"{entry_b['offset']}->{entry_a['offset']}) on a proxy-deployed "
+                    f"contract: an upgrade would read existing storage at the wrong slot"
+                ),
+                evidence={
+                    "owasp": "SC10", "mode": "declared-layout",
+                    "variable": key[0], "proxy_deployed": True,
+                    "slot_before": entry_b["slot"], "slot_after": entry_a["slot"],
+                    "offset_before": entry_b["offset"], "offset_after": entry_a["offset"],
+                    "type_before": entry_b["type"], "type_after": entry_a["type"],
+                },
+            )
             return True
     return False

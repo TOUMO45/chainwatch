@@ -1,0 +1,26 @@
+[
+  {
+    "id": "N2b-role-01",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": "RC-ROLE",
+    "path": "negative/N2b-role-01",
+    "source_path": "contracts/spells/UpgradeSpell.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "Faithful castSpell analogue: admin gate is `acl.hasRole(OWNER_ROLE, msg.sender)` (call form, not equality). Guard-read `supported` write moves across the external hook call. Fires today because STEP 4's equality-only discriminator misses the role-check form -- the gap the PHASE 5 walker measured on Reserve 92ff272f. EXPECTED: quiet after the RC-ROLE widening. Locks RC-ROLE."
+  },
+  {
+    "id": "P2b-role-01",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P2b-role-01",
+    "source_path": "contracts/vault/ShareVault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "OVER-BROAD GUARD. Anyone-callable redeem() guarded by `shareToken.balanceOf(msg.sender) >= amount` -- a call taking msg.sender but returning uint256, not bool. Guard-read `redeemed` write moves across the hook call: a genuine cap-bypass re-entrancy. EXPECTED: fires before AND after the fix. Forces the authority test to key on bool return, not on msg.sender appearing in call arguments."
+  }
+]

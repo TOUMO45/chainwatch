@@ -46,7 +46,13 @@ from ._cfg import (
     own_guard_state_reads,
     state_writes_after_calls,
 )
-from ._shared import accept_finding, declared_in_repo, is_test_path_segments, parse
+from ._shared import (
+    accept_finding,
+    declared_in_repo,
+    emit,
+    is_test_path_segments,
+    parse,
+)
 
 RULE_ID = "2a"
 
@@ -137,9 +143,28 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         if not accept_finding(fn_a, case_meta):
             continue
 
+        moved_names = sorted(v.canonical_name for v in writes_after)
+
         # Directly reentrant: a variable this function checks in its OWN guard is
         # written after the call, so a re-entrant call bypasses the check.
         if writes_after & own_guard_vars:
+            emit(
+                case_meta, RULE_ID, decl=fn_a,
+                detail=(
+                    f"{contract_a.name}.{fn_a.full_name} lost its set/clear reentrancy "
+                    f"mutex; CEI is broken and a variable its own guard reads is "
+                    f"written after an external call"
+                ),
+                evidence={
+                    "owasp": "SC08", "mutex_before": True, "mutex_after": False,
+                    "visibility_after": fn_a.visibility,
+                    "writes_state_after": bool(writes_after),
+                    "cei_broken": True, "writes_after_call": moved_names,
+                    "bypassable_guard_vars": sorted(
+                        v.canonical_name for v in (writes_after & own_guard_vars)
+                    ),
+                },
+            )
             return True
 
         # 2.10 read-only reentrancy: the after-call writes are not what guards
@@ -147,10 +172,39 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         # outside protocol could observe inconsistent state mid-call. Cannot be
         # proven exploitable from a single repo -> CANDIDATE, never CONFIRMED.
         if _reads_by_repo_view(contract_a, writes_after):
+            emit(
+                case_meta, RULE_ID, decl=fn_a, severity="CANDIDATE",
+                detail=(
+                    f"{contract_a.name}.{fn_a.full_name} lost its reentrancy mutex; the "
+                    f"state written after the external call is not its own guard but IS "
+                    f"read by a view, so an outside protocol can observe mid-call state "
+                    f"(read-only reentrancy, not provable from this repo alone)"
+                ),
+                evidence={
+                    "owasp": "SC08", "mutex_before": True, "mutex_after": False,
+                    "visibility_after": fn_a.visibility,
+                    "writes_state_after": bool(writes_after),
+                    "cei_broken": True, "writes_after_call": moved_names,
+                    "read_only_reentrancy": True,
+                },
+            )
             return "candidate"
 
         # CEI broken with no read-only surface and no self-guard bypass: still a
         # genuine guard-removal regression.
+        emit(
+            case_meta, RULE_ID, decl=fn_a,
+            detail=(
+                f"{contract_a.name}.{fn_a.full_name} lost its set/clear reentrancy "
+                f"mutex and writes state after an external call (CEI broken)"
+            ),
+            evidence={
+                "owasp": "SC08", "mutex_before": True, "mutex_after": False,
+                "visibility_after": fn_a.visibility,
+                "writes_state_after": bool(writes_after),
+                "cei_broken": True, "writes_after_call": moved_names,
+            },
+        )
         return True
 
     return False

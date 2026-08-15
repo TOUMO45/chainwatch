@@ -383,6 +383,18 @@ def derive_remaps(root, contracts_dir: str = "", absolute: bool = False) -> list
                 target = f"{pkg_dir.as_posix()}/" if absolute else f"{base}/{pkg}/"
                 out.append(f"{pkg}/={target}")
                 break
+        else:
+            # Repo-root-relative import (`import "contracts/interfaces/IAsset.sol"`).
+            # Hardhat resolves these implicitly from the project root; bare solc
+            # does not, so the import fails as "File not found" and the whole
+            # file comparison is lost. A self-mapping to the in-repo directory
+            # is what makes bare solc agree with Hardhat. Only emitted when the
+            # directory actually exists in this checkout, so it cannot mask a
+            # genuinely missing dependency.
+            src_dir = root / Path(pkg)
+            if src_dir.is_dir():
+                target = f"{src_dir.as_posix()}/" if absolute else f"{pkg}/"
+                out.append(f"{pkg}/={target}")
     if (root / "remappings.txt").is_file():
         for line in (root / "remappings.txt").read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.strip().startswith("#"):

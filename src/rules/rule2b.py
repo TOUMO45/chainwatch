@@ -46,7 +46,14 @@ exercises that shape.
 from pathlib import Path
 
 from slither.core.variables.state_variable import StateVariable
-from slither.slithir.operations import Binary, BinaryType
+from slither.slithir.operations import (
+    Binary,
+    BinaryType,
+    HighLevelCall,
+    InternalCall,
+    LibraryCall,
+    SolidityCall,
+)
 
 from ._cfg import (
     has_external_call,
@@ -54,38 +61,95 @@ from ._cfg import (
     own_guard_state_reads,
     state_writes_after_calls,
 )
-from ._shared import MSG_SENDER, accept_finding, guard_nodes, is_test_path_segments, parse, reachable
+from ._shared import (
+    MSG_SENDER,
+    accept_finding,
+    emit,
+    guard_nodes,
+    is_test_path_segments,
+    parse,
+    reachable,
+)
 from .rule2a import _candidate_map, _reads_by_repo_view
 
 RULE_ID = "2b"
 
 _ADMIN_CMP_OPS = (BinaryType.EQUAL, BinaryType.NOT_EQUAL)
+_CALL_OPS = (HighLevelCall, InternalCall, LibraryCall, SolidityCall)
 
 
-def _admin_gated_by_state_addr(fn) -> bool:
-    """True iff fn's reachable scope contains a msg.sender vs state-address
-    equality gate — a require/if that admits only the caller stored in a state
-    variable (owner, admin, role holder). Distinguishes admin gates from
-    balance/allowance checks that merely INDEX with msg.sender (owed[msg.sender]
-    > 0), because in the latter msg.sender is inside an Index op and not a
-    direct operand of the equality Binary.
+def _returns_bool(ir) -> bool:
+    """True iff this call's sole return value is a bool - the signature of an
+    authority PREDICATE (`hasRole`, `isOperator`, `canCall`) as opposed to a
+    value LOOKUP (`balanceOf`, `allowance`) that happens to take an address."""
+    fn = getattr(ir, "function", None)
+    returns = getattr(fn, "return_type", None) if fn is not None else None
+    if not returns:
+        return False
+    return len(returns) == 1 and str(returns[0]) == "bool"
 
-    RC-4 (CAUSE 3, Rule 2b): the 2b threat model is a hostile external caller
-    who re-enters during a callback (docstring above). A function callable only
-    by a trusted admin address has no such caller — the admin is the sole
-    re-entry vector, and re-entering from the same admin does not exploit the
-    ordering. Suppress direct-reentrancy fires on admin-gated functions; the
-    read-only-reentrancy (2.10) and later paths are unaffected.
+
+def _authority_call_lvalues(fn) -> set:
+    """lvalues of calls in `fn` that ask an authority whether msg.sender may act:
+    the call takes msg.sender as an argument AND answers with a bool.
+
+    The bool requirement is load-bearing, not cosmetic. `balanceOf(msg.sender)`
+    also passes msg.sender to a call whose result reaches a guard, but it
+    constrains HOW MUCH the caller may take rather than WHETHER this caller is
+    authorised. Accepting it would silence genuine CEI regressions on ordinary
+    anyone-callable functions (fixture P2b-role-01 measures exactly that).
+    """
+    out: set = set()
+    for node in fn.nodes:
+        for ir in node.irs:
+            if not isinstance(ir, _CALL_OPS) or ir.lvalue is None:
+                continue
+            args = list(getattr(ir, "arguments", []) or [])
+            if any(a == MSG_SENDER for a in args) and _returns_bool(ir):
+                out.add(ir.lvalue)
+    return out
+
+
+def _admin_gated(fn) -> bool:
+    """True iff fn is gated on the CALLER'S AUTHORITY, in either form Solidity
+    commonly uses:
+
+      1. identity equality - `msg.sender == owner` / `!= admin`, i.e. a
+         require/if comparing msg.sender against an address held in state; or
+      2. authority predicate - `acl.hasRole(ROLE, msg.sender)`, a call taking
+         msg.sender and returning bool whose result gates the function.
+
+    RC-4 / RC-ROLE (Rule 2b): the 2b threat model is a hostile external caller
+    who re-enters during a callback (module docstring). A function only the
+    admin can enter has no such caller - the admin is the sole re-entry vector
+    and re-entering from the same admin does not exploit the ordering. Suppress
+    direct-reentrancy fires there; the read-only (2.10) path is unaffected.
+
+    Form 2 was added after the PHASE 5 walker measured Reserve's
+    Upgrade4_2_0.castSpell (commit 92ff272f) still firing: it is governance-only
+    but gates via `main.hasRole(MAIN_OWNER_ROLE, msg.sender)`, which form 1
+    cannot see. The STEP-4 fixture used the equality form and so passed while
+    the real-world case did not - a fixture-fidelity gap now locked by
+    fixtures-r2b-role/N2b-role-01.
+
+    Neither form matches a guard that merely INDEXES by msg.sender
+    (`owed[msg.sender] > 0`): there msg.sender sits inside an Index op, not as a
+    direct operand of the equality, and the looked-up value is numeric rather
+    than a bool authority verdict.
     """
     for f in reachable(fn):
+        authority = _authority_call_lvalues(f)
         for node in guard_nodes(f):
             for ir in node.irs:
-                if not isinstance(ir, Binary) or ir.type not in _ADMIN_CMP_OPS:
-                    continue
-                reads = list(getattr(ir, "read", []))
-                has_sender = any(r == MSG_SENDER for r in reads)
-                has_state = any(isinstance(r, StateVariable) for r in reads)
-                if has_sender and has_state:
+                # Form 1: msg.sender == <state address>
+                if isinstance(ir, Binary) and ir.type in _ADMIN_CMP_OPS:
+                    reads = list(getattr(ir, "read", []))
+                    if any(r == MSG_SENDER for r in reads) and any(
+                        isinstance(r, StateVariable) for r in reads
+                    ):
+                        return True
+                # Form 2: guard consumes an authority predicate's bool verdict.
+                if any(r in authority for r in getattr(ir, "read", [])):
                     return True
     return False
 
@@ -145,9 +209,30 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         # Directly reentrant: a variable this function checks in its OWN guard is
         # now written after the call, so a re-entrant call reads stale state and
         # bypasses the check (P2b-01, P2b-02). RC-4: skip when the function is
-        # admin-gated by a msg.sender==state-address check — the caller set is
-        # narrowed to a trusted admin, so re-entry is not an attacker vector.
-        if moved & own_guard_state_reads(fn_a) and not _admin_gated_by_state_addr(fn_a):
+        # admin-gated on the caller's authority (identity equality OR an
+        # authority predicate) — the caller set is narrowed to a trusted admin,
+        # so re-entry is not an attacker vector.
+        moved_names = sorted(v.canonical_name for v in moved)
+        if moved & own_guard_state_reads(fn_a) and not _admin_gated(fn_a):
+            emit(
+                case_meta, RULE_ID, decl=fn_a,
+                detail=(
+                    f"{contract_a.name}.{fn_a.full_name} moved a state write across an "
+                    f"external call between commits (CEI ordering broken); the moved "
+                    f"variable is read by this function's own guard, so re-entry reads "
+                    f"stale state and bypasses the check"
+                ),
+                evidence={
+                    "owasp": "SC08", "cei_ordering_broken": True,
+                    "visibility_after": fn_a.visibility,
+                    "writes_state_after": bool(moved),
+                    "moved_after_call": moved_names,
+                    "bypassable_guard_vars": sorted(
+                        v.canonical_name for v in (moved & own_guard_state_reads(fn_a))
+                    ),
+                    "admin_gated": False,
+                },
+            )
             return True
 
         # 2.10 read-only reentrancy: the moved writes are not what guards this
@@ -155,6 +240,21 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         # could observe inconsistent state mid-call. Not provable from one repo
         # -> CANDIDATE, never CONFIRMED (N2b-05).
         if _reads_by_repo_view(contract_a, moved):
+            emit(
+                case_meta, RULE_ID, decl=fn_a, severity="CANDIDATE",
+                detail=(
+                    f"{contract_a.name}.{fn_a.full_name} moved a state write across an "
+                    f"external call between commits; the moved state is not this "
+                    f"function's own guard but IS read by a view, so an outside protocol "
+                    f"can observe mid-call state (read-only reentrancy)"
+                ),
+                evidence={
+                    "owasp": "SC08", "cei_ordering_broken": True,
+                    "visibility_after": fn_a.visibility,
+                    "writes_state_after": bool(moved),
+                    "moved_after_call": moved_names, "read_only_reentrancy": True,
+                },
+            )
             return "candidate"
 
         # 2.9: the moved variable is not read in any exploitable re-entry path

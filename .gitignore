@@ -25,3 +25,16 @@ node_modules/
 realworld-test/oz5/
 
 realworld-test/oz5/
+
+# Trajectory walker: scratch worktrees, dependency-install cache, run output.
+# All reproducible by re-running walker.py; none of it is ground truth.
+.walker-worktrees/
+.walker-cache/
+.walker-out*.json
+
+# Real-repo clones analysed in trajectory mode (read-only targets, not ours).
+realworld-test/reserve-src/
+
+# Repositories the web app cloned to analyse. Read-only targets, reproducible
+# from the URL the user submitted.
+.webapp-clones/

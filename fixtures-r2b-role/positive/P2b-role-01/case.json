@@ -1,0 +1,10 @@
+{
+  "id": "P2b-role-01",
+  "rule": 2,
+  "sub_rule": "2b",
+  "label": "positive",
+  "exclusion_ref": null,
+  "source_path": "contracts/vault/ShareVault.sol",
+  "description": "Precision lock paired with N2b-role-01. ShareVault.redeem is callable by anyone and its first guard is `shareToken.balanceOf(msg.sender) >= amount` -- structurally a call taking msg.sender as an argument whose result reaches a guard, i.e. the SAME shape as `hasRole(ROLE, msg.sender)` except that it returns uint256 rather than bool. The `redeemed[msg.sender] += amount` write (read by this function's own cap guard) moves after the external hook.onClaim call at N, so a re-entrant hook sees stale state and can exceed the 1000-ether cap. EXPECTED: fires before AND after the RC-ROLE widening. Measured necessity: without the bool-return restriction the widened discriminator returns True here and silences this exploit.",
+  "why_labeled": "Textbook RULES.md Rule 2b CEI regression on an unguarded, anyone-callable function: a state write that this function's own require guard reads moved from before-every-call to after-a-call, with mutex status unchanged. A balance lookup is not access control -- it constrains HOW MUCH a caller may take, not WHETHER this caller is authorised -- so it must never be treated as an admin gate. This pair is what forces the RC-ROLE discriminator to key on the authority semantics (bool return) rather than on the mere presence of msg.sender in a call's arguments."
+}

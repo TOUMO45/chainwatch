@@ -80,7 +80,7 @@ from slither.slithir.operations import (
 )
 from slither.slithir.variables import Constant, ReferenceVariable, TemporaryVariable
 
-from ._shared import is_test_path_segments, parse, version_tuple
+from ._shared import emit, is_test_path_segments, parse, version_tuple
 
 RULE_ID = "4"
 
@@ -467,7 +467,24 @@ def _unprotected_arith_keys(sl, path) -> set:
     return exposed
 
 
-def _safemath_removed(before, before_path, after, after_path) -> bool:
+def _site_for_key(sl, path, keys):
+    """First (fn, node, ir) in `path`'s own code whose _arith_key is in `keys`.
+    Attribution only - the verdict is already decided by the caller."""
+    for fn, node, ir in _arith_sites(sl, path):
+        if _arith_key(fn, ir) in keys:
+            return fn, node, ir
+    return None, None, None
+
+
+def _site_for_function(sl, path, canonical_name):
+    """First (fn, node, ir) belonging to `canonical_name`. Attribution only."""
+    for fn, node, ir in _arith_sites(sl, path):
+        if fn.canonical_name == canonical_name:
+            return fn, node, ir
+    return None, None, None
+
+
+def _safemath_removed(before, before_path, after, after_path, case_meta=None) -> bool:
     """True iff a function that reached its arithmetic through a checked-arith
     library at N-1 does it in the open at N."""
     calls_before = _wrapper_calls(before, before_path)
@@ -475,11 +492,28 @@ def _safemath_removed(before, before_path, after, after_path) -> bool:
     plain_after = {fn.canonical_name for fn, _n, _ir in _arith_sites(after, after_path)}
     for name, count in calls_before.items():
         if count and calls_after.get(name, 0) == 0 and name in plain_after:
+            fn_a, node, _ir = _site_for_function(after, after_path, name)
+            emit(
+                case_meta, RULE_ID, decl=fn_a, node=node,
+                detail=(
+                    f"{name} performed its arithmetic through a checked-arithmetic "
+                    f"library at commit N-1 and performs it in the open at commit N, "
+                    f"with the pragma still below 0.8.0 (no compiler checks)"
+                ),
+                evidence={
+                    "owasp": "SC09", "trigger": "safemath-removed",
+                    "visibility_after": getattr(fn_a, "visibility", None),
+                    "writes_state_after": bool(
+                        fn_a.all_state_variables_written()) if fn_a else None,
+                    "wrapper_calls_before": count, "wrapper_calls_after": 0,
+                    "compiler_checked": False,
+                },
+            )
             return True
     return False
 
 
-def _unchecked_added(before, before_path, after, after_path) -> bool:
+def _unchecked_added(before, before_path, after, after_path, case_meta=None) -> bool:
     """Trigger C: arithmetic checked at N-1, inside `unchecked { }` at N, and
     not covered by an exclusion."""
     checked_before, unchecked_before = set(), set()
@@ -501,6 +535,20 @@ def _unchecked_added(before, before_path, after, after_path) -> bool:
         counters, guards = cache[fn.canonical_name]
         if _is_protected(node, ir, counters, guards):
             continue  # 4.1 / 4.2 / 4.3 / 4.4
+        emit(
+            case_meta, RULE_ID, decl=fn, node=node,
+            detail=(
+                f"{fn.canonical_name}: arithmetic ({str(ir.type)}) that the compiler "
+                f"checked at commit N-1 is inside an `unchecked` block at commit N, "
+                f"and no guard bounds it"
+            ),
+            evidence={
+                "owasp": "SC09", "trigger": "unchecked-block-added",
+                "visibility_after": getattr(fn, "visibility", None),
+                "writes_state_after": bool(fn.all_state_variables_written()),
+                "operation": str(ir.type), "compiler_checked": True,
+            },
+        )
         return True
     return False
 
@@ -533,7 +581,7 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
 
     # ---- Trigger B: SafeMath removed with the pragma still below 0.8.0 ----
     if not checked_before and not checked_after:
-        return _safemath_removed(before, before_path, after, after_path)
+        return _safemath_removed(before, before_path, after, after_path, case_meta)
 
     # ---- Trigger A: pragma lowered out of the checked range ---------------
     if checked_before and not checked_after:
@@ -545,12 +593,35 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
         if not exposed:
             return False
         before_keys = {_arith_key(fn, ir) for fn, _n, ir in _arith_sites(before, before_path)}
-        return bool(exposed & before_keys)
+        hit = exposed & before_keys
+        if not hit:
+            return False
+        fn_a, node, ir = _site_for_key(after, after_path, hit)
+        emit(
+            case_meta, RULE_ID, decl=fn_a, node=node,
+            detail=(
+                f"the pragma was lowered out of the compiler-checked range "
+                f"({'.'.join(map(str, floor_before))} -> "
+                f"{'.'.join(map(str, floor_after))}), exposing arithmetic in "
+                f"{fn_a.canonical_name if fn_a else 'this file'} that nothing else guards"
+            ),
+            evidence={
+                "owasp": "SC09", "trigger": "pragma-lowered",
+                "visibility_after": getattr(fn_a, "visibility", None),
+                "writes_state_after": bool(
+                    fn_a.all_state_variables_written()) if fn_a else None,
+                "pragma_before": ".".join(map(str, floor_before)),
+                "pragma_after": ".".join(map(str, floor_after)),
+                "exposed_operations": len(hit),
+                "operation": str(ir.type) if ir is not None else None,
+            },
+        )
+        return True
 
     # ---- Trigger C: unchecked{} added on >=0.8.0 --------------------------
     # Only meaningful when both commits compile with built-in checks: below
     # 0.8.0 an `unchecked` block does not exist and no arithmetic is checked.
     if checked_before and checked_after:
-        return _unchecked_added(before, before_path, after, after_path)
+        return _unchecked_added(before, before_path, after, after_path, case_meta)
 
     return False

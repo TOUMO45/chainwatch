@@ -54,6 +54,7 @@ from slither.core.variables.local_variable import LocalVariable
 
 from ._shared import (
     accept_finding,
+    emit,
     external_call_return_taint,
     guard_checks_call_return,
     guard_nodes,
@@ -181,6 +182,22 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             # changed in this commit.
             if not accept_finding(fn_a, case_meta):
                 continue
+            lost = sorted(guarded_b - guarded_a)
+            emit(
+                case_meta, RULE_ID, decl=fn_a,
+                detail=(
+                    f"{contract_a.name}.{fn_a.full_name} validated parameter(s) "
+                    f"{', '.join(lost)} at commit N-1 and no longer does at commit N, "
+                    f"while still writing state or moving value"
+                ),
+                evidence={
+                    "owasp": "SC05", "unguarded_parameters": lost,
+                    "guarded_before": sorted(guarded_b),
+                    "guarded_after": sorted(guarded_a),
+                    "visibility_after": fn_a.visibility,
+                    "writes_state_after": _writes_state_or_moves_value(fn_a),
+                },
+            )
             return True
 
     return False

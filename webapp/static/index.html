@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chainwatch</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="logo">◐</span>
+    <div>
+      <h1>Chainwatch</h1>
+      <p class="tag">Other tools report whether a contract is vulnerable now.
+         Chainwatch reports <strong>which commit made it vulnerable</strong>,
+         and whether that commit is live on-chain.</p>
+    </div>
+  </div>
+  <div class="status" id="status">idle</div>
+</header>
+
+<main>
+  <aside class="panel">
+    <h2>New scan</h2>
+    <form id="scan-form">
+      <label>Repository
+        <input name="repo" id="repo" placeholder="path/to/repo or https://github.com/org/repo"
+               value="realworld-test/reserve-src" required>
+      </label>
+      <label>Subdirectory <span class="hint">restricts the diff</span>
+        <input name="root_dir" id="root_dir" placeholder="contracts" value="contracts">
+      </label>
+      <div class="row">
+        <label>Commits
+          <input name="limit" id="limit" type="number" min="1" max="2000" value="15">
+        </label>
+        <label>Deployed address <span class="hint">optional</span>
+          <input name="address" id="address" placeholder="0x…">
+        </label>
+      </div>
+      <fieldset class="rules">
+        <legend>Rules</legend>
+        <div id="rule-boxes"></div>
+      </fieldset>
+      <label class="check">
+        <input type="checkbox" id="head_check" checked>
+        Check whether each regression survives to HEAD
+      </label>
+      <p class="hint cost">Each changed file is compiled twice (once per side)
+        with its own commit's dependencies. On a large protocol that is minutes
+        per commit — start with a small commit count.</p>
+      <div class="actions">
+        <button type="submit" id="go">Run scan</button>
+        <button type="button" id="cancel" class="ghost" disabled>Cancel</button>
+      </div>
+    </form>
+
+    <h2>Live log</h2>
+    <div id="log" class="log"></div>
+  </aside>
+
+  <section class="content">
+    <div id="coverage" class="coverage empty">
+      <div class="cov-head">Coverage</div>
+      <p class="cov-note">No scan yet. Coverage is shown before findings on purpose:
+        a quiet result over commits that were never analysed means
+        <em>unmeasured</em>, not <em>safe</em>.</p>
+    </div>
+
+    <div id="summary" class="summary"></div>
+
+    <div class="findings-wrap">
+      <table id="findings" class="findings">
+        <thead>
+          <tr>
+            <th>Verdict</th><th>Rule</th><th>Where</th>
+            <th>Regression commit</th><th>At HEAD</th><th>On-chain</th>
+          </tr>
+        </thead>
+        <tbody id="findings-body">
+          <tr class="placeholder"><td colspan="6">No findings yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-inner">
+    <button id="drawer-close" class="drawer-close" aria-label="Close">✕</button>
+    <div id="drawer-body"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

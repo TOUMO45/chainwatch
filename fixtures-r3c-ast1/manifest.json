@@ -1,0 +1,38 @@
+[
+  {
+    "id": "N3c-ast1-01",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "negative",
+    "exclusion_ref": "RC-AST1",
+    "path": "negative/N3c-ast1-01",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "Contract-typed state (IRegistry/IOracle) on a proxied UUPS Vault. At N an unrelated IPauser interface is declared ahead of them, shifting solc astIds; slots, offsets and real types unchanged. Rule 3c fires today because rule3c.py:199 compares raw solc type strings including the astId suffix. EXPECTED: quiet after the RC-AST1 fix. Locks RC-AST1."
+  },
+  {
+    "id": "P3c-ast1-01",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P3c-ast1-01",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "Same contract-typed shape as N3c-ast1-01, but `registry` genuinely changes type identity IRegistry -> IOracle at the same slot. EXPECTED: fires before AND after the RC-AST1 fix -- canonicalising the astId must not erase the type NAME. Precision pair for N3c-ast1-01."
+  },
+  {
+    "id": "P3c-ast1-02",
+    "rule": 3,
+    "sub_rule": "3c",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P3c-ast1-02",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "OVER-STRIP GUARD. Accessed fixed array `buffer` grows uint256[10] -> uint256[20] as the last storage var; only the type string differs (`t_array(t_uint256)10_storage` -> `...20_storage`), where the digits are the array LENGTH not an astId. EXPECTED: fires before AND after the fix. Forces the astId strip to target contract/struct/enum identifiers, never digits generally."
+  }
+]

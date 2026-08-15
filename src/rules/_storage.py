@@ -9,12 +9,23 @@ to the pinned solc and returns the compiler's own layout, so slot arithmetic
 import json
 import math
 import os
+import re
 import subprocess
 from pathlib import Path
 
 from ._shared import _is_namespace_pointer_function, solc_candidates
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# The directory solc runs in and resolves relative paths against. Defaults to
+# Chainwatch's own root, which is correct for the fixture scorer (fixtures live
+# inside this repo). A trajectory walker analyses files in a scratch WORKTREE of
+# some other repository, so it must point this at that checkout - otherwise solc
+# runs with the wrong cwd and the wrong --allow-paths, every import resolves
+# against Chainwatch's tree, and Rule 3c errors on every file (measured: 42/42
+# on the Reserve window). Build configuration only, never detection logic; same
+# category as REMAPPINGS.
+PROJECT_ROOT = ROOT
 
 REMAPPINGS = [
     "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
@@ -24,37 +35,80 @@ REMAPPINGS = [
 _LAYOUT_CACHE: dict[str, dict] = {}
 
 
-def _run_layout(rel: str, version: str | None = None) -> subprocess.CompletedProcess:
+def _root_and_remaps(src: Path) -> tuple[Path, list[str]]:
+    """The checkout `src` belongs to, and the remappings that checkout needs.
+
+    Mirrors `_shared.remaps_for`: a trajectory pair spans TWO worktrees, and
+    Rule 3c compiles a file from each, so neither the root nor the remap set can
+    be a single global. Falls back to PROJECT_ROOT / REMAPPINGS, which is what
+    the fixture scorer uses.
+    """
+    from ._shared import _ROOT_REMAPS
+
+    p = str(src).replace("\\", "/")
+    best: tuple[str, list[str]] | None = None
+    for root, remaps in _ROOT_REMAPS:
+        if p == root or p.startswith(root + "/"):
+            if best is None or len(root) > len(best[0]):
+                best = (root, remaps)
+    if best:
+        return Path(best[0]), list(best[1])
+    return Path(PROJECT_ROOT), list(REMAPPINGS)
+
+
+def _run_layout(rel: str, root: Path, remaps: list[str],
+                version: str | None = None) -> subprocess.CompletedProcess:
     """One `solc --combined-json storage-layout` invocation. `version` overrides
-    the compiler for this call only (build config, never detection logic)."""
+    the compiler for this call only (build config, never detection logic).
+
+    The compiler is selected the same way `_shared._compile` selects it: an
+    explicit `version`, else `SOLC_VERSION` inherited from the environment (which
+    is what a walker sets from the commit's own pin), else whatever solc-select
+    has globally selected. `--allow-paths` is the project root rather than "."
+    so an absolute remap into a sibling dependency tree is readable.
+    """
     env = dict(os.environ)
     if version:
         env["SOLC_VERSION"] = version
     return subprocess.run(
-        ["solc", *REMAPPINGS, "--allow-paths", ".", "--combined-json",
+        ["solc", *remaps, "--allow-paths", str(root), "--combined-json",
          "storage-layout", rel],
-        cwd=ROOT, capture_output=True, text=True, env=env,
+        cwd=str(root), capture_output=True, text=True, env=env,
     )
+
+
+def reset_caches() -> None:
+    """Drop the layout memo. Same cache contract as `_shared.parse`: the key is
+    the path alone, so a caller that reuses a path for different content (a
+    trajectory walker checking successive commits into one scratch worktree)
+    MUST call this after each checkout or it will re-serve the previous
+    commit's layout."""
+    _LAYOUT_CACHE.clear()
 
 
 def storage_layouts(path) -> dict:
     """{contract_name: {"storage": [entries], "types": {...}}} for contracts
     declared in `path` itself. Library contracts under node_modules are skipped:
     they are dependency code, not the repo's own layout.
+
+    CACHE CONTRACT: memoized on absolute path only - sound for static fixture
+    files, unsound for a path whose content changes in-process. See
+    `reset_caches()`.
     """
     src = Path(path).resolve()
     key = str(src)
     if key in _LAYOUT_CACHE:
         return _LAYOUT_CACHE[key]
 
-    rel = src.relative_to(ROOT).as_posix() if src.is_relative_to(ROOT) else str(src)
-    proc = _run_layout(rel)
+    root, remaps = _root_and_remaps(src)
+    rel = src.relative_to(root).as_posix() if src.is_relative_to(root) else str(src)
+    proc = _run_layout(rel, root, remaps)
     if proc.returncode != 0:
         # Build config only: the ambient compiler refused this file's pragma
         # (a pre-0.8 commit in a mixed-version fixture set). Same fallback as
         # _shared._compile - try each installed solc, keep the first that works.
         for version in solc_candidates(src):
-            proc = _run_layout(rel, version)
+            proc = _run_layout(rel, root, remaps, version)
             if proc.returncode == 0:
                 break
     if proc.returncode != 0:
@@ -78,6 +132,39 @@ def storage_layouts(path) -> dict:
         }
     _LAYOUT_CACHE[key] = out
     return out
+
+
+_AST_ID_SUFFIX = re.compile(
+    r"(t_(?:contract|struct|enum|userDefinedValueType)\([^()]*\))\d+"
+)
+
+
+def canonical_type(type_str: str) -> str:
+    """A solc layout type string with its astId suffixes removed (RC-AST1).
+
+    solc tags every user-defined type reference in `--storage-layout` with the
+    declaring node's astId: `t_contract(IMain)2141`, `t_struct(Set)1331_storage`,
+    `t_mapping(t_contract(IERC20)1005,t_contract(IAsset)2937)`. That number is a
+    source-position artifact - it renumbers whenever ANY declaration is added or
+    removed earlier in the compilation unit - so it is not stable across commits
+    and says nothing about whether the type's identity changed. Comparing raw
+    strings therefore reports a type change on ordinary refactors that moved no
+    storage at all (measured on reserve-protocol `cef2f655..7f65c030`, where
+    `t_contract(IOracle)24` at N-1 and `t_contract(IRegistry)24` at N are
+    *different* declarations wearing the same number).
+
+    This is the type-comparison analogue of the astId instability that
+    `keyed_entries` already handles for entry IDENTITY by keying positionally.
+
+    Array lengths are deliberately NOT stripped: in `t_array(t_uint256)50_storage`
+    the digits are the array's LENGTH, a real part of the layout, and collapsing
+    50 vs 49 would hide a genuine `__gap` shrink or array growth. Only
+    contract/struct/enum/UDVT identifiers carry an astId here.
+
+    Callers compare canonical forms; `slot_span` and the `types` map keep using
+    the RAW string, because the layout JSON's `types` dict is keyed by it.
+    """
+    return _AST_ID_SUFFIX.sub(r"\1", type_str or "")
 
 
 def slot_span(entry: dict, types: dict) -> int:

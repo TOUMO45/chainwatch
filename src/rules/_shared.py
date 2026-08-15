@@ -29,6 +29,43 @@ REMAPS = [
     "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/",
 ]
 
+# Per-checkout build configuration. A trajectory run analyses TWO checkouts at
+# once - the N-1 worktree and the N worktree - and they do not necessarily share
+# a dependency tree (a commit can add or drop a package). A single global REMAPS
+# list can only describe one of them, so one side would silently compile against
+# the other side's dependencies. Roots registered here win over REMAPS for any
+# file inside them, longest prefix first. The scorer registers nothing and keeps
+# using REMAPS exactly as before.
+_ROOT_REMAPS: list[tuple[str, list[str]]] = []
+
+
+def register_root(root, remaps) -> None:
+    """Bind a checkout directory to the remappings its own commit needs.
+    Re-registering a root replaces it rather than shadowing it."""
+    key = str(Path(root).resolve()).replace("\\", "/")
+    for i, (existing, _) in enumerate(_ROOT_REMAPS):
+        if existing == key:
+            _ROOT_REMAPS[i] = (key, list(remaps))
+            return
+    _ROOT_REMAPS.append((key, list(remaps)))
+
+
+def clear_roots() -> None:
+    _ROOT_REMAPS.clear()
+
+
+def remaps_for(path) -> list[str]:
+    """The remappings that apply to `path`: its registered checkout's, else the
+    global REMAPS."""
+    p = str(Path(path).resolve()).replace("\\", "/")
+    best: tuple[str, list[str]] | None = None
+    for root, remaps in _ROOT_REMAPS:
+        if p == root or p.startswith(root + "/"):
+            if best is None or len(root) > len(best[0]):
+                best = (root, remaps)
+    return list(best[1]) if best else list(REMAPS)
+
+
 MSG_SENDER = SolidityVariableComposed("msg.sender")
 
 TEST_PATH_MARKERS = ("test/", "tests/", "mock/", "mocks/", "script/", "scripts/")
@@ -123,7 +160,7 @@ def _compile(path) -> Slither:
     behaves exactly as before this fallback existed.
     """
     try:
-        return Slither(str(path), solc_remaps=REMAPS)
+        return Slither(str(path), solc_remaps=remaps_for(path))
     except Exception:
         pass
 
@@ -134,7 +171,7 @@ def _compile(path) -> Slither:
                 continue
             os.environ["SOLC_VERSION"] = version
             try:
-                return Slither(str(path), solc_remaps=REMAPS)
+                return Slither(str(path), solc_remaps=remaps_for(path))
             except Exception:
                 continue
     finally:
@@ -144,15 +181,30 @@ def _compile(path) -> Slither:
             os.environ["SOLC_VERSION"] = saved
 
     # Nothing accepted the file: re-raise the ambient compiler's own error.
-    return Slither(str(path), solc_remaps=REMAPS)
+    return Slither(str(path), solc_remaps=remaps_for(path))
 
 
 def parse(path) -> Slither:
-    """Compile+analyze a file, memoized per absolute path."""
+    """Compile+analyze a file, memoized per absolute path.
+
+    CACHE CONTRACT: the key is the path alone, so this memo is only sound while
+    a given path's CONTENT does not change within one process. That holds for
+    the scorer (fixture files are static on disk) but NOT for a trajectory
+    walker, which checks successive commits out into the same scratch worktree
+    path. Such a caller MUST call `reset_caches()` after each checkout, or it
+    will silently re-serve the previous commit's analysis for the new one.
+    """
     key = str(Path(path).resolve())
     if key not in _PARSE_CACHE:
         _PARSE_CACHE[key] = _compile(path)
     return _PARSE_CACHE[key]
+
+
+def reset_caches() -> None:
+    """Drop the parse memo. Required between commits by any caller that reuses
+    a filesystem path for different content (see the cache contract on
+    `parse`). Cheap: the next `parse` simply recompiles."""
+    _PARSE_CACHE.clear()
 
 
 def is_test_path(path: str) -> bool:
@@ -251,6 +303,86 @@ def accept_finding(decl, case_meta) -> bool:
         if decl_path == p_norm or decl_path.endswith("/" + p_norm):
             return True
     return False
+
+
+def emit(
+    case_meta,
+    rule_id: str,
+    *,
+    decl=None,
+    contract=None,
+    function=None,
+    node=None,
+    severity: str = "CONFIRMED",
+    detail: str = "",
+    evidence=None,
+) -> None:
+    """Record WHICH declaration a rule fired on, without changing what it returns.
+
+    ATTRIBUTION IS A SIDE CHANNEL, BY DESIGN. Every rule's `run()` contract stays
+    exactly `True | "candidate" | False`, so scorer.py (a guard-protected file)
+    and every frozen fixture verdict are untouched by this. A caller that wants
+    more than a boolean passes a dict as `case_meta` and reads
+    `case_meta["_findings"]` afterwards; a caller that does not, pays nothing.
+
+    The whole body is exception-swallowing on purpose: attribution is reporting
+    metadata, and a malformed source mapping must never be able to turn a fire
+    into a miss (or vice versa). If detail extraction fails, the verdict still
+    stands and the record is simply thinner.
+
+    `decl` is the Function or Contract the finding is attributed to - the same
+    object `accept_finding` was asked about, so the emitted file always agrees
+    with the DESIGN-L2 scope decision. `node` narrows the line number to a
+    specific statement when a rule knows one (Rule 4's arithmetic site).
+    """
+    try:
+        if not isinstance(case_meta, dict):
+            return
+        from slither.core.declarations import Contract as _Contract
+
+        rec: dict = {
+            "rule_id": rule_id,
+            "severity": severity,
+            "contract": contract,
+            "function": function,
+            "signature": None,
+            "file": None,
+            "line": None,
+            "detail": detail,
+            "evidence": dict(evidence or {}),
+        }
+
+        src_obj = None
+        if isinstance(decl, Function):
+            rec["function"] = function or decl.name
+            rec["signature"] = decl.full_name
+            rec["contract"] = contract or decl.contract_declarer.name
+            src_obj = decl.contract_declarer
+            rec["line"] = _first_line(decl)
+        elif isinstance(decl, _Contract):
+            rec["contract"] = contract or decl.name
+            src_obj = decl
+            rec["line"] = _first_line(decl)
+
+        if node is not None:
+            line = _first_line(node)
+            if line is not None:
+                rec["line"] = line
+
+        if src_obj is not None:
+            rec["file"] = str(src_obj.source_mapping.filename.absolute).replace("\\", "/")
+
+        case_meta.setdefault("_findings", []).append(rec)
+    except Exception:  # noqa: BLE001 - reporting must never alter a verdict
+        return
+
+
+def _first_line(obj):
+    try:
+        lines = obj.source_mapping.lines
+        return int(lines[0]) if lines else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def reachable(fn: Function) -> list:

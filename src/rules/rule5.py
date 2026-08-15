@@ -64,6 +64,7 @@ from slither.slithir.variables import Constant
 from ._shared import (
     ERC20_RETURN_FNS,
     accept_finding,
+    emit,
     external_call_return_taint,
     guard_checks_call_return,
     is_test_path_segments,
@@ -173,6 +174,11 @@ def _call_records(fn) -> list:
                     "in_try": in_try,
                     "value_bearing": getattr(ir, "call_value", None) is not None,
                     "trusted": trusted,
+                    # Attribution only (never part of `key`, so R5-L1's
+                    # within-commit injectivity is unaffected).
+                    "node": node,
+                    "dest": dest_key,
+                    "method": str(fname),
                 }
             )
             pos += 1
@@ -198,6 +204,51 @@ def _lvalue_reaches_guard(fn, lvalue, gnode) -> bool:
             if v in tainted:
                 return True
     return False
+
+
+def _dest_label(dest_key: str) -> str:
+    """Human-readable form of a destination key, for the report text only.
+
+    The key itself is never changed: its exact string is half of the
+    cross-commit call identity, and R5-L1's within-commit injectivity fix is
+    built on it. This only decides how it READS. An `other:` key means the
+    destination is a Slither temporary that resolved to no named variable, so
+    printing it leaks an internal name like `other:REF_61` and tells a reader
+    nothing; say what is actually true instead.
+    """
+    prefix, _, rest = str(dest_key).partition(":")
+    if prefix == "var":
+        return rest.rsplit(".", 1)[-1] if rest else "a variable"
+    if prefix == "sol":
+        return rest
+    if prefix == "const":
+        return f"the fixed address {rest}"
+    return "an unresolved destination"
+
+
+def _emit5(case_meta, fn_a, ar, what: str, severity: str = "CONFIRMED") -> None:
+    """One attribution record per regressed CALL SITE (Rule 5 is the only rule
+    that can legitimately find several in one function - the ordinal in `key`
+    keeps them distinct)."""
+    emit(
+        case_meta, RULE_ID, decl=fn_a, node=ar.get("node"), severity=severity,
+        detail=(
+            f"{fn_a.canonical_name}: {what} the {ar['kind']} call to "
+            f"{ar['method']}() on {_dest_label(ar['dest'])}; "
+            f"a failure now passes silently"
+        ),
+        evidence={
+            "owasp": "SC06", "call_kind": ar["kind"],
+            "destination": _dest_label(ar["dest"]),
+            "destination_key": ar["dest"],
+            "method": ar["method"], "value_bearing": ar["value_bearing"],
+            "checked_before": True, "checked_after": False,
+            "visibility_after": fn_a.visibility,
+            "writes_state_after": bool(fn_a.all_state_variables_written())
+            or ar["value_bearing"],
+            "was_in_try_catch": what.startswith("try/catch"),
+        },
+    )
 
 
 def run(before_path: Path, after_path: Path, case_meta: dict):
@@ -246,6 +297,7 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
             # try/catch removal is always CONFIRMED, regardless of call kind.
             if br["in_try"]:
                 confirmed = True
+                _emit5(case_meta, fn_a, ar, "try/catch removed around")
                 continue
             if ar["kind"] == "high":
                 continue  # generic typed call return - not a Rule 5 subject (5.5)
@@ -257,9 +309,12 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
                 or br["kind"] == "erc20"
             ):
                 confirmed = True
+                _emit5(case_meta, fn_a, ar, "return-value check removed on")
             else:
                 # No value, not ERC20: best-effort notification hook (5.3).
                 candidate = True
+                _emit5(case_meta, fn_a, ar, "return-value check removed on",
+                       severity="CANDIDATE")
 
     if confirmed:
         return True

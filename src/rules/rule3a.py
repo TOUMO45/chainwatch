@@ -27,7 +27,14 @@ Exclusions handled:
 
 from pathlib import Path
 
-from ._shared import accept_finding, constrains_msg_sender, declared_in_repo, is_test_path, parse
+from ._shared import (
+    accept_finding,
+    constrains_msg_sender,
+    declared_in_repo,
+    emit,
+    is_test_path,
+    parse,
+)
 
 RULE_ID = "3a"
 
@@ -86,5 +93,19 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             # Constrained at N-1, unconstrained at N. Any remaining msg.sender
             # check (e.g. an inline timelock require, exclusion 3a.1) would
             # have kept constrains_msg_sender True.
+            emit(
+                case_meta, RULE_ID, decl=fn_a,
+                detail=(
+                    f"upgrade-authorization function {contract_a.name}.{fn_a.name} was "
+                    f"constrained on msg.sender at commit N-1 and is not at commit N: "
+                    f"the upgrade path is open to any caller"
+                ),
+                evidence={
+                    "owasp": "SC10", "upgrade_function": fn_a.name,
+                    "constrained_before": True, "constrained_after": False,
+                    "visibility_after": fn_a.visibility,
+                    "writes_state_after": bool(fn_a.all_state_variables_written()),
+                },
+            )
             return True
     return False

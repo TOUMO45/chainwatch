@@ -1,0 +1,10 @@
+{
+  "id": "N2b-role-01",
+  "rule": 2,
+  "sub_rule": "2b",
+  "label": "negative",
+  "exclusion_ref": "RC-ROLE",
+  "source_path": "contracts/spells/UpgradeSpell.sol",
+  "description": "Faithful analogue of Reserve's Upgrade4_2_0.castSpell, locking RC-ROLE. castSpell(address) is gated by `acl.hasRole(OWNER_ROLE, msg.sender)` -- a ROLE-CHECK CALL, not a `msg.sender == owner` equality. Between N-1 and N the `supported[target] = false` write moves from before to after the external hook.onUpgrade call, so Rule 2b computes moved={supported} and supported is read by the function's own require guard -> FIRE. STEP 4's _admin_gated_by_state_addr does not match this shape (it looks for Binary EQUAL/NOT_EQUAL with msg.sender and a StateVariable as direct operands), so the suppression that R2B-SPELL-N verified never applied to the real-world form. Measured on Reserve 6481e75d..92ff272f by the PHASE 5 walker run. EXPECTED: quiet once the discriminator also treats an authority call -- one taking msg.sender as an argument and returning bool -- as an admin gate.",
+  "why_labeled": "Same threat-model reasoning as R2B-SPELL-N: RULES.md Rule 2b presumes a hostile external caller who re-enters during the callback. Every caller of this function already holds OWNER_ROLE, so the sole re-entry vector is the governance role holder itself, who gains nothing from reading a stale `supported` flag it could set directly. The ordering change is real but not attacker-exploitable. This fixture exists because STEP 4's fixture reproduced the castSpell SHAPE (admin-only + write moved across a call) without reproducing the MECHANISM that mattered (how the admin gate is expressed) -- a fixture-fidelity failure that let an unfixed real-world case pass a green gate."
+}

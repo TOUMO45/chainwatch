@@ -41,6 +41,7 @@ from ._shared import (
     constrains_msg_sender,
     declared_in_repo,
     defines_init_machinery,
+    emit,
     has_init_guard,
     is_oneshot_init_guard,
     is_test_path,
@@ -152,6 +153,22 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                 # changed in this commit.
                 if not accept_finding(fn_a, case_meta):
                     continue
+                emit(
+                    case_meta, RULE_ID, decl=fn_a,
+                    detail=(
+                        f"{cname}.{fname} set critical configuration behind a one-shot "
+                        f"initializer guard at commit N-1 and is callable without that "
+                        f"guard at commit N, on a contract that still defines "
+                        f"initializer machinery (proxy-deployed)"
+                    ),
+                    evidence={
+                        "owasp": "SC10", "trigger": "initializer-guard-removed",
+                        "init_guard_before": True, "init_guard_after": False,
+                        "proxy_deployed": True,
+                        "visibility_after": fn_a.visibility,
+                        "writes_state_after": bool(fn_a.all_state_variables_written()),
+                    },
+                )
                 return True
 
     # --- Trigger 2: constructor's _disableInitializers() removed.
@@ -172,6 +189,18 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             # actually changed in this commit.
             if not accept_finding(contract_a, case_meta):
                 continue
+            emit(
+                case_meta, RULE_ID, decl=contract_a,
+                detail=(
+                    f"{cname}'s constructor called _disableInitializers() at commit N-1 "
+                    f"and no longer does at commit N: the implementation contract can be "
+                    f"initialized directly by anyone"
+                ),
+                evidence={
+                    "owasp": "SC10", "trigger": "disableInitializers-removed",
+                    "proxy_deployed": True,
+                },
+            )
             return True
 
     return False

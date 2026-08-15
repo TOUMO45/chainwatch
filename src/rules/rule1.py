@@ -36,6 +36,7 @@ from slither.core.declarations import Function
 from ._shared import (
     accept_finding,
     constrains_msg_sender,
+    emit,
     declared_in_repo,
     has_init_guard,
     is_test_path_segments,
@@ -172,6 +173,23 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
         if not accept_finding(fn_a, case_meta):
             continue
 
+        emit(
+            case_meta,
+            RULE_ID,
+            decl=fn_a,
+            detail=(
+                f"{contract_a.name}.{fn_a.full_name} was constrained on msg.sender "
+                f"at commit N-1 and is not at commit N, while still writing state "
+                f"or moving value and remaining externally reachable"
+            ),
+            evidence={
+                "owasp": "SC01",
+                "constrained_before": True,
+                "constrained_after": False,
+                "visibility_after": fn_a.visibility,
+                "writes_state_after": _writes_state_or_moves_value(fn_a),
+            },
+        )
         return True
 
     return False

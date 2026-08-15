@@ -74,6 +74,136 @@ exact code is behind this exact proxy right now." This is a concrete reason the
 charter names capability 11 the decisive gate: without it, 3c's key exclusion
 rests on a declaration of intent rather than a deployment fact.
 
+### RC-AST1 — Rule 3c false-positive from solc astId suffixes leaking into type-string equality
+
+**Type: FALSE POSITIVE. Rule 3c. HIGH real-world exposure — any commit that
+adds or removes a declaration anywhere in a changed .sol file can trigger this
+on unrelated declarations. MEASURED on a real repository (Reserve, FP5).**
+
+Rule 3c fires when the raw slot layout is unchanged. `rule3c.py:199` compares
+storage entries with `same_type = entry_b["type"] == entry_a["type"]`, and
+`entry["type"]` is the string solc emits in `--combined-json storage-layout`
+— strings that embed solc's numeric astId as a suffix:
+`t_contract(IMain)<astId>`, `t_struct(AddressSet)<astId>_storage`,
+`t_mapping(t_contract(IERC20)<astId>,t_contract(IAsset)<astId>)`. AstIds
+renumber whenever any declaration is added or removed anywhere in the file,
+which is orthogonal to whether the referenced type's identity or the compared
+variable's slot layout actually changed. A pure function-body refactor that
+adds a few lines is enough to shift every subsequent declaration's astId and
+make every affected type string compare unequal.
+
+**Evidence, measured.** PHASE 5 walker run against `reserve-protocol/protocol`,
+pair `cef2f655..7f65c030` (FP5, `contracts/p1/AssetRegistry.sol`), post-STEP-5
+HEAD. Raw `solc --combined-json storage-layout` output for both sides,
+13 entries each, all slots / offsets / labels / gap sizes identical:
+
+```
+[0]  _initialized     slot=0   offset=0  type=t_uint8
+[1]  _initializing    slot=0   offset=1  type=t_bool
+[2]  __gap            slot=1   offset=0  type=t_array(t_uint256)50_storage
+[3]  __gap            slot=51  offset=0  type=t_array(t_uint256)50_storage
+[4]  __gap            slot=101 offset=0  type=t_array(t_uint256)50_storage
+[5]  main             slot=151 offset=0  type=t_contract(IMain)<astId>
+[6]  __gap            slot=152 offset=0  type=t_array(t_uint256)49_storage
+[7]  basketHandler    slot=201 offset=0  type=t_contract(IBasketHandler)<astId>
+[8]  backingManager   slot=202 offset=0  type=t_contract(IBackingManager)<astId>
+[9]  _erc20s          slot=203 offset=0  type=t_struct(AddressSet)<astId>_storage
+[10] assets           slot=205 offset=0  type=t_mapping(t_contract(IERC20)<astId>,t_contract(IAsset)<astId>)
+[11] lastRefresh      slot=206 offset=0  type=t_uint48
+[12] __gap            slot=207 offset=0  type=t_array(t_uint256)46_storage
+```
+
+The only differences between prev and cur (5 entries): astId suffixes shift.
+Same referenced interfaces / struct / mapping shape — the numeric label is
+what changed, not the type. Rule 3c reports a fire despite zero real layout
+change (source diff is function-body refactor: hoist `asset.erc20()` into a
+local `erc20`, pass it as a new second arg to `_register` /
+`_registerIgnoringCollisions`; adds ~11 lines to the file which shifts every
+subsequent declaration's astId).
+
+**Related but distinct from the existing astId-instability handling for
+entry keying.** `_storage.py:172-174` (`keyed_entries` docstring) already
+records the same principle:
+
+> Positional keying is required because reserved gaps all share the label
+> `__gap` across an inheritance chain, and astIds are not stable between
+> commits (adding a declaration renumbers them), so astId cannot be used to
+> match a variable to its counterpart.
+
+That fix — positional (label, nth-occurrence) keys instead of astId keys —
+covers ENTRY IDENTITY across commits. It does not extend to TYPE-STRING
+COMPARISON at `rule3c.py:199`, which still leans on the raw solc string.
+Same root cause (astIds shift on unrelated source edits), same class of
+fix (canonicalize astIds out before comparing), different consumer never
+updated to the same principle.
+
+**Scope, honestly.**
+- **Not Reserve-specific.** Any repository whose commits add or remove a
+  declaration anywhere in a changed .sol file will renumber astIds on every
+  subsequent declaration in that file. Real commits routinely change
+  declaration counts; the class of commits that do NOT (pure whitespace,
+  pure comment, or pure body-of-a-single-function edits with no local-var
+  changes) is narrow.
+- **Real-world exposure: HIGH.** Measured on the first real-repo trajectory
+  slice ever run (Reserve, FP5). Almost every non-trivial commit is a
+  candidate trigger.
+- **Confined to Rule 3c** — Rules 1/2a/2b/3a/3b/4/5/6 do not consume solc's
+  storage-layout type strings and are not affected.
+- Does not depend on OZ 4 vs OZ 5 mode; the astId-in-type-string wire format
+  is a solc-side detail present in both.
+
+**Fix direction (not implemented — pending its own step and a fixture-first
+prerequisite).** Two viable canonicalizations, either sufficient:
+
+- **String-level:** regex-strip trailing `<digits>` inside `t_contract(...)`,
+  `t_struct(...)`, `t_mapping(...)`, `t_array(...)`, and any nested position
+  before comparing. Preserves the type CATEGORY and referenced NAME, drops
+  the unstable numeric label. Cheapest, closest to the existing code shape.
+- **Structural:** for each compared entry, resolve the type string back to
+  its Slither declaration and compare `canonical_name` (which is stable
+  across compilations by DESIGN-L1's own logic). Stronger, aligns with how
+  Rules 2b/4/5 already handle cross-commit type identity, but a larger
+  refactor.
+
+Either fix must be **locked by a dedicated fixture** — a paired negative
+(same-shape declarations, an unrelated declaration added or removed
+elsewhere in the file so astIds shift, EXPECTED quiet) AND a paired
+positive (a genuine type CHANGE, e.g. `IMain` → `IERC20`, that must still
+fire after the fix). Fixture is a prerequisite: without both cases the fix
+could pass by silencing the whole shape and hide real type-change
+regressions. Tracked in TODO.md.
+
+**RESOLVED 2026-08-15.** Implemented as the string-level canonicalisation:
+`canonical_type()` in `_storage.py`, applied at both of `rule3c.py`'s
+comparison sites (the OZ 4 entry loop and `_namespaced_collision`).
+`slot_span` and the `types` map keep the RAW string, because the layout
+JSON's `types` dict is keyed by it.
+
+Locked by `fixtures-r3c-ast1/` (3 cases, 1.00/1.00):
+- `N3c-ast1-01` — contract-typed state, unrelated interface added ahead of it
+  so astIds shift, storage otherwise identical. Fires before the fix, quiet
+  after.
+- `P3c-ast1-01` — same shape, but `registry` genuinely changes identity
+  `IRegistry` → `IOracle`. Fires before AND after: the strip removes the
+  numeric label, never the type NAME.
+- `P3c-ast1-02` — **over-strip guard.** An accessed fixed array grows
+  `uint256[10]` → `uint256[20]` as the last storage variable, so the ONLY
+  signal is `t_array(t_uint256)10_storage` → `...20_storage`, where the
+  digits are the array LENGTH. A naive "strip all trailing digits" fix
+  collapses these to equal and goes silent on a real storage-extent change.
+  This is why the regex targets `t_contract` / `t_struct` / `t_enum` /
+  `t_userDefinedValueType` identifiers only.
+
+**Why the frozen 3c sets never caught it** — the same structural masking that
+hid DESIGN-L2 behind single-file fixtures. Every pre-existing 3c fixture
+declares only `uint256`/`address` state, whose layout type strings
+(`t_uint256`, `t_address`) carry no astId at all; the only digits anywhere in
+the frozen set are array lengths. No fixture had a contract-, struct-, or
+enum-typed state variable, so no fixture could express the bug.
+
+**Live confirmation.** Reserve pair `cef2f655..7f65c030` (FP5), which fired
+Rule 3c before the fix, is quiet after it — all 9 rules quiet, zero errors.
+
 ---
 
 ## Rule 1 — SC01 access control
@@ -87,6 +217,79 @@ Unlike Rules 3b and 3c (see [3x-L3](#3x-l3--rules-3b-and-3c-cannot-fire-at-all-o
 **Why 3b differed.** Rule 3b had to identify **which** namespaced slot the one-shot init flag (`_initialized` / `_initializing`) occupied, in order to prove the modifier was a real init guard — that read *is* the namespaced value, which is why 3b needed the ERC-7201 pointer machinery. Rule 1 never inspects the owner/role storage read, only the `msg.sender` comparison, so the OZ 5 indirection is irrelevant to it.
 
 **Verified, not asserted.** `fixtures-r1-oz5` (OZ 5.7.0: `OwnableUpgradeable`, `AccessControlUpgradeable`, UUPS v5, ERC-7201) scores Rule 1 **1.00/1.00** with no rule change — 2 positives fire, both negatives stay quiet (N1-oz5-02's `_authorizeUpgrade` regression is Rule 3a's, declared via `also_fires`), while OZ 4 (`fixtures-r1`) and all Rule 3 sets remain 1.00/1.00.
+
+---
+
+## Rule 2b — SC08 reentrancy, CEI ordering
+
+### RC-ROLE — Rule 2b admin-gate discriminator misses role-based access control
+
+**Type: FALSE POSITIVE. Rule 2b. MEASURED on a real repository (Reserve, FP6,
+commit `92ff272f`). FIXED 2026-08-15; locked by `fixtures-r2b-role/`.**
+
+Phase-3 STEP 4 suppressed a Rule 2b over-fire on admin-gated functions via
+`_admin_gated_by_state_addr`, which recognised exactly one shape: a
+`require`/`if` comparing `msg.sender` against an address held in a state
+variable (`msg.sender == owner`). Real governance code very often expresses the
+same gate as an **authority call** instead — `acl.hasRole(ROLE, msg.sender)`,
+`authority.canCall(msg.sender, ...)` — which that discriminator cannot see. Such
+a function is admin-only in fact and still fires.
+
+**Evidence, measured.** Reserve `Upgrade4_2_0.castSpell`, pair
+`6481e75d..92ff272f`, under post-STEP-5 HEAD:
+
+```
+castSpell(IRToken,Governance,address[])
+  _admin_gated_by_state_addr  -> False        <- STEP-4 discriminator blind
+  own_guard_state_reads       : [NEW_VERSION_HASH, PRIOR_VERSION_HASH, assets, supported]
+  writes_after_calls          : [newGovs, supported]
+  guard actually present      : require(main.hasRole(MAIN_OWNER_ROLE, msg.sender) && ...)
+```
+
+`moved = {supported}` intersects `own_guard_state_reads`, and the admin
+suppression does not apply, so Rule 2b fires.
+
+**Two things this exposed beyond the missing shape.**
+
+1. **The fire is driven by variable CONSOLIDATION, not by a write moving.** At
+   N-1 `supported` is only READ by the function while a sibling `cast` mapping
+   carries the write; at N `cast` is deleted and `supported` absorbs its write.
+   Rule 2b's `moved` set is "written-after-a-call at N, not at N-1", which this
+   satisfies without any write physically crossing a call. Note also that the
+   role check is *itself* an external call, so every subsequent write is
+   "after a call" on both sides — a fixture that omits the consolidation cannot
+   reproduce the fire at all.
+
+2. **The STEP-4 fixture was infidelitous, and that is why a green gate shipped
+   an unfixed case.** `fixtures-multi/R2B-SPELL-N` reproduced castSpell's SHAPE
+   (admin-only, guard-read variable, write across a call) using the EQUALITY
+   gate form and a physically-moved write. It therefore passed under a fix that
+   never addressed the real function. A fixture that mirrors a real case must
+   mirror the mechanism the rule keys on, not merely the situation.
+
+**Fix (implemented).** `_admin_gated` in `rule2b.py` now accepts either form:
+identity equality as before, or a guard consuming the bool verdict of a call
+that takes `msg.sender` as an argument.
+
+**The bool-return restriction is load-bearing, and was measured, not assumed.**
+`balanceOf(msg.sender)` is also "a call taking msg.sender whose result reaches a
+guard". Accepting it would classify an ordinary balance check as access control
+and silence genuine re-entrancy:
+
+| guard | without bool check | with bool check | required |
+|---|---|---|---|
+| `token.balanceOf(msg.sender) >= amt` → uint256 | True (wrong) | False | False |
+| `acl.hasRole(ROLE, msg.sender)` → bool | True | True | True |
+
+An authority predicate answers *whether this caller may act*; a value lookup
+constrains *how much*. `fixtures-r2b-role/P2b-role-01` locks the distinction —
+an anyone-callable `redeem()` whose cap guard reads a variable consolidated
+across the hook call, which must keep firing.
+
+**Scope.** Any repo whose access control is role-based rather than
+single-owner-address — OpenZeppelin `AccessControl`, ds-auth, timelock/governor
+patterns — i.e. most non-trivial protocols. Confined to Rule 2b's
+direct-reentrancy verdict; the read-only (2.10) path was never gated on this.
 
 ---
 
@@ -554,6 +757,114 @@ legacy-slot resolution, and no beacon or clone tested against live data.
 
 ## Trajectory mode — walking a real repository's commit history
 
+### WALK-L1 — path-keyed caches silently replay the previous commit's analysis
+
+**Type: SILENT WRONG RESULT (not a false positive — a fabricated verdict of
+either polarity). Trajectory mode / `walker.py`. MEASURED and FIXED 2026-08-15.
+This one produced a documented false conclusion before it was caught.**
+
+`_shared.parse` and `_storage.storage_layouts` both memoize on the file's
+absolute path alone. That contract is sound for the scorer, where a fixture
+path's content never changes within a process. It is **unsound for a trajectory
+walker**, which deliberately reuses two scratch worktree paths across every pair
+(that reuse is what lets the dependency-install cache pay off) — so one path
+holds different commits' content over a run. The second and later pairs to touch
+a given file receive the first pair's analysis.
+
+**How it was caught, and what it cost.** The first PHASE 5 run over four Reserve
+pairs reported FP4 and FP6 quiet. Both were replays:
+
+```
+file                              analyzed by pairs
+contracts/spells/4_2_0.sol        FP1/FP2, FP4, FP6   <- 3 pairs, one real analysis
+contracts/facade/facets/ActFacet.sol  FP1/FP2, FP4    <- 2 pairs
+contracts/p1/AssetRegistry.sol    FP5                 <- unique, uncontaminated
+```
+
+On the strength of that run, LIMITATIONS.md and TODO.md were edited to record
+RC-5 as "RESOLVED — empirically confirmed mislabel". **That conclusion was
+false and had to be retracted** (see the retraction note in the DESIGN-L2 §).
+Re-running with cache invalidation showed FP4 and FP6 both still firing; FP6's
+real cause turned out to be [RC-ROLE](#rc-role--rule-2b-admin-gate-discriminator-misses-role-based-access-control).
+FP5 was the only originally-"confirmed" result that survived, because
+`AssetRegistry.sol` happened to be unique to its pair.
+
+**Fix (implemented).** `reset_caches()` added to both `_shared` and `_storage`,
+with the cache contract now stated explicitly in `parse`'s and
+`storage_layouts`' docstrings; `walker.py` calls both immediately after every
+checkout. The reset is cheap — the next `parse` simply recompiles — and the
+install cache (keyed on the resolved dependency set, not on a path) is
+unaffected, so the amortisation that motivated path reuse is preserved.
+
+**The generalisable lesson.** Every earlier finding in this file concerns a
+detection rule being wrong. This one concerns the *instrument* being wrong, and
+it is more dangerous: a bad rule produces a finding a human can inspect, while a
+bad instrument produces a confident silence that reads exactly like success. The
+project's own discipline — fixtures first, measure before concluding — has to
+extend to the measuring tools themselves. A walker result is only evidence once
+the walker has been shown to distinguish the commits it claims to compare.
+
+---
+
+### WALK-L2 — Rule 3c ran solc in the WRONG DIRECTORY, and reported it as a pragma problem
+
+**Type: TOTAL COVERAGE LOSS for one rule in trajectory mode. Was 42/42 errors on
+the Reserve window. FIXED (PHASE 6).**
+
+`_storage._run_layout` invoked solc with `cwd=ROOT` and `--allow-paths .`, where
+`ROOT` is *Chainwatch's own* repository root. That is correct for the fixture
+scorer, whose files live inside this repo, and wrong for every trajectory run,
+whose files live in a scratch worktree of some other repository. The layout
+extraction therefore ran with the wrong current directory, could not read the
+target's sources under `--allow-paths`, and failed on every file.
+
+**What makes this worth writing down is the misdiagnosis, not the bug.** The
+failure was originally recorded in TODO.md as "`_storage.py` does not honor the
+walker's `SOLC_VERSION`, falls back to ambient 0.7.6". That reading was wrong in
+its mechanism and right in its symptom: `SOLC_VERSION` *was* being inherited
+(`env = dict(os.environ)` copies it), but the first invocation failed for the
+directory reason above, which dropped execution into the installed-version retry
+loop, which tried every solc on the box — and the error text the human saw came
+from whichever one happened to run last. A wrong compiler version is a plausible,
+self-consistent story for that output, and it survived a review because nobody
+re-derived it from the actual `subprocess` call.
+
+The lesson generalises past this file: **when a fallback path exists, the error
+you are shown is the fallback's error, not the original one.** Any diagnosis
+drawn from it describes the last thing that was tried, not the thing that broke.
+A retry loop that swallows the first failure is a diagnostic hazard even when it
+is a correctness feature.
+
+**Fix.** `_root_and_remaps(src)` resolves which registered checkout owns a file;
+solc then runs in that checkout with `--allow-paths <that root>`. Measured after
+the fix on a live 4-pair Reserve walk: 8/8 file comparisons, **0 rule errors**,
+Rule 3c included — from 42/42 errors before.
+
+---
+
+### WALK-L3 — one global remap list cannot describe two checkouts
+
+**Type: SILENT MIS-COMPILATION. Latent (no verdict is known to have changed).
+FIXED (PHASE 6).**
+
+A trajectory pair spans two working trees — the N-1 checkout and the N checkout —
+and the survival check adds a third at HEAD. `_shared.REMAPS` and
+`_storage.REMAPPINGS` are single module-level lists, so whichever side was
+applied last described *both* sides. For adjacent commits the dependency trees
+are almost always identical (this is the same observation that makes
+`EnvSpec.key` collapse 30 installs into one), which is exactly why this was
+invisible: it only bites when a commit adds, removes, or bumps a package, and
+then it silently compiles the N-1 file against N's dependencies.
+
+**Fix.** `_shared.register_root(root, remaps)` binds a checkout directory to its
+own commit's remappings; `remaps_for(path)` picks the longest matching root, and
+`_storage._root_and_remaps` does the same for the layout extractor. The global
+lists remain as the fallback, so the fixture scorer — which registers nothing —
+behaves exactly as before. Verified: all 14 frozen sets produce byte-identical
+per-rule TP/FP/FN counts after the change.
+
+---
+
 ### HIST-L1 — historical COMPILATION, not rule logic, is the coverage limit
 
 **Type: SILENT COVERAGE LOSS. HIGH priority. Affects every rule in trajectory
@@ -967,6 +1278,62 @@ RULES.md 5.3. DESIGN-L2 explains a class, not the whole run.
 > under STEP-4-fixed rules to confirm FP6 is quiet (walker + clone needed;
 > currently deferred to PHASE 5).
 
+> **RETRACTED CLAIM — read this before the paragraph below it.** An earlier
+> revision of this file asserted, on 2026-08-15, that a PHASE 5 walker run
+> had shown "all 9 rules quiet on `contracts/spells/4_2_0.sol`" and that
+> RC-5 was therefore a "RESOLVED — empirically confirmed mislabel". **That
+> assertion was wrong and is withdrawn.** It rested on a walker run that was
+> silently corrupted by a cache defect (see WALK-L1 below): the walker reuses
+> two scratch worktree paths across every pair, while `_shared.parse` and
+> `_storage.storage_layouts` memoize on absolute path alone, so the second
+> and later pairs to touch a given file re-served the FIRST pair's analysis.
+> `contracts/spells/4_2_0.sol` appears in three of the four pairs, so the FP6
+> verdict was a replay of an unrelated commit's result. The lesson is the
+> PHASE-3 lesson again, applied to our own tooling: a green result from an
+> unvalidated instrument is not evidence.
+>
+> **RC-5 PHASE 5 resolution (2026-08-15, after the cache defect was fixed and
+> every pair re-run). Status: NOT the FP6 mechanism — but FP6's real cause is
+> now identified and fixed, and it is not a rename.**
+>
+> The corrected run showed FP6 **still firing** (Rule 2b on
+> `contracts/spells/4_2_0.sol`). Direct inspection of the diff and of Slither's
+> view of the function established the actual mechanism, recorded as
+> [RC-ROLE](#rc-role--rule-2b-admin-gate-discriminator-misses-role-based-access-control):
+> `Upgrade4_2_0.castSpell` is governance-only but gates via
+> `main.hasRole(MAIN_OWNER_ROLE, msg.sender)` — an authority *call* — while
+> STEP 4's discriminator recognised only `msg.sender == <state address>`
+> equality. Widening the discriminator takes FP6 to quiet, live, on
+> `6481e75d..92ff272f`.
+>
+> **On RC-5 itself.** The FP6 diff contains no rename: the `cast` mapping is
+> DELETED and its one-shot duty folded into the pre-existing `supported`
+> mapping. So the literal RC-5 mechanism ("canonical_name diff misses
+> renames") is still not what drove FP6 — but that is now established by
+> reading the diff and fixing the real cause, not by the retracted quiet
+> result. The rename mechanism remains **empirically unobserved** on any
+> measured commit or fixture. Rules 2b/4/5 do key by `canonical_name` across
+> commits, so it stays theoretically plausible and unproven; a future
+> real-repo hit would be a new finding under a new label, not RC-5.
+>
+> Provenance chain preserved (do not delete):
+> 1. **DESIGN-L2 commit `86645b9` (2026-08-12)** — one-line parenthetical
+>    hypothesis: "FP6 (RC-5, canonical_name diff misses renames)". No
+>    evidence, no fixture, no code trace. Best guess at the time.
+> 2. **Phase 3 STEP 6 (2026-08-14) — balance-of-evidence investigation.**
+>    R2B-SPELL-N (the STEP-4 fixture) contains zero renames; STEP 4's fix
+>    uses no rename logic; FP6→Upgrade4_2_0.castSpell mapping was untracked
+>    in any committed file. Verdict at the time: "may have been a mislabel
+>    of the admin-gate class, NOT confirmed."
+> 3. **PHASE 5 first walker run (2026-08-15) — INVALID, retracted.** Reported
+>    FP6 quiet; the result was a cache replay (WALK-L1), not a measurement.
+>    Briefly recorded here as "RESOLVED"; that entry was wrong.
+> 4. **PHASE 5 corrected run (2026-08-15) — the actual measurement.** With
+>    cache invalidation in place FP6 still fired; the cause was diagnosed as
+>    RC-ROLE (role-based gate invisible to the STEP-4 discriminator), fixed,
+>    and re-measured quiet on the live commit pair. RC-5 was never the
+>    mechanism; it was also never the thing that had been fixed.
+
 **Which rules are exposed** (measured, `grep` over `src/rules/`):
 
 | Rule | Iterates | Exposure |
@@ -1015,3 +1382,75 @@ imports an unchanged file containing the trigger pattern for the rule under test
 — because the current single-file fixture set structurally cannot exercise this
 shape. Without such a fixture, a future refactor could reintroduce the exposure
 silently. Tracked in TODO.md.
+
+---
+
+### DESIGN-L3 — attribution had to be a SIDE CHANNEL, not a return-value change
+
+**Type: architectural decision, recorded because the obvious alternative was
+the dangerous one.**
+
+Every rule's `run()` returned `True | "candidate" | False`. A product needs more
+than that — which contract, which function, which line, on what evidence — and
+the natural refactor is to widen the return type to a finding object.
+
+That refactor is precisely the wrong move here, for a reason that is specific to
+this project rather than general taste: **`scorer.py` is a guard-protected file
+and the 14 frozen fixture sets are ground truth interpreted through its
+`raw == "candidate"` / `bool(raw)` contract.** Widening the return type edits the
+one artifact whose job is to be un-edited, and it re-interprets every frozen
+verdict at the same time. A regression introduced that way would be invisible,
+because the thing that detects regressions is what changed.
+
+**What shipped instead.** `_shared.emit()` appends a detail record to the
+`case_meta` dict the caller already passes in. Rules keep their exact return
+contract; `scorer.py` is untouched and still passes the same dict it always did;
+a caller that wants attribution reads `case_meta["_findings"]`, and one that does
+not pays nothing. `emit()` swallows every exception by design — attribution is
+reporting metadata, and a malformed source mapping must never be able to turn a
+fire into a miss.
+
+**How the two are kept in sync.** `tests/test_attribution.py` asserts both
+directions across all 14 sets: a rule that FIRES emits at least one record naming
+a real declaration, and a rule that stays QUIET emits nothing at all. The second
+half matters more than the first — a phantom record would put a finding in the UI
+that the engine never made, which is a false positive arriving by a route that
+precision scoring cannot see.
+
+**Evidence the change was verdict-neutral:** per-rule TP/FP/FN counts across all
+14 frozen sets are byte-identical before and after the attribution layer.
+
+---
+
+### SURV-L1 — "repaired later" can also mean "renamed later"
+
+**Type: FN-direction misreport in the TRAJECTORY field, not in detection.
+Affects the HEAD-survival check in `src/scan.py`.**
+
+Whether a regression survives to HEAD is answered by re-running the same rule
+on `(file at N-1, file at HEAD)`. That reuses the rule's own semantics rather
+than inventing a second notion of "still broken", which is the right call — but
+it inherits the rules' cross-commit matching key. Rules 1, 2a, 2b, 5 and 6 match
+functions by `(contract name, full signature)`, so between commit N and HEAD:
+
+- a renamed function,
+- a changed signature,
+- a function moved to a different contract, or
+- a contract renamed,
+
+all make the rule find no counterpart, stay quiet, and be recorded as
+**"repaired later"** when the control may still be missing under a new name.
+The verdict direction is safe — a wrongly-quiet survival check DOWNGRADES the
+finding to CANDIDATE and can never manufacture a CONFIRMED — but the trajectory
+sentence shown to a reader is then wrong, and "a later commit restored the
+control" is a specific claim that deserves to be true.
+
+`survives_to_head` is already three-valued (`True` / `False` / `None` for
+undetermined, e.g. the file is gone at HEAD or no HEAD environment could be
+built), and `None` is never treated as evidence. The unfinished work is to route
+the rename case to `None` instead of `False` — which needs a rename detector
+(`git log --follow`, or matching on body similarity) that does not exist yet.
+
+**Do not fix this by loosening the rules' matching key.** That key is what makes
+exclusion 1.12 (whole function deleted) work, and weakening it trades a wrong
+trajectory label for a real false positive.

@@ -1,0 +1,10 @@
+{
+  "id": "P3c-ast1-02",
+  "rule": 3,
+  "sub_rule": "3c",
+  "label": "positive",
+  "exclusion_ref": null,
+  "source_path": "contracts/Vault.sol",
+  "description": "Positive #2 for RC-AST1: the OVER-STRIP guard. `buffer` is a fixed-size array declared last and accessed by record()/readBuffer(), so it is not a reserved gap and exclusion 3c.2 does not apply. It grows uint256[10] -> uint256[20]; its own slot and offset are unchanged, so the ONLY difference solc reports is the layout type string `t_array(t_uint256)10_storage` -> `t_array(t_uint256)20_storage`. The trailing digits there are the ARRAY LENGTH, not an astId. A naive RC-AST1 fix that strips every trailing digit from type strings collapses both to `t_array(t_uint256)_storage`, compares them equal, and goes quiet on a real change. This pair MUST still FIRE after the fix.",
+  "why_labeled": "Growing a fixed-size array in a proxy implementation claims ten additional 32-byte slots that the previous implementation left unallocated. Any future variable placed there by an earlier version, or any subsequent append, now collides. This is squarely RULES.md Rule 3c (SC10 storage layout collision) on a proxy-deployed contract. Its role in this set is precision calibration: it forces the astId canonicalisation to be targeted at contract/struct/enum identifiers rather than at digits generally."
+}

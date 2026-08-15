@@ -1,28 +1,140 @@
 # Deferred (documented in LIMITATIONS.md, not yet fixed)
 
-## Phase 3 (Reserve FP loop) — remaining steps
+## PHASE 6 (2026-08-15) — engine became a product
 
-- [ ] **RC-5 status: UNRESOLVED HYPOTHESIS, not a confirmed defect.** Do not
-      build a fix without either (a) a rename fixture that first PROVES the
-      mechanism exists by triggering a false-negative on Rules 2b/4/5 (all of
-      which key by `canonical_name` across commits), or (b) empirical
-      confirmation via Reserve commit `92ff272f` (PHASE 5, when walker + clone
-      available) that FP6 was genuinely the admin-gate case (silenced by
-      STEP 4's `_admin_gated_by_state_addr`) and not a rename. Until then,
-      treat as an open question, not a scheduled fix. Full write-up: see the
-      RC-5 status note in LIMITATIONS.md under the DESIGN-L2 §.
+What shipped, each with the command whose raw output was read:
 
-- [ ] PHASE 5 prerequisite: confirm FP5 (Reserve 7f65c030) is QUIET live,
-      not just via fixture R5L1-N. STEP 3's rule5.py fix was verified against
-      the fixture only (no Reserve clone/walker driver on that checkout).
+| | Gate | Result |
+|---|---|---|
+| 14 frozen fixture sets | `scorer.py --fixtures <set>` ×14 | 14/14 PASS, per-rule TP/FP/FN **byte-identical** before and after every change below |
+| attribution contract | `pytest tests/test_attribution.py` | 14/14 — every fire attributable, every quiet rule silent |
+| verdict model | `pytest tests/test_verdict.py` | 11/11 |
+| real repo, 0 FP | `pytest tests/test_realworld_reserve.py` | **3/3 in 18m** — 4/4 pairs analysed, five fixed FPs quiet, the one true positive still fires |
+| Rule 3c in trajectory mode | live Reserve walk | **42/42 errors -> 0 errors** |
+| end-to-end product path | web app on a seeded repo | 2/2 regressions found, attributed to function + line + commit, verdicts correct |
 
-- [ ] PHASE 5 prerequisite: confirm FP6 (Reserve 92ff272f) is QUIET live,
-      not just via fixture R2B-SPELL-N. STEP 4's rule2b.py fix was verified
-      against the fixture only (no Reserve clone/walker driver on that
-      checkout).
+New surface: `src/scan.py` (the one pipeline), `chainwatch.py` (CLI, CHARTER
+success criterion 4), `webapp/` (FastAPI + SSE + UI), `src/verdict.py` (X-L1),
+`tests/`.
 
-- [ ] **STEP 5 — RC-OZ5-R6: fix Rule 6 false-fire on OZ5 assembly-assigned
-      namespace pointers.** Ordered AFTER Reserve STEPS 2/3/4 (DESIGN-L2,
+### Open after PHASE 6
+
+- [ ] **CHARTER success criterion 6 is still open**: at least one CONFIRMED
+      finding on a real public repo, hand-verified by the human against both
+      the diff and the deployed bytecode. Everything needed is now wired
+      (`--address` feeds capability 11 into the verdict model), but no run has
+      yet produced a CONFIRMED verdict, because that requires a repo whose
+      regression is genuinely live at a known address. Until such a run exists,
+      the honest claim is "CANDIDATE findings, fully attributed", not
+      "CONFIRMED findings".
+- [ ] Liveness is attached per (file, contract) by compiling the HEAD version of
+      the finding's contract and comparing to the deployed implementation.
+      Per 11-R3 a mismatch returns UNKNOWN rather than PATCHED, so on most real
+      repos this will refuse to conclude. Measure the UNKNOWN rate on a real
+      target before claiming the gate is usable end-to-end.
+- [ ] `walker.py` is superseded by `src/scan.py` (same worktree/env machinery,
+      plus attribution, verdicts, coverage and HEAD-survival). Kept as-is
+      because PHASE 3-5 provenance in LIMITATIONS.md refers to its output
+      format. Decide whether to retire it or reduce it to a thin wrapper.
+- [ ] The web app runs one scan at a time, has no authentication, and binds to
+      127.0.0.1. That is the correct posture for a local research tool; any
+      change to it needs an explicit threat model first, because starting a
+      scan installs a target repository's dependencies.
+
+## Phase 3 / PHASE 5 (Reserve FP loop) — status
+
+**PHASE 5 live result (2026-08-15), all four pairs re-run against
+`realworld-test/reserve-src` under current HEAD, after the WALK-L1 cache
+defect was fixed:**
+
+| FP | pair | result |
+|---|---|---|
+| FP1/FP2 | `43533959..b2cfd51a` | 0 fires — DESIGN-L2 confirmed live |
+| FP4 | `f43202a3..e27227b2` | AllowanceLib phantom gone — DESIGN-L2 confirmed live |
+| FP3 | `f43202a3..e27227b2` | 1 fire, Rule 5, ActFacet.sol — **TRUE POSITIVE**, not an FP |
+| FP5 | `cef2f655..7f65c030` | 0 fires — R5-L1 + RC-AST1 confirmed live |
+| FP6 | `6481e75d..92ff272f` | 0 fires — RC-ROLE confirmed live |
+
+Five of the six original false positives are eliminated and re-measured on the
+real repository. The sixth (FP3) was never a false positive: it is a genuine
+`try/catch` removal around `reg.assets[i].price()` in `ActFacet.sol`, which
+LIMITATIONS.md already classified as "a true trigger with wrong severity per
+RULES.md 5.3". **This run also recovers FP3's commit hash (`e27227b2`), which
+was never recorded anywhere** — the reason it was previously unrunnable.
+
+- [x] **RC-5 — NOT the FP6 mechanism; FP6's real cause found and fixed.** An
+      earlier entry here claimed RC-5 was a "confirmed mislabel" on the
+      strength of a walker run that WALK-L1 had corrupted; that claim was
+      retracted. The corrected run showed FP6 still firing, and the real cause
+      is RC-ROLE (role-based gate invisible to STEP 4's equality-only
+      discriminator). The FP6 diff contains no rename — `cast` is DELETED and
+      folded into `supported` — so the literal RC-5 mechanism is still not what
+      drove it. The rename mechanism remains **empirically unobserved**;
+      Rules 2b/4/5 do key by `canonical_name` across commits, so it stays
+      plausible and unproven. A future real-repo hit is a NEW finding under a
+      new label, not RC-5. Full provenance chain: LIMITATIONS.md, DESIGN-L2 §.
+
+- [x] **RC-ROLE — Rule 2b admin-gate missed role-based access control.**
+      FIXED. `_admin_gated` in rule2b.py now accepts an authority call (takes
+      msg.sender, returns bool) alongside the `msg.sender == <state addr>`
+      equality form. The bool-return restriction is measured-necessary:
+      without it `balanceOf(msg.sender)` guards are misread as access control
+      and genuine re-entrancy goes silent. Locked by `fixtures-r2b-role/`
+      (N2b-role-01 quiet / P2b-role-01 fires, 1.00/1.00). Live: FP6 quiet.
+      See LIMITATIONS.md §RC-ROLE — including the finding that STEP 4's
+      fixture reproduced castSpell's shape but not its mechanism, which is how
+      a green gate shipped an unfixed real case.
+
+- [x] **RC-AST1 — Rule 3c astId-in-type-string phantom fire.** FIXED via
+      `canonical_type()` in `_storage.py`, applied at both rule3c comparison
+      sites. Locked by `fixtures-r3c-ast1/` (3 cases, 1.00/1.00) including an
+      over-strip guard proving array LENGTHS are not stripped. Live: FP5 quiet.
+      See LIMITATIONS.md §RC-AST1.
+
+- [x] **WALK-L1 — path-keyed caches replayed the previous commit's analysis.**
+      FIXED via `reset_caches()` in `_shared`/`_storage`, called by walker.py
+      after every checkout. This defect produced a FALSE CONCLUSION that was
+      committed to LIMITATIONS.md before being caught; both the defect and the
+      retraction are recorded there. See LIMITATIONS.md §WALK-L1.
+
+- [x] **FP3 severity question — ANSWERED BY THE VERDICT MODEL, no special case
+      needed (PHASE 6).** Rule 5 correctly fires on the `try/catch` removal in
+      `ActFacet.sol` at `e27227b2`. The open question was severity: should a
+      try/catch removal on a non-state-changing view be CONFIRMED or CANDIDATE?
+
+      With attribution and `src/verdict.py` in place the question resolves
+      itself. The live run now reports:
+
+          CANDIDATE rule 5  contracts/facade/facets/ActFacet.sol
+                            ActFacet.revenueOverview  line 117  range 117-118
+            try/catch removed around the high call to .price();
+            a failure now passes silently
+            evidence: visibility_after=external, writes_state_after=FALSE
+            why not confirmed: missing evidence: reachability, liveness
+
+      Required evidence field 4 is "externally callable **and** state-changing".
+      `revenueOverview` is external but writes no state, so field 4 is not
+      established and the finding caps at CANDIDATE — which is exactly the
+      severity a facade view helper deserves, reached mechanically rather than
+      by a hand-written exception. **No rule change, and no new fixture, is
+      needed.** The general principle now holds for every rule: a regression on
+      a read-only function can never reach CONFIRMED.
+
+- [x] Cosmetic: Rule 5's attribution reuses its cross-commit matching key as
+      the human-facing destination, so an unresolved dynamic target prints as
+      `other:REF_61`. The key itself must not change (it is what R5-L1's
+      injectivity fix depends on); add a separate display label that says
+      "an unresolved destination" instead of leaking a Slither temporary name.
+      **DONE** — `_dest_label()` formats for the report only; the raw key is
+      still carried as `destination_key` in the evidence, and the matching key
+      is untouched.
+
+- [x] **STEP 5 — RC-OZ5-R6: fix Rule 6 false-fire on OZ5 assembly-assigned
+      namespace pointers.** DONE (commit 924ff41): fixed in rule6.py via the
+      `_is_storage_struct_pointer_local()` gate, locked by `fixtures-r6-oz5/`
+      (N6-oz5-01 quiet / P6-oz5-01 fires, 1.00/1.00), and the original symptom
+      fixture `fixtures-ext/N3b-ratelimit-oz5` cleared. Original plan retained
+      below for provenance. Ordered AFTER Reserve STEPS 2/3/4 (DESIGN-L2,
       RC-2 R5-L1, RC-4 Rule 2b castSpell class), because it does not touch
       the same rules or the walker. Mechanism, evidence and fix direction
       recorded in LIMITATIONS.md under `RC-OZ5-R6`. Prerequisites:
@@ -50,13 +162,53 @@
         fixture `fixtures-ext/N3b-ratelimit-oz4`) still 1.00 / 1.00; the
         pre-existing `fixtures-ext/N3b-ratelimit-oz5` Rule 6 fire clears.
 
+## Walker known limitations
+
+Deferred surface issues in `walker.py` / `src/history.py` that surfaced during
+PHASE 5 (2026-08-15). Both are trajectory-mode-only; scorer harness and
+frozen fixtures unaffected. Do not fix without measurement first.
+
+- [x] `derive_remaps` doesn't emit self-mapping for absolute-repo-path imports
+      (e.g. `import "contracts/interfaces/IAsset.sol"`) — causes `SlitherError`
+      on any changed file importing this way. Affects 3 Curve* files in
+      Reserve's FP1/FP2/FP4 pairs (did not change those FPs' verdicts, all
+      target files unaffected).
+      **FIXED (PHASE 6).** `derive_remaps` now falls through to a self-mapping
+      `<dir>/=<root>/<dir>/` when a non-relative import prefix names a
+      directory that exists in the checkout but in neither `node_modules/` nor
+      `lib/`. Emitted only when the directory is really there, so it cannot
+      mask a genuinely missing dependency.
+
+- [x] `rule3c.py`'s solc invocation (`_storage.py`) does not honor walker's
+      `SOLC_VERSION` env var, falls back to ambient PATH solc (0.7.6) instead
+      of the pinned 0.8.28. Same 3 Curve* files affected. Root-cause + fix
+      needed before walker is trusted on repos with mixed pragma files.
+      **ROOT-CAUSED AND FIXED (PHASE 6), and the original diagnosis was
+      incomplete.** `SOLC_VERSION` *was* being inherited (`env = dict(os.environ)`);
+      the actual defect was that `_run_layout` ran solc with `cwd` and
+      `--allow-paths` hard-coded to CHAINWATCH's own root, so a file inside a
+      scratch worktree resolved every import against the wrong tree, failed,
+      and fell into the installed-version retry loop — which is where the
+      "0.7.6 instead of 0.8.28" symptom came from. Fixed by `WALK-L2` /
+      `WALK-L3` (see LIMITATIONS.md): solc now runs in the checkout that owns
+      the file, with that checkout's own remaps. Measured: Rule 3c went from
+      42/42 errors to **0 errors** on a live Reserve walk.
+
 ## Older deferred items
 
 - [ ] 3a-L2 — widen Rule 3a trigger from "constraint removed" to "caller set
       widened." Needs fixture: onlyOwner → require(msg.sender == mutablePublicVar).
       Real regression shape, currently invisible.
-- [ ] X-L1 — implement verdict.py three-state model (DISCARDED/CANDIDATE/CONFIRMED).
+- [x] X-L1 — implement verdict.py three-state model (DISCARDED/CANDIDATE/CONFIRMED).
       Convert 3a.1 and 2.10 from silent discard to CANDIDATE.
+      **DONE (PHASE 6).** `src/verdict.py` classifies mechanically: all six
+      required evidence fields present AND liveness LIVE -> CONFIRMED, else
+      CANDIDATE with every downgrade reason recorded and surfaced. 2.10 and 5.3
+      already returned the string `"candidate"` from their rules; that ceiling
+      is now carried through the model as `severity_hint` and can never be
+      raised by the classifier. Consequence, stated in README and in the UI: a
+      repo-only scan with no `--address` yields zero CONFIRMED findings,
+      because liveness is one of the six.
 - [ ] 3x-L1 — segment-based test/mock path matching (currently substring).
       `latest/`, `contest/`, `greatest/`, `protests/` are all silently skipped
       today. Match a directory named exactly test/tests/mock/mocks/script, or a
@@ -145,6 +297,17 @@
       single distinct yarn.lock cost ONE install (2m09s) and every later commit
       was a zero-cost cache hit. Compiler pins resolved themselves via the
       framework build (solc 0.8.28 + 0.6.12 in one build). See HIST-L1.
+- [x] **DONE (PHASE 6) for the ratio half; the precision half stays open.**
+      `src/scan.py` carries a `Coverage` record through every scan
+      (pairs total / analyzed / skipped with a per-skip reason, plus file
+      comparisons ok/error), `chainwatch.py` prints it ABOVE the findings, and
+      the web UI renders it above the findings table with an explicit
+      "unmeasured, not safe" warning whenever coverage is partial.
+      `tests/test_realworld_reserve.py` asserts coverage first, so a quiet
+      real-repo result cannot pass the suite by having analysed nothing. What
+      is NOT yet automated is the VERIFIED PRECISION figure printed beside it —
+      that still comes from running the fixture sets and the Reserve
+      regression test by hand.
 - [ ] HIST-L1 — trajectory output must ALWAYS surface the analyzable/skipped
       pair ratio, with a per-skip reason, so "0 detections" can never be
       mistaken for "clean history". Treat a missing coverage ratio as a broken
@@ -191,14 +354,20 @@
       accounting but did not change any verdict in the observed run — all 6 FPs
       persist under correct pairing, so this fix is precision-neutral for the
       observed cases. Fix it anyway for report correctness.
-- [ ] HIST-L1 residual — repo-root-relative imports (`contracts/interfaces/…`)
+- [x] HIST-L1 residual — repo-root-relative imports (`contracts/interfaces/…`)
       fail under bare solc because only Hardhat resolves them implicitly from the
       project root. 3 of 46 file comparisons on Reserve. Fix: emit
       `<dir>/=<root>/<dir>/` remaps for top-level source dirs in `derive_remaps`.
-- [ ] Rule 3c cannot run in trajectory mode at all — 42/42 errors on the Reserve
+      **FIXED (PHASE 6)** — implemented exactly as specified above.
+- [x] Rule 3c cannot run in trajectory mode at all — 42/42 errors on the Reserve
       window. `_storage.storage_layouts` builds paths relative to THIS repo's
       root, so it cannot address a scratch worktree. Make the layout extractor
       take the project root as a parameter.
+      **FIXED (PHASE 6), see LIMITATIONS.md §WALK-L2/WALK-L3.** The extractor
+      now resolves the checkout that owns the file (registered per worktree)
+      and runs solc there with that checkout's own remaps. Measured on a live
+      4-pair Reserve walk: 8/8 file comparisons, **0 rule errors**, Rule 3c
+      included.
 - [ ] HIST-L1 residual — `dep-gone-from-registry` was never exercised (the tested
       window is 2 months old). Older history will hit unpublished/yanked
       transitive deps; measure on a multi-year window before claiming "any repo".

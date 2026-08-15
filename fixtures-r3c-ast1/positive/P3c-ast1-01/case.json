@@ -1,0 +1,10 @@
+{
+  "id": "P3c-ast1-01",
+  "rule": 3,
+  "sub_rule": "3c",
+  "label": "positive",
+  "exclusion_ref": null,
+  "source_path": "contracts/Vault.sol",
+  "description": "Positive paired with N3c-ast1-01. The `registry` slot keeps its position and offset, but its declared type changes identity: IRegistry -> IOracle. Both are contract types, so both sides carry astId-bearing type strings -- the same shape as the negative -- but here the type NAME genuinely differs. After the RC-AST1 fix canonicalises astIds away, the compared strings are `t_contract(IRegistry)` vs `t_contract(IOracle)`, still unequal, so the pair MUST still FIRE. This is the lock proving the fix strips only the numeric label, never the type identity.",
+  "why_labeled": "RULES.md Rule 3c trigger: 'slot index or TYPE changed between commits' on a proxy-deployed contract (Signal A: initializer machinery + Signal B: factory constructing it behind ERC1967Proxy). The proxy's persisted address at that slot was written by the old implementation as a registry and will be called by the new implementation as an oracle. Same 20 bytes, entirely different contract contract-in-practice -- a live-storage reinterpretation hazard that a proxy upgrade genuinely introduces. A fix that silences this in the course of suppressing N3c-ast1-01 has traded a false positive for a silent false negative, which RULES.md's precision-first tie-break does not permit."
+}

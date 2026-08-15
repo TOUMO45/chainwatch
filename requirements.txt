@@ -1,7 +1,23 @@
+# --- analysis engine (CHARTER "Stack", pinned deliberately) -----------------
 solc-select==1.2.0
 slither-analyzer==0.11.5
 # solc 0.8.20 (exact) installed and selected via:
 #   solc-select install 0.8.20 && solc-select use 0.8.20
+# Trajectory mode installs whatever a commit pins, per-commit, on top of this.
 # Solidity deps pinned exactly in package.json:
 #   @openzeppelin/contracts@4.9.6
 #   @openzeppelin/contracts-upgradeable@4.9.6
+
+# --- capability 11: on-chain liveness ---------------------------------------
+web3
+python-dotenv
+
+# --- web app (webapp/server.py) ---------------------------------------------
+# Thin HTTP shell over src/scan.py; no analysis logic depends on these.
+fastapi
+uvicorn
+sse-starlette
+pydantic
+
+# --- test harness -----------------------------------------------------------
+pytest

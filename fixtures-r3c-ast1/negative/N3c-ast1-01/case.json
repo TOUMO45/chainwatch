@@ -1,0 +1,10 @@
+{
+  "id": "N3c-ast1-01",
+  "rule": 3,
+  "sub_rule": "3c",
+  "label": "negative",
+  "exclusion_ref": "RC-AST1",
+  "source_path": "contracts/Vault.sol",
+  "description": "Negative locking RC-AST1 (Rule 3c false-positive from solc astId suffixes leaking into type-string equality). Vault has two CONTRACT-typed state variables (IRegistry registry, IOracle oracle) whose solc layout types are `t_contract(IRegistry)<astId>` / `t_contract(IOracle)<astId>`. At N an unrelated IPauser interface is declared ahead of them (and consumed by a new storage-free view helper), which renumbers every following astId. Slots, offsets, declaration order, and the actual referenced types are all unchanged. Rule 3c currently FIRES because rule3c.py:199 compares the raw solc type string including the astId suffix; EXPECTED quiet after the fix canonicalises astIds out. Why the frozen 3c sets never caught this: every existing 3c fixture uses only uint256/address state, whose type strings (t_uint256, t_address) carry no astId at all -- the same structural masking that hid DESIGN-L2 behind single-file fixtures.",
+  "why_labeled": "No storage regression of any kind occurred. Adding an interface declaration to a file is an everyday commit; it cannot move, resize, or reinterpret a single slot of a proxy's persisted storage. RULES.md Rule 3c owns 'slot index or type changed between commits' -- here neither did. The astId is solc's internal AST node number, an artifact of source position, not part of the type's identity. Paired with P3c-ast1-01 (genuine contract-type identity change, must still fire) and P3c-ast1-02 (array-length change, must still fire) so no fix can pass by weakening type comparison generally."
+}
