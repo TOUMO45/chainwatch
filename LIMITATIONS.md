@@ -1786,3 +1786,147 @@ than the convenience here**: the whole reason `--ignore-scripts` is passed is
 CHARTER rule 5 (never execute a target repo's code), so the Berry path must set
 `YARN_ENABLE_SCRIPTS=0` in the environment rather than simply dropping the flag.
 Dropping it would silently trade a skipped pair for arbitrary code execution.
+
+---
+
+### HIST-L4 — the dependency cache accepted a POISONED entry, permanently
+
+**Type: SILENT WRONG ANSWER — the worst class in this file. It did not lose
+coverage, it lost a TRUE POSITIVE while reporting success. MEASURED, ROOT-CAUSED
+AND FIXED.**
+
+`install()` decided a cache hit like this:
+
+```python
+cached = cache_root / spec.key / "node_modules"
+if cached.is_dir():
+    _link_dir(link, cached)
+    return True, "", f"cache hit {spec.key}"
+```
+
+The existence of a directory was the entire test. Nothing checked whether the
+install that created it had finished, or had fetched everything. So one
+incomplete install — an npm run that exited 0 without retrieving a git
+dependency, or an install interrupted between `shutil.move` and completion —
+is written into the cache and returned as a successful hit **forever**, because
+nothing ever re-checks it.
+
+**How it surfaced.** `tests/test_realworld_reserve.py` failed on the assertion
+it exists to make:
+
+```
+E  AssertionError: the known TRUE POSITIVE (Rule 5, try/catch removal in
+E  ActFacet.sol at e27227b2) did not fire - a fix that silences real findings
+E  is not a fix
+```
+
+The false-positive half still passed. Only the true-positive half caught it,
+which is precisely why that half was written.
+
+**Evidence.** The cached entry for reserve-protocol's dependency set held **900
+packages and was missing 3**, one of them `@reserve-protocol/trusted-fillers` —
+a GitHub dependency (`github:reserve-protocol/trusted-fillers#a3fdf80…`) that
+every `ActFacet.sol` compile needs transitively through `DutchTrade`. solc's
+error named the symptom and hid the cause:
+
+```
+Source "@reserve-protocol/trusted-fillers/.../ITrustedFillerRegistry.sol"
+not found: File not found. Searched the following locations: "".
+```
+
+`Searched the following locations: ""` means no remapping was emitted at all —
+`derive_remaps` only emits one when the package directory exists, and it did
+not. The dependency was fetchable the whole time (`git ls-remote` → exit 0);
+nothing was wrong with the network when the failure was observed.
+
+**A wrong suspect, recorded because the reasoning matters.** The obvious
+candidate was WALK-L4, which had just changed `derive_remaps` to resolve
+junctions. It was innocent, and the reason is structural rather than empirical:
+the `pkg_dir.is_dir()` gate that decides *whether* a remap is emitted was
+untouched — WALK-L4 only changed the target string for directories that already
+exist. A package absent from disk produces no remap under either version. The
+suspect was cleared by reading what the change could and could not affect, then
+confirmed by finding the package absent from all ten cache entries.
+
+**Fix, two parts.**
+1. **Verify before caching.** After an install reports success, check that every
+   package the repo's Solidity actually IMPORTS is present on disk. If any is
+   missing, return `dep-missing` naming it, and cache nothing. Deliberately
+   scoped to imported packages rather than all declared dependencies: requiring
+   the latter would turn a perfectly usable tree into a skip over an unrelated
+   devDependency.
+2. **A completion marker decides cache hits.** `.chainwatch-install-ok` is
+   written last, only after verification. A cache hit requires the marker. An
+   entry without one is **verified in place** and marked if it turns out
+   complete; if it is incomplete the run reports `dep-missing`, names the
+   packages, and says which directory to delete.
+
+**A wrong first fix, recorded because it did real damage.** The first version of
+part 2 `shutil.rmtree`'d any unmarked entry — "discard rather than trust". That
+deleted a 900-package tree which, with the installer broken (HIST-L5 below),
+could not be rebuilt, and turned a latent fault into an acute one: the next test
+run failed BOTH assertions in 65s instead of one in 1138s. A dependency tree can
+cost minutes to rebuild and may not be rebuildable offline at all; destroying
+one to re-derive a boolean is the wrong trade. The rule now: **verification may
+read, it may not delete.** `_unlink_node_modules` follows the same rule — it
+removes a reparse point and refuses to touch a real directory.
+
+**The generalisable lesson, and it is the third variant of the same mistake in
+this file.** WALK-L1 was a path-keyed cache serving stale content. HIST-L4 is a
+key-existence-checked cache serving incomplete content. Both returned success.
+**A cache whose hit condition is weaker than its correctness condition does not
+speed a system up, it makes it wrong quietly.** The hit test must assert the
+property the consumer depends on — here "complete", not "present".
+
+---
+
+### HIST-L5 — our own cache junction made the next install impossible
+
+**Type: SILENT COVERAGE LOSS, and the ROOT CAUSE beneath HIST-L4. MEASURED,
+REPRODUCED, FIXED.**
+
+`install()` links `<worktree>/node_modules` at the cached tree with an NTFS
+junction — the optimisation that lets thirty commits share one install. That
+junction **survives into the next install attempt**, and an installer cannot
+populate a reparse point. Yarn Berry fails its entire link step on it:
+
+```
+➤ YN0000: ┌ Link step
+➤ YN0001: │ Error: While persisting .../@aave/periphery-v3/ ->
+    .../prev/node_modules/@aave/periphery-v3
+    ENOTDIR: not a directory, mkdir '...\prev\node_modules'
+➤ YN0000: · Failed with errors in 2s 644ms
+```
+
+Remove the junction and the identical command, in the identical tree, succeeds:
+
+```
+➤ YN0000: ┌ Link step
+➤ YN0000: └ Completed in 1m 21s
+➤ YN0000: · Done with warnings in 1m 23s
+```
+
+**This is the cause of the other two.** A partially-linked tree left behind by a
+failed install is what HIST-L4 then cached and trusted forever, and it is why
+the retry chain never recovered: HIST-L3's stale `--ignore-scripts` fallback
+could not have worked either, so the failure looked like a dependency problem in
+the *target repository* rather than a defect in *our own scratch state*.
+
+**Fix.** `_unlink_node_modules(link)` runs before any installer, removing a
+junction or symlink — and refusing to touch a real directory, so it can never
+destroy a legitimate tree. The install then starts from the state a human would
+have had.
+
+**Why nothing caught it for so long.** The FP1-FP6 loop, every earlier
+trajectory run, and the 25-pair stress run all executed against a cache entry
+that had been populated *once*, successfully, before any junction existed. The
+defect only appears on the second install for a given dependency set — which
+happens the first time a cache entry is missing or invalidated. Every green run
+this project has ever recorded was, in this respect, a first run.
+
+**The lesson, and it is the same one three times now.** WALK-L1: a path-keyed
+cache served stale content. HIST-L4: an existence-keyed cache served incomplete
+content. HIST-L5: the cache's own linking mechanism broke the thing that
+populates it. **Scratch state is not neutral.** Every optimisation that leaves
+something behind — a memo, a directory, a link — becomes an input to the next
+run, and has to be reasoned about as one.

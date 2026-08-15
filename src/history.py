@@ -61,6 +61,11 @@ CAUSE_TIMEOUT = "timeout"                    # install/build exceeded its cap
 CAUSE_COMPILE = "compile-error"              # source itself does not compile
 CAUSE_UNKNOWN = "unknown"
 
+# Written into a cache entry only after its install has been VERIFIED complete.
+# Its absence is what makes an unfinished or poisoned entry a cache miss rather
+# than a permanent silent wrong answer (finding HIST-L4).
+MARKER = ".chainwatch-install-ok"
+
 # ---------------------------------------------------------------------------
 # git: read-only history access
 # ---------------------------------------------------------------------------
@@ -301,10 +306,47 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
         return True, "", "no node dependency system declared"
 
     cached = cache_root / spec.key / "node_modules"
+    marker = cache_root / spec.key / MARKER
     link = spec.root / "node_modules"
+    # A CACHE HIT REQUIRES THE COMPLETION MARKER, not merely a directory.
+    # Finding HIST-L4: `cached.is_dir()` alone accepts a partially-installed
+    # tree - one npm run that exited 0 without fetching a git dependency, or an
+    # install interrupted between `shutil.move` and completion - and then
+    # returns "cache hit" forever, because nothing ever re-checks it. That is
+    # cache POISONING: one transient failure is baked in permanently, and every
+    # later run reports success while compiling against a tree that is missing
+    # packages. Measured cost: reserve-protocol's entry held 900 packages and
+    # was missing 3, one of which every ActFacet compile needs.
     if cached.is_dir():
         _link_dir(link, cached)
-        return True, "", f"cache hit {spec.key}"
+        if marker.is_file():
+            return True, "", f"cache hit {spec.key}"
+        # Unverified entry: from before this check existed, or an install that
+        # died between the move and the marker. Verify it IN PLACE rather than
+        # deleting it - a dependency tree can cost minutes to rebuild and may
+        # not be rebuildable at all offline, so destroying one to re-derive a
+        # boolean is the wrong trade.
+        missing = _missing_imported_packages(spec.root)
+        if not missing:
+            _write_marker(cache_root / spec.key, spec)
+            return True, "", f"cache hit {spec.key} (verified retroactively)"
+        _unlink_node_modules(link)
+        return (False, CAUSE_DEP_MISSING,
+                f"cached dependency tree is incomplete, missing: "
+                f"{', '.join(sorted(missing))}. Delete "
+                f"{(cache_root / spec.key).as_posix()} to force a reinstall."[:300])
+
+    # A LINK LEFT BY AN EARLIER RUN MUST GO BEFORE ANY INSTALLER RUNS.
+    # Finding HIST-L5: `_link_dir` points <worktree>/node_modules at the cache,
+    # and that junction survives into the next install attempt, where the
+    # installer tries to create the directory it is standing on:
+    #     ENOTDIR: not a directory, mkdir '...\prev\node_modules'
+    # Yarn Berry fails the whole link step on it. The install then "fails" for
+    # a reason that has nothing to do with the repository, and - before the
+    # marker existed - could leave a half-populated tree behind that was cached
+    # and trusted forever (HIST-L4). Removing the link first makes the install
+    # start from the state a human would have.
+    _unlink_node_modules(link)
 
     for cmd in INSTALL_CMDS[spec.node_manager]:
         try:
@@ -320,11 +362,76 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
     else:
         return False, CAUSE_DEP_MISSING, detail[-300:]
 
+    # VERIFY BEFORE CACHING (finding HIST-L4). An installer can exit 0 having
+    # skipped a package - a git dependency it could not fetch, most commonly -
+    # and caching that tree makes the failure permanent. Check the packages the
+    # repo's Solidity actually IMPORTS, not every declared dependency: those are
+    # the ones compilation needs, and requiring the rest would turn a working
+    # tree into a skip over an unrelated devDependency.
+    missing = _missing_imported_packages(spec.root)
+    if missing:
+        return (False, CAUSE_DEP_MISSING,
+                f"install completed but these imported packages are absent: "
+                f"{', '.join(sorted(missing))}"[:300])
+
     if link.is_dir() and not link.is_symlink():
         (cache_root / spec.key).mkdir(parents=True, exist_ok=True)
         shutil.move(str(link), str(cached))
         _link_dir(link, cached)
+    # The marker is written LAST, so an install interrupted anywhere before this
+    # point leaves an unmarked entry that the next run verifies instead of
+    # trusting.
+    _write_marker(cache_root / spec.key, spec)
     return True, "", f"installed {spec.key}"
+
+
+def _unlink_node_modules(link: Path) -> None:
+    """Remove a node_modules LINK, never a real directory.
+
+    Deliberately refuses to touch a genuine directory: this runs before an
+    install, and deleting a real dependency tree because it might be stale is
+    exactly the destructive shortcut HIST-L4's fix exists to avoid. A junction
+    is removed with `Path.unlink`-equivalent semantics on Windows (`rmdir` on
+    the reparse point), which does not follow into the target.
+    """
+    try:
+        if not link.exists() and not link.is_symlink():
+            return
+        if link.is_symlink():
+            link.unlink()
+            return
+        if os.name == "nt":
+            # A junction reports is_dir() True; distinguish by reparse attribute.
+            import stat as _stat
+
+            st = os.lstat(link)
+            if st.st_file_attributes & _stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                os.rmdir(link)  # removes the junction only
+    except OSError:
+        pass
+
+
+def _write_marker(entry: Path, spec: "EnvSpec") -> None:
+    try:
+        entry.mkdir(parents=True, exist_ok=True)
+        (entry / MARKER).write_text(
+            json.dumps({"key": spec.key, "manager": spec.node_manager,
+                        "verified_imports": sorted(imported_packages(spec.root))}),
+            encoding="utf-8")
+    except OSError:
+        pass  # an unmarked entry is merely re-verified next time; never wrong
+
+
+def _missing_imported_packages(root) -> set:
+    """Imported package prefixes that are not present on disk after an install."""
+    root = Path(root)
+    missing = set()
+    for pkg in imported_packages(root):
+        if (root / pkg).is_dir():
+            continue  # repo-root-relative import, not a package
+        if not any((root / base / Path(pkg)).is_dir() for base in ("node_modules", "lib")):
+            missing.add(pkg)
+    return missing
 
 
 # ---------------------------------------------------------------------------

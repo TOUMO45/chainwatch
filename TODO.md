@@ -463,6 +463,22 @@ frozen fixtures unaffected. Do not fix without measurement first.
       yarn 2+. Use `YARN_ENABLE_SCRIPTS=0` in the environment, NOT simply drop
       the flag: the flag exists to satisfy CHARTER rule 5, and dropping it
       trades a skipped pair for arbitrary code execution.
+      **Downgraded in urgency, not closed.** With HIST-L5 fixed, the FIRST yarn
+      command (`yarn install --immutable --mode=skip-build`, which IS Berry
+      syntax and does skip build scripts) now succeeds, so the broken fallback
+      is no longer reached on Berry repos. It is still wrong and still the only
+      thing standing between a yarn-1 repo and an install, so it stays open —
+      but it is no longer blocking Reserve.
+- [x] **HIST-L5 — remove our own node_modules junction before installing.**
+      DONE. `_unlink_node_modules` runs before any installer and refuses to
+      touch a real directory. This was the ROOT CAUSE beneath HIST-L4: an
+      installer cannot populate a reparse point, so the second install for any
+      dependency set failed, left a partial tree, and that tree got cached and
+      trusted. See LIMITATIONS.md §HIST-L5.
+- [x] **HIST-L4 — cache hits require a verified-complete marker.** DONE, and
+      the first attempt at this fix was destructive (rmtree'd unmarked entries)
+      and is retracted in LIMITATIONS.md §HIST-L4. Verification now reads and
+      never deletes.
 - [ ] **Section 1b must be re-run after HIST-L2.** The current result
       (`findings: 0`) is UNMEASURED, not clean — 5/72 comparisons completed. It
       says nothing about false positives and must not be cited as if it did.
