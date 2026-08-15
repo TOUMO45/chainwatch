@@ -32,14 +32,20 @@ success criterion 4), `webapp/` (FastAPI + SSE + UI), `src/verdict.py` (X-L1),
 
 ### Open after PHASE 6
 
-- [ ] **CHARTER success criterion 6 is still open**: at least one CONFIRMED
-      finding on a real public repo, hand-verified by the human against both
-      the diff and the deployed bytecode. Everything needed is now wired
-      (`--address` feeds capability 11 into the verdict model), but no run has
-      yet produced a CONFIRMED verdict, because that requires a repo whose
-      regression is genuinely live at a known address. Until such a run exists,
-      the honest claim is "CANDIDATE findings, fully attributed", not
-      "CONFIRMED findings".
+- [x] **CHARTER success criterion 6 — CLOSED AS A SCOPE FINDING, not as a pass.**
+      See SUBMISSION-NOTES.md. Criterion #6 as literally written is
+      unsatisfiable within responsible-disclosure constraints: CONFIRMED needs
+      `liveness == LIVE`, a live unfixed regression is an undisclosed
+      vulnerability on a funded contract, and every responsibly-publishable
+      target is already patched (therefore PATCHED, therefore CANDIDATE). Five
+      disclosed-incident candidates were searched and each rejected with a
+      reason (Sense Finance, OZ TimelockController, Audius, 88mph, Nomad). The
+      real-world demonstration is Reserve `ActFacet.revenueOverview` at
+      `e27227b2` — real repo, real commit, same-name/same-signature control
+      removal, attributed to lines 117-118 — which caps at CANDIDATE because
+      evidence field 4 requires externally-callable AND state-changing and the
+      function is a view. The capability is proven (capability 11 returns LIVE
+      on real mainnet bytecode); what is missing is an appropriate target.
 - [ ] Liveness is attached per (file, contract) by compiling the HEAD version of
       the finding's contract and comparing to the deployed implementation.
       Per 11-R3 a mismatch returns UNKNOWN rather than PATCHED, so on most real
