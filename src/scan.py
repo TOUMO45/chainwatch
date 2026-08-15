@@ -167,6 +167,11 @@ class Coverage:
     files_total: int = 0
     files_ok: int = 0
     files_error: int = 0
+    # Comparisons that could not even be ATTEMPTED, kept separate from ones that
+    # were attempted and failed. Collapsing the two would misreport a missing
+    # toolchain as a broken rule (finding HIST-L2).
+    files_skipped: int = 0
+    file_skips: list[dict] = field(default_factory=list)
     rule_errors: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
@@ -180,7 +185,9 @@ class Coverage:
             "files_total": self.files_total,
             "files_ok": self.files_ok,
             "files_error": self.files_error,
+            "files_skipped": self.files_skipped,
             "files_ok_pct": round(fpct, 1),
+            "file_skips": self.file_skips[:200],
             "skips": self.skips,
             "rule_errors": self.rule_errors[:200],
         }
@@ -337,6 +344,26 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
                 cov.files_error += 1
                 cov.rule_errors.append({"pair": f"{prev[:12]}..{cur[:12]}", "file": rel,
                                         "rule": None, "error": "one side missing on disk"})
+                continue
+
+            # PRE-FLIGHT (finding HIST-L2). An exact pragma pin whose compiler
+            # is not installed cannot be satisfied by any other version, so the
+            # nine rule invocations that would follow are doomed before they
+            # start - and the error they eventually produce names whichever
+            # compiler the fallback loop happened to try last, not the missing
+            # one. Decide it here, once, and say which version is missing.
+            missing = None
+            for side in (after_p, before_p):
+                missing = H.unsatisfiable_exact_pin(_shared.source_pragma_expr(side))
+                if missing:
+                    break
+            if missing:
+                cov.files_skipped += 1
+                cov.file_skips.append({
+                    "pair": f"{prev[:12]}..{cur[:12]}", "file": rel,
+                    "reason": f"solc {missing} not installed",
+                })
+                emit_event("file-skip", file=rel, reason=f"solc {missing} not installed")
                 continue
 
             ranges = changed_line_ranges(repo, prev, cur, rel)

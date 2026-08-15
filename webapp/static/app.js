@@ -164,10 +164,12 @@ function setStatus(text, cls) {
 
 function render(rep) {
   const cov = rep.coverage, s = rep.summary;
-  const partial = cov.pairs_analyzed < cov.pairs_total || cov.files_error > 0;
+  const partial = cov.pairs_analyzed < cov.pairs_total || cov.files_error > 0
+                  || (cov.files_skipped || 0) > 0;
 
   const skipCounts = {};
   (cov.skips || []).forEach((k) => { skipCounts[k.reason] = (skipCounts[k.reason] || 0) + 1; });
+  (cov.file_skips || []).forEach((k) => { skipCounts[k.reason] = (skipCounts[k.reason] || 0) + 1; });
   const skipLines = Object.entries(skipCounts)
     .map(([r, n]) => `<div class="cov-note">· ${n} × ${esc(r)}</div>`).join("");
 
@@ -181,6 +183,8 @@ function render(rep) {
         <span>file comparisons completed (${cov.files_ok_pct}%)</span></div>
       <div class="cov-metric"><b>${cov.files_error}</b>
         <span>comparisons lost to errors</span></div>
+      <div class="cov-metric"><b>${cov.files_skipped || 0}</b>
+        <span>never attempted (toolchain missing)</span></div>
     </div>
     <div class="bar"><i style="width:${cov.pairs_analyzed_pct}%"></i></div>
     ${skipLines}

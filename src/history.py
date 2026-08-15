@@ -435,6 +435,31 @@ def solc_available(version: str | None) -> bool:
         return False
 
 
+_EXACT_PIN = re.compile(r"^\s*(\d+\.\d+\.\d+)\s*$")
+
+
+def unsatisfiable_exact_pin(pragma_expr: str | None) -> str | None:
+    """The version this file REQUIRES and that is not installed, or None.
+
+    Pre-flight for finding HIST-L2. Deliberately narrow: it only judges an
+    EXACT pin (`pragma solidity 0.8.19;`), because that is the one case where
+    satisfiability is decidable without implementing semver — no other compiler
+    can satisfy it, so if that exact version is absent the compile is doomed
+    before it starts. Anything with a caret, a range, or an operator returns
+    None and takes the normal path, where `_shared.solc_candidates` tries the
+    installed versions and solc itself arbitrates.
+
+    Measured worth (25-pair Reserve stress run): 57 of 76 file comparisons were
+    exact pins on two absent versions, and each one paid nine failed rule
+    invocations before reporting an error that named the wrong compiler.
+    """
+    m = _EXACT_PIN.match(pragma_expr or "")
+    if not m:
+        return None
+    version = m.group(1)
+    return None if solc_available(version) else version
+
+
 # ---------------------------------------------------------------------------
 # classification of a compile failure
 # ---------------------------------------------------------------------------

@@ -93,6 +93,14 @@ def print_report(rep: dict) -> None:
     if cov["files_error"]:
         print(f"  file comparisons lost : {cov['files_error']} "
               f"(rule errors, see --json for detail)")
+    if cov.get("files_skipped"):
+        print(f"  never attempted       : {cov['files_skipped']} "
+              f"(toolchain missing, not analysed at all)")
+        reasons: dict[str, int] = {}
+        for fs in cov.get("file_skips", []):
+            reasons[fs["reason"]] = reasons.get(fs["reason"], 0) + 1
+        for reason, n in sorted(reasons.items(), key=lambda kv: -kv[1]):
+            print(f"      {n:>4}  {reason}")
     if cov["pairs_analyzed"] < cov["pairs_total"]:
         print("  NOTE: this scan did not see the whole history. A quiet result "
               "over unanalyzed\n        commits means UNMEASURED, not SAFE.")
