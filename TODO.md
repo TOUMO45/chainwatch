@@ -2,6 +2,25 @@
 
 ## Phase 3 (Reserve FP loop) — remaining steps
 
+- [ ] **RC-5 status: UNRESOLVED HYPOTHESIS, not a confirmed defect.** Do not
+      build a fix without either (a) a rename fixture that first PROVES the
+      mechanism exists by triggering a false-negative on Rules 2b/4/5 (all of
+      which key by `canonical_name` across commits), or (b) empirical
+      confirmation via Reserve commit `92ff272f` (PHASE 5, when walker + clone
+      available) that FP6 was genuinely the admin-gate case (silenced by
+      STEP 4's `_admin_gated_by_state_addr`) and not a rename. Until then,
+      treat as an open question, not a scheduled fix. Full write-up: see the
+      RC-5 status note in LIMITATIONS.md under the DESIGN-L2 §.
+
+- [ ] PHASE 5 prerequisite: confirm FP5 (Reserve 7f65c030) is QUIET live,
+      not just via fixture R5L1-N. STEP 3's rule5.py fix was verified against
+      the fixture only (no Reserve clone/walker driver on that checkout).
+
+- [ ] PHASE 5 prerequisite: confirm FP6 (Reserve 92ff272f) is QUIET live,
+      not just via fixture R2B-SPELL-N. STEP 4's rule2b.py fix was verified
+      against the fixture only (no Reserve clone/walker driver on that
+      checkout).
+
 - [ ] **STEP 5 — RC-OZ5-R6: fix Rule 6 false-fire on OZ5 assembly-assigned
       namespace pointers.** Ordered AFTER Reserve STEPS 2/3/4 (DESIGN-L2,
       RC-2 R5-L1, RC-4 Rule 2b castSpell class), because it does not touch

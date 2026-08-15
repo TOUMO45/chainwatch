@@ -928,6 +928,45 @@ misses renames) fire on functions declared in the *changed* file. FP3 is a genui
 try/catch removal on a facade view — a true trigger with wrong severity per
 RULES.md 5.3. DESIGN-L2 explains a class, not the whole run.
 
+> **RC-5 status note (added Phase 3 STEP 6, 2026-08-14 investigation).** The
+> parenthetical `(RC-5, canonical_name diff misses renames)` above is retained
+> for provenance but reclassified: **RC-5 was a first-guess hypothesis in the
+> DESIGN-L2 commit (86645b9), never diagnosed at the code level.** The commit's
+> evidence block measures only FP1/FP2/FP4 (DESIGN-L2, with explicit
+> `git diff --name-only` traces); FP5 and FP6 got labels in a single sentence
+> with no code trace, no fixture, and no measurement. Precedent for the
+> labels being first-guesses: STEP 3's investigation of "RC-2" found the real
+> mechanism was R5-L1 key collision, not `in_try` mis-scoping — the label
+> survived, the mechanism didn't.
+>
+> STEP 4's fixture (`fixtures-multi/R2B-SPELL-N`) was built to represent the
+> admin-gate over-fire class, not a rename. Its diff introduces zero renames
+> (all function/state-var/modifier identifiers byte-identical across before /
+> after; only `supported[a] = true;` moved across the external call).
+> STEP 4's fix (`_admin_gated_by_state_addr` in rule2b.py) silenced it via a
+> within-commit structural check for `msg.sender == StateVariable` equality
+> gates — **no rename logic, no `canonical_name` diffing, orthogonal to the
+> RC-5 mechanism described above**.
+>
+> Balance-of-evidence: RC-5/FP6 may have been a mislabel of the admin-gate
+> class that STEP 4 actually fixed. This is **NOT confirmed** — the mapping
+> FP6 → `Upgrade4_2_0.castSpell` → commit `92ff272f` lives only in transient
+> user-turn context; grep across the tracked repo returns zero hits for
+> `FP6`, `92ff272f`, or the fired-on-function name in any committed file.
+> The `canonical_name`-rename mechanism itself has never been reproduced,
+> measured, or fixture-locked. **Rules 2b (`rule2b.py:131,134`), 4
+> (`rule4.py:197,203,219,221,445,461-475,499-501`), and 5
+> (`rule5.py:117`) all key by `canonical_name` across commits**, so the
+> mechanism is theoretically plausible on each; whether Slither's
+> `canonical_name` genuinely omits any renamed-declaration case, and whether
+> any of those rules would then miss a real regression, is unverified.
+> Treat RC-5 as an **open empirically-unverified gap**, not as a closed or
+> scheduled defect. Definitive resolution requires either (a) a rename
+> fixture that first *proves* the mechanism exists by triggering a
+> false-negative on Rules 2b/4/5, or (b) re-running the Reserve trajectory
+> under STEP-4-fixed rules to confirm FP6 is quiet (walker + clone needed;
+> currently deferred to PHASE 5).
+
 **Which rules are exposed** (measured, `grep` over `src/rules/`):
 
 | Rule | Iterates | Exposure |
