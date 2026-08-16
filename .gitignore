@@ -34,6 +34,7 @@ realworld-test/oz5/
 
 # Real-repo clones analysed in trajectory mode (read-only targets, not ours).
 realworld-test/reserve-src/
+realworld-test/88mph-src/
 
 # Repositories the web app cloned to analyse. Read-only targets, reproducible
 # from the URL the user submitted.

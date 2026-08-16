@@ -51,6 +51,7 @@ FIXTURE_SETS = [
     ("fixtures-r5", "oz4"),
     ("fixtures-r6", "oz4"),
     ("fixtures-r6-oz5", "oz5"),
+    ("fixtures-r10", "oz4"),
 ]
 
 # Rules whose finding is a CONTRACT-level fact (a storage layout, a missing

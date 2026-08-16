@@ -1,0 +1,74 @@
+[
+  {
+    "id": "P10-01",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P10-01",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "THE RC-RENAME1 SHAPE, structurally faithful to 88mph NFT.sol a4c48d61. At N-1 `_owner` is established only by Ownable's constructor (one-shot, deployer-only, EVM-enforced); the only run-time writers are transferOwnership/renounceOwnership, both onlyOwner. At N the declared constructor is gone and an unguarded `external init(address,string)` calls `_transferOwnership(newOwner)`. No function name is shared across the pair, which is exactly why rules 1-9 are structurally incapable of seeing it (LIMITATIONS.md RC-RENAME1: no N-1 counterpart to diff against). EXPECTED: quiet before rule 10 exists (this fixture reproduces the measured miss); FIRES after. Also serves as an over-exclusion guard: init's only reachable requires are `interfaceId != 0xffffffff`-class and `newOwner != address(0)`, neither msg.sender-dependent, so a constrains_msg_sender implementation that treats any require as a guard would wrongly silence this."
+  },
+  {
+    "id": "N10-01",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "10.2",
+    "path": "negative/N10-01",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "CORRECTLY-GUARDED MIGRATION, msg.sender form. Byte-identical to P10-01 at N-1, and identical at N except `init` carries `onlyOwner`. T1 and T2 both hold exactly as in the positive, so this case can only stay quiet by way of exclusion 10.2 (constrains_msg_sender) - it cannot pass for the wrong reason. EXPECTED: quiet. Proves rule 10 does not flag migration as such."
+  },
+  {
+    "id": "N10-02",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "10.1",
+    "path": "negative/N10-02",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "CORRECTLY-GUARDED MIGRATION, one-shot form. Same N-1 as P10-01; at N `init` is unguarded by msg.sender but carries an inline one-shot flag (`require(!_initialized); _initialized = true;`), the manual analogue of OZ's `initializer` and the shape has_init_guard detects via exclusion 3b.2. Deliberately a SEPARATE case from N10-01: 10.1 (has_init_guard) and 10.2 (constrains_msg_sender) are different code paths, and one fixture cannot lock both. EXPECTED: quiet."
+  },
+  {
+    "id": "N10-03",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "10.6",
+    "path": "negative/N10-03",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "UNRELATED NEW FUNCTION. The constructor is NOT removed and no function disappears; N simply gains an unguarded `external setMaxDeposit(uint256)`. It deliberately WRITES state (`_maxDeposit`) rather than being a no-op, so the case cannot pass merely by having an empty write-set - it must be excluded because `_maxDeposit` is not a gate variable (10.6). EXPECTED: quiet. Proves rule 10 does not over-match on 'any new external setter'."
+  },
+  {
+    "id": "N10-04",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "10.6",
+    "path": "negative/N10-04",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "GENUINE RENAME, NO SECURITY IMPLICATION. `totalValue()` disappears at N and `totalAssets()` appears - the exact surface shape of a migration (a function gone, a function added), on a pure view that writes nothing. This is the strongest single test that rule 10 is keyed on the security delta and not on rename/migration detection: a write-set-overlap trigger would have to special-case it, whereas the gate-variable trigger never considers it. EXPECTED: quiet."
+  },
+  {
+    "id": "N10-05",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "T2",
+    "path": "negative/N10-05",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "NEVER SAFE, SO NOT A REGRESSION. At N-1 the contract ALREADY has an unguarded `external rescueOwner(address)` calling `_transferOwnership`; at N it additionally gains the P10-01 `init`. Locks trigger condition T2 (Unguarded(C,v,N-1) must be empty), which is what keeps rule 10 a REGRESSION detector rather than a general vulnerability detector - CHARTER.md anti-goal: 'a contract that was never safe is out of scope by definition'. EXPECTED: quiet. This silence is a DELIBERATE blind spot, not an oversight: reporting current-state vulnerability is Slither's job, and claiming it here would be the 'Slither with extra steps' failure the charter names."
+  }
+]

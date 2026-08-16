@@ -63,7 +63,7 @@ register_all(RULES)
 ROOT = Path(__file__).resolve().parent.parent
 
 # Rule ids in report order (matches CHARTER's scope table).
-RULE_ORDER = ["1", "2a", "2b", "3a", "3b", "3c", "4", "5", "6"]
+RULE_ORDER = ["1", "2a", "2b", "3a", "3b", "3c", "4", "5", "6", "10"]
 
 RULE_TITLES = {
     "1": "SC01 Access control removed",
@@ -75,6 +75,7 @@ RULE_TITLES = {
     "4": "SC09 Overflow protection removed",
     "5": "SC06 External call return unchecked",
     "6": "SC05 Input validation removed",
+    "10": "SC01 Control migrated to an unguarded entry point",
 }
 
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
