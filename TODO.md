@@ -487,3 +487,82 @@ frozen fixtures unaffected. Do not fix without measurement first.
       that is not a throughput baseline for rule execution. Re-profile after
       HIST-L2, and split the measurement into env-install / Slither-compile /
       rule-execution before proposing any optimisation.
+
+## SECTION C — open-item sweep, 2026-08-16
+
+Every item accumulated this session, either closed or explicitly deferred with
+a reason. Nothing dropped silently.
+
+### Closed this pass
+
+- [x] **HIST-L3 — Yarn Berry / lifecycle scripts.** FIXED (97f84db). The
+      guarantee now lives in the ENVIRONMENT (`INSTALL_ENV`:
+      `YARN_ENABLE_SCRIPTS=0`, `npm_config_ignore_scripts=true`) instead of a
+      version-specific CLI flag that Berry ignores. Measured:
+      `yarn config get enableScripts` returns `true` normally and `false` under
+      the overlay — i.e. CHARTER rule 5 had been resting on which command won a
+      retry race. Gap stated rather than hidden: a FRESH install through the new
+      environment was not exercised, because every Reserve lockfile tried
+      already had a cache entry.
+- [x] **METHODOLOGY section — rewritten as ONE lesson** (`a self-consistent
+      story is not evidence`) with two faces: an error arriving through a
+      fallback describes the fallback (instances 1–3), and a check that reads
+      correctly is unverified until something adversarial hits it (instance 4,
+      the `\b` hole in the hallucination gate). Previously four disjointed
+      incident reports with a stale "of the three" and a broken code span.
+- [x] **Containerization.** Dockerfile + .dockerignore, built and smoke-tested
+      locally: engine (`scorer.py` PASS inside the image), scan of a mounted
+      repo, and an agent-generated verified dossier. Two container-only defects
+      found and fixed in the process (solc-select installing to the wrong HOME;
+      git `safe.directory` on mounted repos).
+
+### Deferred, with reasons
+
+- [ ] **HIST-L2 — per-commit solc provisioning. STILL DEFERRED.** The pre-flight
+      check (960eeca) is the interim mitigation and it is a REPORTING and SPEED
+      improvement, **not a coverage improvement**. Honest numbers from the
+      25-pair stress run, stated without the "0 fires" framing: **23/25 commit
+      pairs reached analysis (92%), but only 5 of 72 FILE COMPARISONS completed
+      — 6.9%.** 57 of 76 were exact pragma pins (`0.8.19`, `0.8.17`) with no
+      matching compiler installed. After the pre-flight those are reported as
+      `never attempted — solc X not installed` instead of nine misleading rule
+      errors each, and the run is far faster, but **the same 93% remains
+      unanalysed**. Any claim about that workload must cite 6.9%, not 92%.
+- [ ] **Cloud Run deployment. DEFERRED, NOT CANCELLED.** Needs a Google Cloud
+      project and credentials not available on this machine. The image is built
+      and locally verified end to end, so deployment is a `gcloud run deploy`
+      away rather than a from-scratch task. README and AGENT-DESIGN both say
+      "containerized and locally verified, Cloud Run deployment pending".
+- [ ] **WALK-L6 — make the read-only guarantee literal.** Clone the target once
+      into scratch and worktree off the clone. Claim already corrected in
+      README and `src/scan.py`; the code fix changes a core path and deserves
+      its own measurement, so it is not being done under deadline.
+- [ ] **RC-RENAME1 — CONFIRMED SCOPED ONLY, deliberately not fixed.** It needs a
+      NEW rule keyed on the contract's external surface plus its own fixture set
+      (one positive, and negatives for a correctly-guarded
+      constructor→initializer migration and an unrelated new setter). It is NOT
+      a patch to Rule 3b, and attempting it under deadline would ship an
+      untested trigger that fires on every proxy migration ever made. Documented
+      in LIMITATIONS.md §RC-RENAME1 with mechanism, measured evidence (88mph
+      `a4c48d61`), scope and fix direction.
+
+### Confirmed, no action needed
+
+- [x] **RC-AST1 fixture-first ordering.** Still recorded as unprovable
+      ("Strict temporal ordering remains unprovable and is recorded as
+      unprovable"), and the retroactive pre-fix measurement (precision 0.67 →
+      1.00) is what stands in for it. Checked: RC-AST1 is not referenced in
+      README, SUBMISSION-NOTES or AGENT-DESIGN at all, so there is no
+      submission-facing copy to have drifted into a stronger claim.
+- [x] **guard.sh scope — STILL THE RIGHT CALL, restated for a larger codebase.**
+      Protected: 14 fixture sets + `scorer.py` (271 files). Deliberately
+      outside: `walker.py`, `src/scan.py`, `src/verdict.py`, `src/history.py`,
+      the rules, and all of `agent/`. The guard exists to make ONE failure mode
+      detectable — ground truth or the thing that measures against it being
+      edited to make a result look better. Source code is reviewed by diff at
+      every commit; hashing it would fire on every legitimate change and train
+      the human to run `freeze` reflexively, which would erode the signal for
+      fixtures too. The one genuinely new candidate is `agent/verify.py`, since
+      a weakened gate is silently harmful in the same way a weakened fixture is
+      — but that is covered by adversarial tests that fail loudly if the gate
+      stops rejecting, which is the better mechanism for code.
