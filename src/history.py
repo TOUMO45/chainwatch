@@ -159,6 +159,61 @@ def file_at(repo, sha: str, path: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+def mirror_clone(source, dest) -> Path:
+    """A bare clone of `source` inside OUR scratch, so the target is never written to.
+
+    Finding WALK-L6: `git worktree add` creates administrative entries inside
+    the repository it is run against. Run against the user's repository, that is
+    a write to a target Chainwatch promised only to read — and it fails outright
+    when the target is mounted read-only. Cloning first moves every worktree,
+    every checkout and every piece of bookkeeping into a repository WE own; the
+    user's repository is then only ever the source of a clone and a fetch, both
+    of which read it and nothing else.
+
+    `--local` is used when possible: for a source on the same filesystem git
+    hardlinks the object store instead of copying it, which is fast and still
+    only ever READS the source (git never rewrites an existing object file). If
+    hardlinking is impossible — a different filesystem, a bind mount — git falls
+    back to copying on its own.
+
+    Refreshed on reuse so a repeat scan sees commits added since, and the
+    refresh is a plain `fetch`, which is also read-only on the source.
+    """
+    source, dest = Path(source), Path(dest)
+    if (dest / "HEAD").is_file() or (dest / ".git").exists():
+        try:
+            _git(dest, "fetch", "--quiet", "--prune", "origin",
+                 "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*",
+                 timeout=600)
+        except Exception:  # noqa: BLE001 - a stale mirror still analyses fine
+            pass
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(["git", "clone", "--bare", "--local", "--quiet",
+                           str(source), str(dest)],
+                          capture_output=True, text=True, timeout=1800)
+    if proc.returncode != 0:
+        proc = subprocess.run(["git", "clone", "--bare", "--quiet",
+                               str(source), str(dest)],
+                              capture_output=True, text=True, timeout=1800)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"could not clone {source} into scratch: {proc.stderr[:300]}")
+    # A bare clone's HEAD follows the source's default branch; make sure the
+    # source's CURRENT HEAD commit is reachable, since a caller may be scanning
+    # a detached or non-default checkout.
+    try:
+        head = _git(source, "rev-parse", "HEAD").strip()
+        _git(dest, "cat-file", "-e", f"{head}^{{commit}}")
+    except Exception:  # noqa: BLE001
+        try:
+            _git(dest, "fetch", "--quiet", str(source),
+                 f"+{head}:refs/chainwatch/source-head", timeout=600)
+        except Exception:  # noqa: BLE001
+            pass
+    return dest
+
+
 class Worktree:
     """A scratch checkout of the target repo, reused across commits.
 

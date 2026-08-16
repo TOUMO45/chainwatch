@@ -1971,8 +1971,9 @@ run, and has to be reasoned about as one.
 ### WALK-L6 — "read-only on every target" is not literally true: `git worktree` writes metadata
 
 **Type: ACCURACY OF A STATED GUARANTEE. Not a coverage or precision defect —
-a claim defect, which for this project is worse. MEASURED. Not yet fixed;
-claim corrected in the meantime.**
+a claim defect, which for this project is worse. MEASURED, then FIXED PROPERLY:
+the claim was first narrowed to match the code, and the code was then changed so
+the original, stronger claim is true again.**
 
 CHARTER rule 5: *"Read-only on every external target. Never write to, push to,
 commit to, or authenticate beyond public-read on any repository."*
@@ -2010,10 +2011,40 @@ for the whole project until a *read-only mount* forced the question — the same
 lesson as HIST-L5: our own scratch mechanism was doing something nobody had
 checked.
 
-**Fix direction (not implemented).** Clone the target once into Chainwatch's own
-scratch directory (`git clone --local --no-hardlinks <target> <scratch>/origin`,
-which only READS the source), then create every worktree off that clone. The
-user's repository is then genuinely untouched, the container can mount it
-read-only, and CHARTER rule 5 holds literally rather than approximately. Cost is
-one local clone per target; `--local` is cheap. Not done under deadline because
-it changes a core path and deserves its own measurement — tracked in TODO.md.
+**Fix — IMPLEMENTED.** `history.mirror_clone` makes a bare clone of the target
+inside Chainwatch's own scratch directory, and `scan()` runs every worktree,
+checkout, `git log`, `git diff` and `git show` against THAT. The target is
+touched only by the clone and by the fetch that refreshes it on a repeat scan,
+both of which read it and nothing else. `--local` hardlinks the object store
+when the filesystem allows, so the cost is small; git falls back to copying by
+itself when it cannot.
+
+**Verified by the test the defect originally failed** — a target bind-mounted
+**read-only** into the container:
+
+```
+BEFORE the scan:  .git/worktrees in target  ->  ABSENT
+scan              -> pairs 2/2, 2 CANDIDATE findings, 8.0s   (previously: refused)
+AFTER the scan:   .git/worktrees in target  ->  ABSENT       <- never written to
+                  git status --short        ->  (empty)
+                  HEAD                      ->  unchanged
+worktrees now live at   <scratch>/wt/{prev,cur,head}
+registered against      <scratch>/origin.git/worktrees/{prev,cur,head}
+```
+
+Absence, not "unchanged", is the point: there is nothing to clean up afterwards
+because nothing was created.
+
+**Two notes.** The scratch worktrees moved to `<scratch>/wt/` rather than reusing
+the old flat paths, because worktrees created by earlier versions are registered
+against the TARGET and reusing those names would collide with another
+repository's bookkeeping. And a repository scanned by an earlier version may
+still carry stale `.git/worktrees/` entries from it; `git worktree prune` in the
+target clears them, but Chainwatch does not run it, because that would be the
+very write this fix removed.
+
+**Consequence for CHARTER.** Rule 5 was narrowed to match the code (commit
+7165a10) before this fix landed. That narrowed wording is now weaker than the
+truth: it permits a write that no longer happens. It is permissive rather than
+false, so it is not urgent — but the stronger original phrasing is accurate
+again and the charter can be restored to it.

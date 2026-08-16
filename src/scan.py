@@ -29,15 +29,15 @@ TRAJECTORY (the product's actual claim):
     at HEAD or was repaired later. "Which commit made it vulnerable" is the
     first half of the charter's one sentence; `liveness` is the second.
 
-CHARTER rule 5, stated precisely (finding WALK-L6): Chainwatch never modifies a
-target repository's CONTENT, index, branches or HEAD, never commits, never
-pushes, never authenticates, and never constructs a transaction. It does create
-and later remove `git worktree` bookkeeping inside the target's own `.git`
-directory - `git worktree add` is not a read operation, and calling this
-"read-only" without qualification was inaccurate. Dependency installs run with
-lifecycle scripts disabled (see history.INSTALL_ENV), inside a scratch
-directory. The fix that would make the guarantee literal - clone once into
-scratch, worktree off the clone - is scoped in LIMITATIONS.md.
+CHARTER rule 5, and it is now literal (finding WALK-L6): the target repository
+is READ-ONLY. `mirror_clone` makes a bare clone inside Chainwatch's own scratch
+directory and every worktree, checkout and piece of git bookkeeping happens
+there - so the target is touched only by the clone and the fetch that produced
+it, both of which read it and nothing else. Verified against a read-only bind
+mount: the scan completes and `.git/worktrees/` in the target stays ABSENT, not
+merely unchanged. Dependency installs run with lifecycle scripts disabled (see
+history.INSTALL_ENV), inside the scratch worktrees. Nothing here can construct
+a transaction.
 """
 
 from __future__ import annotations
@@ -257,17 +257,30 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
 
     emit_event("start", repo=str(repo), limit=opts.limit, rules=rule_ids)
 
+    # CLONE FIRST (finding WALK-L6). Everything after this line reads `origin`,
+    # a bare clone inside OUR scratch directory - never the repository the user
+    # pointed us at. Worktrees, checkouts and all git bookkeeping therefore
+    # happen in a repository we own, and the target is touched only by the
+    # clone and the fetch that produced it, both of which read it and nothing
+    # else. This is what lets a target be mounted read-only.
+    origin = H.mirror_clone(repo, worktrees / "origin.git")
+    emit_event("mirror", path=str(origin))
+
     pairs = (list(opts.explicit_pairs) if opts.explicit_pairs
-             else H.sol_commit_pairs(repo, opts.limit, opts.pathspec))
+             else H.sol_commit_pairs(origin, opts.limit, opts.pathspec))
     cov.pairs_total = len(pairs)
     emit_event("pairs", total=len(pairs))
     if not pairs:
         return _report(opts, cov, findings, started, head=None)
 
-    head = H._git(repo, "rev-parse", "HEAD").strip()
-    prev_wt = H.Worktree(repo, worktrees / "prev")
-    cur_wt = H.Worktree(repo, worktrees / "cur")
-    head_wt = H.Worktree(repo, worktrees / "head") if opts.check_head_survival else None
+    head = H._git(origin, "rev-parse", "HEAD").strip()
+    # `wt/` rather than the old flat layout: worktrees created against the
+    # TARGET by earlier versions still sit at the old paths, and reusing those
+    # names would collide with bookkeeping that belongs to a different repo.
+    prev_wt = H.Worktree(origin, worktrees / "wt" / "prev")
+    cur_wt = H.Worktree(origin, worktrees / "wt" / "cur")
+    head_wt = (H.Worktree(origin, worktrees / "wt" / "head")
+               if opts.check_head_survival else None)
 
     head_spec = None
     if head_wt is not None:
@@ -291,7 +304,7 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
             emit_event("cancelled", at_pair=idx)
             break
 
-        meta_cur = commit_meta(repo, cur)
+        meta_cur = commit_meta(origin, cur)
         emit_event("pair", index=idx, total=len(pairs), prev=prev[:12], cur=cur[:12],
                    subject=meta_cur.get("subject", ""))
 
@@ -334,7 +347,7 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
             _apply_build_config(head_spec)
         _apply_build_config(cur_spec)
 
-        changed = H.changed_sol(repo, prev, cur, opts.root_dir)
+        changed = H.changed_sol(origin, prev, cur, opts.root_dir)
         modified = list(changed.get("modified", []))
         if not modified:
             cov.pairs_analyzed += 1
@@ -371,7 +384,7 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
                 emit_event("file-skip", file=rel, reason=f"solc {missing} not installed")
                 continue
 
-            ranges = changed_line_ranges(repo, prev, cur, rel)
+            ranges = changed_line_ranges(origin, prev, cur, rel)
             file_ok = True
             for rule_id in rule_ids:
                 meta = {"source_path": rel, "changed_files": modified}

@@ -165,9 +165,14 @@ transactions; and never auto-discloses anything.
 On chain it is strictly read-only — `eth_getCode`, `eth_getStorageAt` and
 read-only `eth_call`, with no code path that can send a transaction.
 
-On a target repository it never modifies content, index, branches or HEAD, never
-commits, never pushes and never authenticates. It **does** create and later
-remove `git worktree` bookkeeping inside the target's `.git` directory, because
-that is how it checks out two commits at once. Calling that "read-only" without
-qualification was inaccurate, and the correction plus the fix that would make
-the guarantee literal are recorded in LIMITATIONS.md under `WALK-L6`.
+On a target repository it is **read-only, literally**. Chainwatch makes a bare
+clone inside its own scratch directory first, and every worktree, checkout and
+piece of git bookkeeping happens in that clone — so the repository you point it
+at is only ever the source of a clone and a fetch. Verified against a read-only
+bind mount: the scan completes normally and `.git/worktrees/` in the target
+stays **absent**, not merely unchanged.
+
+This was not always true: `git worktree add` used to run against the target
+directly, which writes metadata into its `.git`. That gap, its measurement and
+its fix are recorded in LIMITATIONS.md under `WALK-L6` rather than quietly
+corrected.
