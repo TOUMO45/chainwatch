@@ -1,0 +1,35 @@
+# Secrets — never in a build context, never in a layer.
+.env
+*.key
+*.pem
+
+# Scratch state. All reproducible, and some of it is gigabytes.
+.walker-worktrees/
+.walker-cache/
+.walker-out*.json
+.webapp-clones/
+realworld-test/
+reports/
+reports-input/
+
+# Repo metadata and local tooling
+.git/
+.github/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Fixture sets not copied by the Dockerfile (the OZ5 ones need a second
+# OpenZeppelin tree that is not in the image).
+fixtures-oz5/
+fixtures-r1-oz5/
+fixtures-r6-oz5/
+fixtures-ext/
+fixtures-multi/
+fixtures-r2b-role/
+fixtures-r3c-ast1/
+tests/

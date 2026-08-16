@@ -55,6 +55,26 @@ requests per minute and one dossier costs several, so the runner paces itself
 and reports when it is waiting. Moving to a paid tier is a config change
 (`--rpm`), not an architecture change.
 
+### Container
+
+```bash
+docker build -t chainwatch .
+docker run -p 8080:8080 -e GEMINI_API_KEY=... -v /path/to/repo:/repos/target chainwatch
+```
+
+**Status: containerized and locally verified; Cloud Run deployment pending.**
+The image carries the whole product — engine, scan pipeline, web app and agent —
+and has been built and smoke-tested locally end to end: `scorer.py` passes a
+frozen fixture set *inside* the container, a mounted repository scans to two
+attributed CANDIDATE findings, and the agent drafts a verified dossier. What has
+**not** happened is a deploy to Google Cloud Run; that needs a project and
+credentials this machine does not have.
+
+The API key is never baked into the image — no `ARG`, no `ENV`, and `.env` is in
+`.dockerignore`. It is injected at run time (`-e` locally, Secret Manager on
+Cloud Run). Verified: `docker history` contains no key material and the image's
+`Config.Env` carries only `PATH`, `LANG`, `PYTHON_*` and `PORT`.
+
 **Setup**
 
 ```bash

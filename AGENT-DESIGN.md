@@ -1,6 +1,10 @@
 # Capability 12 — the reporting agent: tool design
 
-**Status: DESIGN ONLY. No agent code written. Awaiting review.**
+**Status: BUILT AND WIRED.** Tools, templates and the mechanical gate are
+implemented (`agent/`); both front ends call one runner (`agent/runner.py`);
+the whole product is **containerized and locally verified**. **Cloud Run
+deployment is pending** — it needs a Google Cloud project and credentials that
+were not available, and is deferred rather than cancelled (TODO.md, 2026-08-16).
 
 Track: "The Taskmaster". Judging weights this design targets: 40% *autonomous,
 high-value action over simple chat*, 30% *architectural discipline*.

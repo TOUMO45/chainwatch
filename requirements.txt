@@ -19,5 +19,12 @@ uvicorn
 sse-starlette
 pydantic
 
+# --- capability 12: the reporting agent (webapp/CLI "Generate report") ------
+# Pinned: ADK 2.x broke the agent API, event model and session schema vs 1.x.
+# The deterministic engine does NOT depend on these - a scan runs without them
+# and without an API key.
+google-adk>=2.7,<3
+google-genai>=2.18,<3
+
 # --- test harness -----------------------------------------------------------
 pytest
