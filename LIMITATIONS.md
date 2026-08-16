@@ -1654,49 +1654,59 @@ Chainwatch run: 1/1 pairs analysed, 8/9 rules executed, 0 findings.
 
 ---
 
-## METHODOLOGY — never diagnose from an error that came through a fallback
+## METHODOLOGY — a self-consistent story is not evidence
 
-**Project-level lesson, not tied to any one finding. Four instances so far, all
-costly. The first three share a mechanism (a fallback reported its own error in
-place of the real one); the fourth is the same family seen from the other side —
-a check that LOOKS correct is unverified until something adversarial is thrown
-at it.**
+**Project-level lesson, not tied to any one finding. Four instances so far,
+each of which cost real time and one of which shipped a hole in a security
+gate.** They look like two different mistakes and are one: *plausibility
+mistaken for verification.* It has two faces.
 
-Chainwatch has two retry loops, both deliberate and both correct as features:
-`_shared._compile` retries every installed solc when the ambient one refuses a
-file, and `_storage.storage_layouts` does the same for the layout extractor.
-Each keeps the LAST attempt's error and discards the first. So the message a
-human eventually reads describes **the last thing that was tried, not the thing
-that broke** — and it is always a plausible, self-consistent story, which is
-precisely what makes it dangerous.
+**Face A — the error you are shown came through a fallback, so it describes the
+fallback.** Chainwatch has two retry loops, both deliberate and both correct as
+features: `_shared._compile` retries every installed solc when the ambient one
+refuses a file, and `_storage.storage_layouts` does the same for the layout
+extractor. Each keeps the LAST attempt's error and discards the first. The
+message a human eventually reads therefore describes the last thing tried, not
+the thing that broke — and it is always a coherent, self-consistent story,
+which is exactly what makes it dangerous.
 
-| # | What was reported | What was actually wrong |
-|---|---|---|
-| 1 | "`_storage.py` does not honor the walker's `SOLC_VERSION`, falls back to ambient 0.7.6" (TODO.md, pre-PHASE 6) | Never established. The 0.7.6 text was the retry loop's last candidate. |
-| 2 | WALK-L2: "Rule 3c ran solc in the wrong directory — TOTAL COVERAGE LOSS, 42/42 errors, FIXED" | Also never reproduced. A second plausible mechanism asserted with the same confidence as the first, and a 42/42 figure from a different run pasted onto a 4-pair measurement. Retracted; the defect is real in code but latent. |
-| 3 | 88mph run: "current compiler is 0.7.6" on Rule 3c, with `SOLC_VERSION=0.5.17` explicitly set | `solc 0.5.17` has no `--combined-json storage-layout` **at all** (`Invalid option to --combined-json: storage-layout`). Nothing to do with versions. The first attempt failed on an unsupported option; 0.7.6 is simply last in the candidate ranking. |
-| 4 | `agent/verify.py`'s `_EXPLOIT` pattern, read and reviewed as correct | It matched nothing ending in punctuation. The regex closed with ``, and a word boundary can never follow `(` or `)` — so `abi.encodeWithSelector(` and `exploit()` were silently unmatched. The hallucination gate had a hole in it that inspection did not reveal; `tests/test_agent_tools.py::test_exploit_material_is_caught` found it on the first adversarial run (19/20), which is the only reason it is not still there. |
+**Face B — the check you read and approved was never executed against anything
+that should fail.** Code that looks right reads as right. Only an input designed
+to break it distinguishes "correct" from "correct-looking".
 
-Instance 2 is the worst of the three, because it was produced *while
-investigating instance 1* — the fallback fooled the same investigation twice,
-in opposite directions.
+| # | Face | What was believed | What was true |
+|---|---|---|---|
+| 1 | A | "`_storage.py` does not honor the walker's `SOLC_VERSION`, falls back to ambient 0.7.6" (TODO.md, pre-PHASE 6) | Never established. The 0.7.6 text was the retry loop's last candidate. |
+| 2 | A | WALK-L2: "Rule 3c ran solc in the wrong directory — TOTAL COVERAGE LOSS, 42/42 errors, FIXED" | Also never reproduced. A second plausible mechanism asserted with the confidence of the first, and a 42/42 figure from a different run pasted onto a 4-pair measurement. Retracted; the defect is real in code but latent. |
+| 3 | A | 88mph run: "current compiler is 0.7.6" on Rule 3c, with `SOLC_VERSION=0.5.17` explicitly set | `solc 0.5.17` has no `--combined-json storage-layout` **at all** (`Invalid option to --combined-json: storage-layout`). Nothing to do with versions: the first attempt failed on an unsupported option, and 0.7.6 is merely last in the candidate ranking. |
+| 4 | B | `agent/verify.py`'s `_EXPLOIT` pattern, written and reviewed as correct | It could not match anything ending in punctuation. The pattern closed with a `` word boundary, which can never follow `(` or `)`, so `abi.encodeWithSelector(` and `exploit()` were silently unmatched. **A hole in the hallucination gate that reading did not reveal.** `tests/test_agent_tools.py::test_exploit_material_is_caught` found it on the first adversarial run (19/20) — the only reason it is not still there. |
 
-**The rule, applied from here on.** An error surfaced through a retry or
-fallback path is **not evidence** until the FIRST failure has been reproduced
-directly. Concretely, before that error may be used to diagnose anything:
+Instance 2 is the worst, because it was produced *while investigating instance
+1*: the same fallback fooled the same investigation twice, in opposite
+directions. Instance 4 is the most expensive if missed, because a gate with a
+hole in it reports "verified" forever.
 
-1. Run the failing command by hand, once, with no fallback, and read *that*
-   output. In instance 3 this took one command and gave the answer immediately.
-2. If a hypothesis cannot be reproduced on demand, it is a hypothesis. Label it
-   as one in this file. Do not tick a TODO item on it.
-3. Do not carry a measurement across workloads. A count from a 29-pair run says
-   nothing about a 4-pair run, and pairing them manufactures a before/after that
-   was never observed.
+**The rule, applied from here on.**
+
+1. **Reproduce the first failure by hand before diagnosing.** An error surfaced
+   through a retry or fallback path is not evidence. In instance 3 one command
+   with no fallback gave the answer immediately.
+2. **A hypothesis that cannot be reproduced on demand is a hypothesis.** Label
+   it as one here. Do not tick a TODO item on it.
+3. **Never carry a measurement across workloads.** A count from a 29-pair run
+   says nothing about a 4-pair run, and pairing them manufactures a
+   before/after that was never observed.
+4. **Every check ships with an input that must fail it.** A gate that has never
+   rejected anything is not known to work. This is the same discipline as a
+   negative fixture, applied to validators instead of rules — and it is why
+   `verify_report` is tested with an invented hash, an invented address, an
+   invented path, an out-of-range line, an invented qualified name, three
+   overclaim phrasings, a stripped header, and exploit material.
 
 **Structural fix direction (not implemented).** Both retry loops should retain
 the FIRST failure alongside the last and report both, e.g.
 `first attempt (ambient 0.5.17): <error>; after N fallbacks (0.7.6): <error>`.
-Cheap, and it would have prevented all three instances. Tracked in TODO.md.
+Cheap, and it would have prevented instances 1 through 3. Tracked in TODO.md.
 
 ---
 
@@ -1771,7 +1781,7 @@ a 5-second answer.
 
 ### HIST-L3 — the install command set predates Yarn Berry
 
-**Type: COVERAGE LOSS, small and precisely located. 2 of 25 pairs. NOT FIXED.**
+**Type: COVERAGE LOSS plus a SAFETY guarantee resting on an accident. FIXED.**
 
 `INSTALL_CMDS["yarn"]` tries `yarn install --immutable --mode=skip-build`, then
 falls back to `yarn install --frozen-lockfile --ignore-scripts`. Yarn 2+ (Berry)
@@ -1785,11 +1795,32 @@ Both stress-run skips (`feab683c..6fed5516`, `55f24458..aab30189`) are this, and
 both were correctly reported as `env-reconstruction-failed (dep-missing)` with
 the reason attached — the skip accounting worked, the command set is stale.
 Berry disables lifecycle scripts through `enableScripts: false` in `.yarnrc.yml`
-or `YARN_ENABLE_SCRIPTS=0`, not a CLI flag. **The safety property matters more
-than the convenience here**: the whole reason `--ignore-scripts` is passed is
-CHARTER rule 5 (never execute a target repo's code), so the Berry path must set
-`YARN_ENABLE_SCRIPTS=0` in the environment rather than simply dropping the flag.
-Dropping it would silently trade a skipped pair for arbitrary code execution.
+or `YARN_ENABLE_SCRIPTS=0`, not a CLI flag.
+
+**The safety half turned out to matter more than the coverage half.** The whole
+reason `--ignore-scripts` is passed is CHARTER rule 5 — never execute a target
+repository's code. On a Berry repo that flag does nothing, so the guarantee was
+resting entirely on `--mode=skip-build` being the command that happened to run
+FIRST. Measured on the Reserve checkout:
+
+```
+$ yarn config get enableScripts                      -> true
+$ YARN_ENABLE_SCRIPTS=0 yarn config get enableScripts -> false
+```
+
+Scripts were enabled in the target tree, and only the fallback ORDERING kept
+them from running. Safety that depends on which command wins a retry race is
+not safety; it is a coincidence that has not failed yet — the same shape as
+HIST-L5, where a junction left by a previous run decided whether an install
+worked.
+
+**Fix.** `INSTALL_ENV` overlays the subprocess environment per package manager:
+`YARN_ENABLE_SCRIPTS=0` for yarn, `npm_config_ignore_scripts=true` for
+npm/pnpm. The environment holds regardless of which command wins, what the
+installer's CLI dialect is, or what a repo's own `.yarnrc.yml` says. The
+command list is unchanged and still ordered Berry-first-then-yarn-1, so each
+dialect's install still works; the guarantee simply no longer depends on that
+ordering.
 
 ---
 

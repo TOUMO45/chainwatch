@@ -274,11 +274,31 @@ def _link_dir(link: Path, target: Path) -> None:
 
 INSTALL_CMDS = {
     # Lifecycle scripts disabled in every one of these - see module docstring.
+    # The yarn list is ordered Berry-first, then yarn 1: `--mode=skip-build` is
+    # Berry syntax and yarn 1 rejects it, `--ignore-scripts` is yarn 1 syntax
+    # and Berry rejects it, so whichever runs, the other is a no-op failure.
     "yarn": [["yarn", "install", "--immutable", "--mode=skip-build"],
              ["yarn", "install", "--frozen-lockfile", "--ignore-scripts"]],
     "npm": [["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
             ["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund"]],
     "pnpm": [["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"]],
+}
+
+# CHARTER rule 5 (never execute a target repository's code) enforced through the
+# ENVIRONMENT as well as the command line, because the command line is
+# version-dependent and the environment is not (finding HIST-L3).
+#
+# Yarn Berry has no `--ignore-scripts` flag; it reads `enableScripts`, which
+# defaults to TRUE and is true in every target checked. Today the guarantee
+# rests entirely on `--mode=skip-build` being the command that happens to run
+# first - i.e. on a fallback ordering, which is exactly the kind of accidental
+# safety this project has been burned by. `YARN_ENABLE_SCRIPTS=0` states it
+# outright and holds no matter which command wins or what a repo's .yarnrc.yml
+# says. npm's `--ignore-scripts` gets the same treatment via npm_config_*.
+INSTALL_ENV = {
+    "yarn": {"YARN_ENABLE_SCRIPTS": "0"},
+    "npm": {"npm_config_ignore_scripts": "true"},
+    "pnpm": {"npm_config_ignore_scripts": "true"},
 }
 
 _REGISTRY_GONE = ("404 Not Found", "ETARGET", "no matching version",
@@ -348,10 +368,12 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
     # start from the state a human would have.
     _unlink_node_modules(link)
 
+    env = {**os.environ, **INSTALL_ENV.get(spec.node_manager, {})}
     for cmd in INSTALL_CMDS[spec.node_manager]:
         try:
             proc = subprocess.run(cmd, cwd=str(spec.root), capture_output=True,
-                                  text=True, timeout=timeout, shell=(os.name == "nt"))
+                                  text=True, timeout=timeout, env=env,
+                                  shell=(os.name == "nt"))
         except subprocess.TimeoutExpired:
             return False, CAUSE_TIMEOUT, f"{' '.join(cmd)} exceeded {timeout}s"
         detail = (proc.stdout + proc.stderr)[-600:]
