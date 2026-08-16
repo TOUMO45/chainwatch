@@ -1965,3 +1965,55 @@ content. HIST-L5: the cache's own linking mechanism broke the thing that
 populates it. **Scratch state is not neutral.** Every optimisation that leaves
 something behind — a memo, a directory, a link — becomes an input to the next
 run, and has to be reasoned about as one.
+
+---
+
+### WALK-L6 — "read-only on every target" is not literally true: `git worktree` writes metadata
+
+**Type: ACCURACY OF A STATED GUARANTEE. Not a coverage or precision defect —
+a claim defect, which for this project is worse. MEASURED. Not yet fixed;
+claim corrected in the meantime.**
+
+CHARTER rule 5: *"Read-only on every external target. Never write to, push to,
+commit to, or authenticate beyond public-read on any repository."*
+`src/scan.py`'s docstring restated it as *"the target repository is only ever
+read — `git worktree`, `git log`, `git show`."*
+
+**`git worktree add` writes.** It creates administrative entries inside the
+target repository's own `.git` directory. Measured directly, on a target
+mounted read-only into the container:
+
+```
+fatal: could not create directory of '.git/worktrees/prev1': Read-only file system
+```
+
+and on a writable target, after a scan:
+
+```
+$ ls demo-repo/.git/worktrees/
+cur  head  prev
+```
+
+**What is and is not true, precisely.** Chainwatch does not modify a target's
+CONTENT, index, branches, or HEAD; it never commits, pushes, or authenticates.
+Verified after a full scan: `git status --short` is empty and HEAD is unchanged.
+What it does write is worktree bookkeeping under `.git/worktrees/`, and those
+entries are removed when the worktree is removed. So the honest phrasing is
+**"never modifies a target's content or history; does create and remove git
+worktree metadata inside it"** — not "only ever read".
+
+**Why this is worth a finding rather than a footnote.** This project's entire
+pitch rests on the difference between a claim that was measured and a claim that
+sounded right. A read-only guarantee that is 95% true is exactly the kind of
+statement the CANDIDATE cap exists to refuse elsewhere. It was also invisible
+for the whole project until a *read-only mount* forced the question — the same
+lesson as HIST-L5: our own scratch mechanism was doing something nobody had
+checked.
+
+**Fix direction (not implemented).** Clone the target once into Chainwatch's own
+scratch directory (`git clone --local --no-hardlinks <target> <scratch>/origin`,
+which only READS the source), then create every worktree off that clone. The
+user's repository is then genuinely untouched, the container can mount it
+read-only, and CHARTER rule 5 holds literally rather than approximately. Cost is
+one local clone per target; `--local` is cheap. Not done under deadline because
+it changes a core path and deserves its own measurement — tracked in TODO.md.

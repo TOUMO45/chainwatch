@@ -160,6 +160,14 @@ result:
 
 Chainwatch does **not** fuzz, symbolically execute, or formally verify; does not
 detect novel vulnerabilities; does not generate exploit code or proof-of-concept
-transactions; and never auto-discloses anything. It is read-only on every target
-repository and on chain — it issues `eth_getCode`, `eth_getStorageAt` and
-read-only `eth_call`, and has no code path that can send a transaction.
+transactions; and never auto-discloses anything.
+
+On chain it is strictly read-only — `eth_getCode`, `eth_getStorageAt` and
+read-only `eth_call`, with no code path that can send a transaction.
+
+On a target repository it never modifies content, index, branches or HEAD, never
+commits, never pushes and never authenticates. It **does** create and later
+remove `git worktree` bookkeeping inside the target's `.git` directory, because
+that is how it checks out two commits at once. Calling that "read-only" without
+qualification was inaccurate, and the correction plus the fix that would make
+the guarantee literal are recorded in LIMITATIONS.md under `WALK-L6`.

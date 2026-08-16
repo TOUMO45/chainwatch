@@ -29,10 +29,15 @@ TRAJECTORY (the product's actual claim):
     at HEAD or was repaired later. "Which commit made it vulnerable" is the
     first half of the charter's one sentence; `liveness` is the second.
 
-READ-ONLY (CHARTER rule 5): the target repository is only ever read - `git
-worktree`, `git log`, `git show`. Dependency installs run with lifecycle
-scripts disabled, inside a scratch directory. Nothing is written to the target,
-no transaction is ever constructed.
+CHARTER rule 5, stated precisely (finding WALK-L6): Chainwatch never modifies a
+target repository's CONTENT, index, branches or HEAD, never commits, never
+pushes, never authenticates, and never constructs a transaction. It does create
+and later remove `git worktree` bookkeeping inside the target's own `.git`
+directory - `git worktree add` is not a read operation, and calling this
+"read-only" without qualification was inaccurate. Dependency installs run with
+lifecycle scripts disabled (see history.INSTALL_ENV), inside a scratch
+directory. The fix that would make the guarantee literal - clone once into
+scratch, worktree off the clone - is scoped in LIMITATIONS.md.
 """
 
 from __future__ import annotations
