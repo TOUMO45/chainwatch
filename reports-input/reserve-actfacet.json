@@ -1,0 +1,114 @@
+{
+  "repo": "realworld-test/reserve-src",
+  "head": "879b0e955de3aa82b5b9f06c532429087ce7feea",
+  "address": null,
+  "summary": {
+    "findings": 1,
+    "confirmed": 0,
+    "candidates": 1,
+    "pairs_analyzed": 1,
+    "pairs_total": 1,
+    "coverage_pct": 100.0,
+    "seconds": 97.5
+  },
+  "by_rule": {
+    "5": 1
+  },
+  "coverage": {
+    "pairs_total": 1,
+    "pairs_analyzed": 1,
+    "pairs_skipped": 0,
+    "pairs_analyzed_pct": 100.0,
+    "files_total": 8,
+    "files_ok": 5,
+    "files_error": 3,
+    "files_skipped": 0,
+    "files_ok_pct": 62.5,
+    "file_skips": [],
+    "skips": [],
+    "rule_errors": [
+      {
+        "pair": "f43202a3..e27227b2",
+        "file": "contracts/plugins/assets/curve/CurveRecursiveCollateral.sol",
+        "rule": "5",
+        "error": "SlitherError: Invalid compilation: \nInvalid solc compilation Error: Identifier already declared.\r\n  --> .walker-worktrees/166b2fc8fd/prev/contracts/plugins/assets/curve/CurveStableCollateral.sol:10:1:\r\n   |\r\n10 | import \"../../../interfaces/IRewardable.sol\";\r\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+      },
+      {
+        "pair": "f43202a3..e27227b2",
+        "file": "contracts/plugins/assets/curve/CurveStableMetapoolCollateral.sol",
+        "rule": "5",
+        "error": "SlitherError: Invalid compilation: \nInvalid solc compilation Error: Identifier already declared.\r\n  --> .walker-worktrees/166b2fc8fd/prev/contracts/plugins/assets/curve/CurveStableCollateral.sol:10:1:\r\n   |\r\n10 | import \"../../../interfaces/IRewardable.sol\";\r\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+      },
+      {
+        "pair": "f43202a3..e27227b2",
+        "file": "contracts/plugins/assets/curve/CurveStableRTokenMetapoolCollateral.sol",
+        "rule": "5",
+        "error": "SlitherError: Invalid compilation: \nInvalid solc compilation Error: Identifier already declared.\r\n  --> .walker-worktrees/166b2fc8fd/prev/contracts/plugins/assets/curve/CurveStableCollateral.sol:10:1:\r\n   |\r\n10 | import \"../../../interfaces/IRewardable.sol\";\r\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+      }
+    ]
+  },
+  "findings": [
+    {
+      "rule_id": "5",
+      "owasp": "SC06",
+      "severity_hint": "CONFIRMED",
+      "file": "contracts/facade/facets/ActFacet.sol",
+      "contract": "ActFacet",
+      "function": "revenueOverview",
+      "signature": "revenueOverview(IRevenueTrader)",
+      "line": 117,
+      "detail": "ActFacet.revenueOverview(IRevenueTrader): try/catch removed around the high call to price() on an unresolved destination; a failure now passes silently",
+      "raw_evidence": {
+        "owasp": "SC06",
+        "call_kind": "high",
+        "destination": "an unresolved destination",
+        "destination_key": "other:REF_61",
+        "method": "price",
+        "value_bearing": false,
+        "checked_before": true,
+        "checked_after": false,
+        "visibility_after": "external",
+        "writes_state_after": false,
+        "was_in_try_catch": true
+      },
+      "commit": "e27227b2919bc2c35655ab649cbf06cc583dc94d",
+      "parent": "f43202a3",
+      "author": "Taylor Brent",
+      "date": "2025-11-20T20:20:16-05:00",
+      "line_range": "117-118",
+      "survives_to_head": true,
+      "fixed_at": null,
+      "liveness": null,
+      "liveness_reason": "",
+      "evidence": {
+        "regression_commit": {
+          "hash": "e27227b2919bc2c35655ab649cbf06cc583dc94d",
+          "author": "Taylor Brent",
+          "date": "2025-11-20T20:20:16-05:00",
+          "line_range": "117-118"
+        },
+        "pre_state": "checked_before=True",
+        "post_state": "checked_after=False",
+        "reachability": null,
+        "no_compensating_control": "rule 5 exclusion set evaluated, none matched: 5.1, 5.2, 5.4, 5.5, 5.6, R5-L1 per-site ordinal (unimplemented exclusions for this rule are listed in LIMITATIONS.md)",
+        "liveness": null
+      },
+      "verdict": "CANDIDATE",
+      "downgrade_reasons": [
+        "missing evidence: reachability, liveness"
+      ]
+    }
+  ],
+  "rule_titles": {
+    "1": "SC01 Access control removed",
+    "2a": "SC08 Reentrancy guard removed",
+    "2b": "SC08 CEI ordering broken",
+    "3a": "SC10 Upgrade authorization weakened",
+    "3b": "SC10 Initializer re-callable",
+    "3c": "SC10 Storage layout collision",
+    "4": "SC09 Overflow protection removed",
+    "5": "SC06 External call return unchecked",
+    "6": "SC05 Input validation removed"
+  },
+  "live_caveat": "LIVE = this exact bytecode is present on-chain at this address and is what executes there. It does NOT mean the contract is currently reachable, funded, or exploitable - liveness compares code, not risk."
+}

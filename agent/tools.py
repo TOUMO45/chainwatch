@@ -40,6 +40,41 @@ def _need_store() -> Optional[dict]:
     return None
 
 
+def _coerce_slots(slots_json) -> tuple[bool, object]:
+    """Accept the slot map as a JSON string OR as an already-decoded dict.
+
+    Measured against a real model (2c): the declared type is `str`, but the
+    runtime happily passes a dict when the model emits a JSON object, and the
+    first `save_report` call failed with "the JSON object must be str". That is
+    a tool-ergonomics defect, not a model error - the tool should accept what
+    the schema plausibly produces. It does NOT relax any check: whatever comes
+    back is assembled through the fixed template and put through the same gate.
+    """
+    import json as _json
+
+    if isinstance(slots_json, dict):
+        return True, slots_json
+    try:
+        slots = _json.loads(slots_json or "{}")
+    except Exception:  # noqa: BLE001
+        # Second chance: a Python-literal mapping (single quotes). Measured in
+        # 2c - the model emitted this on 3 of 5 verify calls and burned a
+        # round-trip recovering each time. `literal_eval` parses literals only;
+        # it cannot execute anything, and the result still goes through
+        # `assemble` and the same gate, so tolerating the dialect relaxes no
+        # check. It only stops the loop wasting turns on punctuation.
+        import ast
+
+        try:
+            slots = ast.literal_eval(slots_json)
+        except Exception as exc:  # noqa: BLE001
+            return False, (f"slots_json is not valid JSON: {exc}. Send a JSON "
+                           f"object like {{\"summary\": \"...\"}}")
+    if not isinstance(slots, dict):
+        return False, "slots_json must be a JSON object of {slot_key: prose}"
+    return True, {str(k): v for k, v in slots.items()}
+
+
 # --------------------------------------------------------------------- tools
 
 
@@ -112,25 +147,30 @@ def draft_report(finding_id: str) -> dict:
     return skeleton(facts)
 
 
-def verify_report(finding_id: str, markdown: str) -> dict:
-    """Check a drafted report against the finding record. Mechanical, not a model.
+def verify_report(finding_id: str, slots_json: str) -> dict:
+    """Check your drafted prose against the finding record. Mechanical, not a model.
 
-    Every commit hash, address, source path, line reference and qualified name
-    in the draft must appear in the finding record. For a CANDIDATE the fixed
-    header must be present and unmodified, no severity or impact section may
-    exist, and assertive vulnerability language is rejected. Fix every reported
-    violation and verify again before saving.
+    Pass the same JSON object of {slot_key: prose} you intend to save. The
+    document is assembled exactly as save_report would assemble it and then
+    checked: every commit hash, address, source path, line reference and
+    qualified name must appear in the finding record; for a CANDIDATE the fixed
+    header must be intact, no severity or impact section may exist, and
+    assertive vulnerability language is rejected. Fix every reported violation
+    and verify again before saving.
 
     Args:
         finding_id: id from list_findings.
-        markdown: the full drafted report text.
+        slots_json: JSON object of {slot_key: prose}.
     """
     if (err := _need_store()):
         return err
     facts = _STORE.facts(finding_id)
     if not facts.get("verdict"):
         return {"status": "error", "error_message": f"no finding with id {finding_id}"}
-    return _verify(markdown, facts)
+    ok, slots = _coerce_slots(slots_json)
+    if not ok:
+        return {"status": "error", "error_message": slots}
+    return _verify(assemble(facts, slots), facts)
 
 
 def save_report(finding_id: str, slots_json: str) -> dict:
@@ -147,17 +187,12 @@ def save_report(finding_id: str, slots_json: str) -> dict:
     """
     if (err := _need_store()):
         return err
-    import json as _json
-
     facts = _STORE.facts(finding_id)
     if not facts.get("verdict"):
         return {"status": "error", "error_message": f"no finding with id {finding_id}"}
-    try:
-        slots = _json.loads(slots_json or "{}")
-        if not isinstance(slots, dict):
-            raise ValueError("slots_json must be a JSON object")
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "error", "error_message": f"slots_json is not valid JSON: {exc}"}
+    ok, slots = _coerce_slots(slots_json)
+    if not ok:
+        return {"status": "error", "error_message": slots}
 
     markdown = assemble(facts, slots)
     check = _verify(markdown, facts)

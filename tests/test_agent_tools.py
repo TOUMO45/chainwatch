@@ -191,3 +191,42 @@ def test_get_finding_unknown_id_errors_not_raises(store):
     tools.bind(store)
     res = tools.get_finding("nope")
     assert res["status"] == "error" and "error_message" in res
+
+
+def test_verify_report_takes_slots_and_assembles(store):
+    """Measured against a real model (2c): the agent cannot hand back the final
+    markdown, because assembly happens inside the tool. verify_report therefore
+    takes the same slot map save_report takes and assembles it itself."""
+    tools.bind(store)
+    fid = store.ids()[0]
+    good = tools.verify_report(fid, json.dumps({"summary": "A control was removed."}))
+    assert good["ok"], good
+    bad = tools.verify_report(fid, json.dumps({"summary": "Introduced in commit feedfacefeed."}))
+    assert not bad["ok"] and any(v["kind"] == "hash" for v in bad["violations"])
+
+
+def test_slot_map_accepted_as_dict_or_json_string(store, tmp_path):
+    """The declared type is str, but the runtime passes a dict when the model
+    emits a JSON object - the first real save_report call failed on exactly
+    this. Accepting both changes no check."""
+    tools.bind(store, out_dir=tmp_path)
+    fid = store.ids()[0]
+    slots = {"summary": "A control was removed.", "mechanism": "The diff shows it."}
+    assert tools.verify_report(fid, slots)["ok"]
+    assert tools.save_report(fid, slots)["status"] == "success"
+
+
+def test_python_literal_slot_map_is_tolerated(store):
+    """Measured in 2c: the model emitted a Python-literal mapping on 3 of 5
+    verify calls. literal_eval parses literals only and cannot execute code;
+    the result still goes through assemble and the same gate."""
+    tools.bind(store)
+    fid = store.ids()[0]
+    res = tools.verify_report(fid, "{'summary': 'A control was removed.'}")
+    assert res.get("ok") is True, res
+
+
+def test_malformed_slot_map_still_refused(store):
+    tools.bind(store)
+    res = tools.verify_report(store.ids()[0], "not a mapping at all {{{")
+    assert res["status"] == "error" and "JSON" in res["error_message"]
