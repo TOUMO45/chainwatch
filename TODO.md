@@ -437,15 +437,47 @@ frozen fixtures unaffected. Do not fix without measurement first.
       errored in the coverage accounting even when the other eight produced
       verdicts (88mph: `files 0/1` despite 8 rules running). Detect the
       unsupported option and return a distinct not-applicable signal.
-- [ ] **RC-RENAME1 rule** — construct-time -> run-time control migration is
-      undetectable today (LIMITATIONS.md §RC-RENAME1). Needs a NEW rule keyed on
-      the contract's external surface, and its own fixture set FIRST: positive
-      (constructor deleted, unguarded external initializer added that writes an
-      access-control state var), plus negatives for a correctly-guarded
-      constructor->initializer migration and for a contract that merely gained
-      an unrelated external setter.
+- [x] **RC-RENAME1 rule** — DONE (`f8c8a24`). Rule 10, keyed on the contract's
+      external surface (T1/T2/T3), locked by `fixtures-r10/` with 1 positive and
+      5 negatives — two more than planned: 10.1 and 10.2 are separate code paths
+      one fixture cannot lock, and N10-05 locks T2, the condition that keeps the
+      rule a REGRESSION detector. Closed empirically on 88mph `a4c48d61`
+      (1 finding, CANDIDATE, correctly capped pending liveness). Two design
+      assumptions were wrong and were caught by measuring the real parse before
+      trusting a fixture: §R10-M1, §R10-M2.
 - [ ] Section 1c performance profiling is still not done; the 25-pair stress run
       gives a throughput number to start from once it completes.
+
+## Open after Rule 10 (Section A, 2026-08-16)
+
+- [ ] **WALK-L7 invariant test — assert `set(RULE_ORDER) == set(RULES)`.** Rule
+      10 was registered, fixture-tested at precision 1.00, and silently absent
+      from the product because `src/scan.py`'s `RULE_ORDER` did not list it.
+      Every gate was green while the rule did nothing. Nothing stops the next
+      rule repeating this exactly. One assertion; deliberately not written in
+      the doc pass, because tests get added on purpose, not in passing.
+- [ ] **R10-M1 residual — `rule3b.py:98` uses `contract.constructor`.** Same
+      accessor Rule 10 had to abandon: it does not cross implicitly-invoked base
+      constructors, so a `_disableInitializers()` call in a BASE constructor is
+      invisible. Failure direction is safe (false negative), and the path is
+      unfixtured anyway — `rule3b.py` records that trigger 2 has no fixture.
+      Fixing it means building that missing fixture FIRST.
+- [ ] **R10-M2 residual — `has_init_guard` fails toward a FALSE POSITIVE for
+      Rule 10.** The same helper limitation is a safe false negative for Rule 3b
+      but unsafe for Rule 10, where an unseen init guard makes a writer look
+      unguarded and satisfies T3. Not reachable with OZ 4/5 (both read their
+      flags directly at the guard node), but it is the direction a future OZ
+      refactor would break. Watch on the next OZ major.
+- [ ] **Rule 10 exclusion 10.7 — value-holding state variables.** v1 keys only
+      on gate variables, so a migration exposing an unguarded writer to a fee
+      recipient or treasury address stays quiet even though it can move funds.
+      Stated in RULES.md §10.7 rather than left silent. Widening needs its own
+      fixture set: "holds value" has no structural definition as crisp as "read
+      by a msg.sender-dependent guard".
+- [ ] **Rule 10 has one real-world data point.** It is the least-tested rule in
+      the set: 6 fixtures plus a single 88mph pair. Any future real-repo scan
+      must treat rule 10 fires with more suspicion than the mature rules', and
+      classify them as a first-class category.
 
 ## Open after the 25-pair stress run (Section 1b, 2026-08-15)
 
@@ -537,14 +569,14 @@ a reason. Nothing dropped silently.
       into scratch and worktree off the clone. Claim already corrected in
       README and `src/scan.py`; the code fix changes a core path and deserves
       its own measurement, so it is not being done under deadline.
-- [ ] **RC-RENAME1 — CONFIRMED SCOPED ONLY, deliberately not fixed.** It needs a
-      NEW rule keyed on the contract's external surface plus its own fixture set
-      (one positive, and negatives for a correctly-guarded
-      constructor→initializer migration and an unrelated new setter). It is NOT
-      a patch to Rule 3b, and attempting it under deadline would ship an
-      untested trigger that fires on every proxy migration ever made. Documented
-      in LIMITATIONS.md §RC-RENAME1 with mechanism, measured evidence (88mph
-      `a4c48d61`), scope and fix direction.
+- [x] **RC-RENAME1 — CLOSED (`f8c8a24`), no longer deferred.** Shipped as Rule
+      10, not as a patch to Rule 3b, exactly as this item required. The
+      "fires on every proxy migration ever made" risk this entry predicted was
+      real and showed up in a different place than expected: Rule 10 co-fired on
+      both Rule 3b positives until exclusion 10.8 drew the rule boundary
+      (Rule 3b owns "the guard left the function"; Rule 10 owns "the
+      responsibility left the guarded function"). Caught by the 14-set sweep,
+      not by reasoning.
 
 ### Confirmed, no action needed
 

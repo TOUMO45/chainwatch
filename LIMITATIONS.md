@@ -1561,9 +1561,25 @@ trajectory label for a real false positive.
 
 ### RC-RENAME1 — a control that moves from CONSTRUCT-TIME to RUN-TIME is invisible
 
-**Type: FALSE NEGATIVE, structural. Affects rules 1, 2a, 2b, 3a, 3b, 5, 6 (every
+**Type: FALSE NEGATIVE, structural. Affected rules 1, 2a, 2b, 3a, 3b, 5, 6 (every
 name-keyed diff rule). MEASURED on a real, publicly disclosed, exploited
-regression. NOT FIXED — scoped only.**
+regression. FIXED — Rule 10.**
+
+> **STATUS: FIXED (commit `f8c8a24`).** Closed by a NEW rule keyed on the
+> contract's external surface — `src/rules/rule10.py`, specified in RULES.md
+> §RULE 10, locked by `fixtures-r10/` (1 positive, 5 negatives, precision 1.00 /
+> recall 1.00). Closed **empirically**, the same way PHASE 5 closed RC-5: the
+> exact pair below (`5f52a2ea..a4c48d61`) re-run through `src/scan.py` now
+> produces **1 finding — rule 10, `NFT.init`, verdict CANDIDATE**. CANDIDATE and
+> not CONFIRMED is correct and deliberate: no address was supplied, so liveness
+> is unset and `src/verdict.py` caps it, per the six-evidence-field rule.
+> All 14 pre-existing fixture sets are unchanged at 35/84 detections.
+>
+> Everything below this line is the ORIGINAL entry, preserved verbatim as
+> provenance — the measurement that motivated the rule, and the fix direction
+> that turned out to be only half right. Two of its assumptions were wrong; see
+> §R10-M1 and §R10-M2, both of which were caught by probing the real 88mph parse
+> **before** trusting a fixture built to match the design.
 
 **Naming note.** This is a NEW label, deliberately not `RC-5`. `RC-5` was the
 hypothesised "rename breaks `canonical_name` matching" mechanism, which was
@@ -1654,6 +1670,202 @@ Chainwatch run: 1/1 pairs analysed, 8/9 rules executed, 0 findings.
 
 ---
 
+### R10-M1 — `contract.constructor` does not cross the inheritance chain
+
+**Type: WRONG SLITHER USAGE, general. Would have caused a FALSE NEGATIVE on
+Rule 10's own positive case. MEASURED on the real 88mph parse. FIXED in Rule 10;
+one pre-existing site carries the same pattern and is REPORTED, NOT FIXED.**
+
+**This is a general Slither-usage lesson, not a Rule 10 detail.** Any rule that
+asks "what did the constructor establish?" through `contract.constructor` is
+asking a narrower question than it thinks.
+
+**Mechanism, measured rather than reasoned.** Probing 88mph `NFT` on both sides:
+
+```
+N-1  5f52a2ea
+  nft.constructor.all_state_variables_written()
+    = ['ERC165._supportedInterfaces','ERC721Metadata._name','ERC721Metadata._symbol']
+                                                            <-- NO Ownable._owner
+  iterating the chain instead:
+    chain member Ownable: constructor writes=['Ownable._owner']   <-- it is HERE
+
+N    a4c48d61
+  nft.constructors_declared = None          (NFT declares no constructor)
+  nft.constructor.all_state_variables_written() = ['Ownable._owner']
+```
+
+`all_state_variables_written()` on the derived constructor does **not** reach the
+full base-constructor chain. At N-1 it captured `ERC721Metadata`'s writes —
+because that base constructor is explicitly invoked in the constructor header —
+but not `Ownable`'s, which runs implicitly. Worse, `contract.constructor`
+resolves to a *different function* on the two sides: NFT's own at N-1, an
+inherited one at N.
+
+**Why a fixture could never have caught this.** In a single-contract fixture the
+constructor and the write live in the same contract, so the accessor works. The
+defect only appears when the write happens in an implicitly-invoked base
+constructor — i.e. in exactly the real-world inheritance shape (`Ownable`) that
+motivates the rule. This is why Rule 10's three measurement checks were run
+against the real 88mph parse **before** the fixtures were trusted: a fixture
+built to match a design can only ever confirm it.
+
+**Consequence had it shipped.** T1 would have found no one-shot writer of
+`_owner` at N-1, so Rule 10 would have stayed **silent on the exact case it was
+written to detect** — and the fixture suite would have passed, because the
+fixture's constructor writes directly.
+
+**Fix (Rule 10).** Collect constructors by iterating `contract.functions` and
+filtering `fn.is_constructor`, which reaches every constructor in the chain.
+`contract.constructor` is not used, with a comment saying why.
+
+**Scope — one other site carries this pattern. REPORTED, NOT FIXED.**
+`src/rules/rule3b.py:98`, `_constructor_disables_init()`:
+
+```python
+ctor = contract.constructor
+...
+for f in reachable(ctor):
+```
+
+`reachable()` follows modifiers and internal calls but not implicit base
+constructors, so a `_disableInitializers()` call made in a BASE constructor is
+invisible to it. Two mitigating facts, neither a reason to leave it forever:
+1. **The failure direction is safe.** It is used as
+   `_constructor_disables_init(before) and not _constructor_disables_init(after)`.
+   A miss on both sides yields False, so the trigger stays quiet — a false
+   negative, which is the correct direction under the precision-first tie-break.
+2. **The path is unfixtured anyway.** `rule3b.py` already records that trigger 2
+   has no fixture exercising it ("spec-faithful but currently unproven by the
+   fixture set").
+Fixing it means building that missing fixture first. Not done under this section.
+
+---
+
+### R10-M2 — a guard node's `state_variables_read` stops at the node boundary
+
+**Type: SILENT EMPTY RESULT. Produced an empty gate-variable set on the entire
+OZ 4 fixture stack, which made five negatives pass VACUOUSLY. MEASURED. FIXED in
+Rule 10; pre-existing sites REPORTED, NOT FIXED.**
+
+**Mechanism.** `_gate_vars` originally collected `node.state_variables_read` for
+guard nodes that depend on `msg.sender`. Under OZ 4.9.6:
+
+```
+Ownable._checkOwner   msg.sender-dep=True   node.state_variables_read=[]
+    node: require(owner() == _msgSender(), "Ownable: caller is not the owner")
+      calls Ownable.owner() -> reads ['Ownable._owner']
+```
+
+The guard node **is** correctly identified as msg.sender-dependent. It simply
+reads no state variable *itself*: OZ 4 reaches `_owner` one call-hop away inside
+the `owner()` getter. OZ 2 (88mph's stack) exposes it more directly, which is why
+the real-contract probe passed while every OZ 4 fixture returned the empty set.
+
+**The dangerous part is how it failed.** `gate_vars = []` means the trigger
+ranges over nothing, so *every case is quiet*. The first fixture run scored
+**5/6 "agreeing" with their labels** — all five negatives "passed" while
+evaluating nothing at all, and only the positive's failure revealed it. A
+negative that passes vacuously is not evidence, and a 5/6 that looks like
+near-success is worse than an outright 0/6. This is METHODOLOGY Face B with a
+new face: not a check that was never run adversarially, but a check that
+silently had **no input**.
+
+**Fix (Rule 10).** `_gate_vars` resolves one call-hop: the guard node's own state
+reads, plus state read by functions that node invokes. Verified on both stacks —
+OZ 4 fixture recovers `Ownable._owner`; the real OZ 2 contract goes from 3 to 5
+candidate variables and still produces **exactly one** fire, so the widening
+introduced no false positive.
+
+**A claim this corrects.** The Rule 10 design originally justified a bespoke
+helper over `_shared.access_control_state_vars` on a measured 3-vs-6 narrowing.
+With the call-hop fix the real figures are **5 vs 6** — one variable. The
+semantic argument stands (gate variables should be what the authorization
+decision reads); the empirical case for it was overstated and is corrected here.
+
+**Scope — which existing logic shares the shape.** Four sites read
+`node.state_variables_read` directly. None is currently known to misbehave,
+because every library form in use reads its flag directly at the guard node (OZ 4
+`Initializable` reads `_initialized`/`_initializing` inline; OZ `ReentrancyGuard`
+reads `_status` inline), and the OZ 5 namespaced form was already handled
+separately — **finding 3x-L3 is the prior instance of this same class**, where
+the state a guard depends on is not reachable as a declared variable at the node.
+
+| site | what it does | exposure |
+|---|---|---|
+| `_shared.py:644` `is_oneshot_init_guard` | gated flag ∩ written flag | a getter-mediated init flag would be missed |
+| `_shared.py:670` `has_init_guard` | same, inline form | same |
+| `_cfg.py:150` `own_guard_state_reads` | deliberately node-local by contract | miss ⇒ CONFIRMED degrades to CANDIDATE — safe |
+| `_cfg.py:177` `_gated_const_assigns` | crosses functions via `reachable()`, but still node-local *within* each node | miss ⇒ mutex unseen |
+
+**One asymmetry worth naming, because it is a real trap.** The same
+`has_init_guard` limitation fails in **opposite directions** for different rules.
+For Rule 3b it is a false negative (guard unseen on both sides ⇒ no trigger ⇒
+quiet — safe). For **Rule 10 it is a false POSITIVE**: an unseen init guard makes
+a writer look unguarded, satisfying T3. Rule 10 is therefore more exposed to this
+helper's limits than the rule the helper was written for. Not currently
+reachable with OZ 4/5, but it is the direction a future OZ refactor would break.
+
+`constrains_msg_sender` is **not** affected: it iterates `reachable(fn)` and
+tests each function's guard nodes, so it crosses the call boundary already. That
+is why `constrains_msg_sender(init)` returned the correct `False` on real 88mph
+while `_gate_vars` was returning nothing.
+
+---
+
+### WALK-L7 — a rule can be fully registered, fully tested, and never run
+
+**Type: PIPELINE WIRING. A shipped rule was silently absent from the product.
+MEASURED. FIXED.**
+
+**Mechanism.** `src/rules/register_all()` registers every rule module, and
+`scorer.py` runs whatever is registered — so a new rule is fixture-tested the
+moment it exists. The product does **not** run what is registered. It runs:
+
+```python
+# src/scan.py
+RULE_ORDER = ["1", "2a", "2b", "3a", "3b", "3c", "4", "5", "6"]
+...
+rule_ids = [r for r in (opts.rules or RULE_ORDER) if r in RULES]
+```
+
+Rule 10 was in `RULES` and absent from `RULE_ORDER`, so the intersection dropped
+it. The first real-repo run reported it plainly and it was still easy to miss:
+
+```
+{'kind': 'start', ..., 'rules': ['1','2a','2b','3a','3b','3c','4','5','6']}
+```
+
+**Why this is its own lesson and not "just a bug."** Every gate the project
+normally trusts was **green** while the rule did nothing in the product:
+`fixtures-r10` 6/6, precision 1.00, recall 1.00, all 14 sets unchanged, the
+attribution suite passing. The fixture harness and the product reach the rule
+registry by **different paths**, and only one of them was tested. A unit that
+passes its tests and is never invoked is indistinguishable, from the test
+suite's point of view, from one that works.
+
+**Evidence.** Detected only by running the real 88mph pair through
+`src/scan.py` (A4). Fixed by adding `"10"` to `RULE_ORDER` plus a `RULE_TITLES`
+entry; `chainwatch.py` and `webapp/server.py` both import `RULE_ORDER` from
+`src/scan.py`, so both front ends picked it up from the single change.
+
+**Scope.** Any future rule. There is currently **no check that
+`set(RULE_ORDER) == set(RULES)`**, so the next rule can repeat this exactly.
+
+**Fix direction (NOT implemented).** A one-line invariant test asserting that
+every registered rule id appears in `RULE_ORDER`, so the omission fails a test
+instead of failing silently in production. Deliberately not written under this
+section — it is a new test, and tests get added on purpose, not in passing.
+
+**Related but distinct.** `walker.py` cannot run a target other than the last one
+scanned: it reuses flat `prev`/`cur` worktrees still belonging to an earlier
+Reserve run, so an 88mph SHA reports `fatal: unable to read tree`. That entry
+point is already recorded in TODO.md as superseded by `src/scan.py`, which
+carries the WALK-L6 mirror-clone fix. Noted here only so the next person who
+reaches for `walker.py` on a fresh repository knows why it fails.
+
+---
+
 ## METHODOLOGY — a self-consistent story is not evidence
 
 **Project-level lesson, not tied to any one finding. Four instances so far,
@@ -1702,6 +1914,16 @@ hole in it reports "verified" forever.
    `verify_report` is tested with an invented hash, an invented address, an
    invented path, an out-of-range line, an invented qualified name, three
    overclaim phrasings, a stripped header, and exploit material.
+5. **A passing test proves the unit works, never that it runs.** See §WALK-L7.
+   Deliberately NOT filed as a fifth instance above: those four are all
+   *plausibility mistaken for verification*, where the evidence was
+   misread. WALK-L7 is the opposite shape — every gate was green and every
+   number was true, and the rule still did nothing in the product, because the
+   test harness and the product reach the rule registry by different paths.
+   The lesson is about the **scope** of what was verified, not the quality of
+   the evidence, so it earns its own entry rather than a row in that table.
+   Its sibling is §R10-M2's vacuous pass: there the checks ran with no input,
+   here the check ran on input the product never sees.
 
 **Structural fix direction (not implemented).** Both retry loops should retain
 the FIRST failure alongside the last and report both, e.g.

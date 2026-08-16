@@ -260,6 +260,105 @@ directly to real 2025-2026 loss events and are unambiguous when genuinely absent
 
 ---
 
+# RULE 10 — SC01 Control migrated to an unguarded entry point
+
+Closes LIMITATIONS.md §RC-RENAME1. Implemented in `src/rules/rule10.py`, locked
+by `fixtures-r10/`.
+
+### Why this is not a diff rule
+
+Rules 1–9 match a function across commits by `(contract, name)` and ask what
+that function **lost**. That is structurally incapable of seeing a control that
+**moved**. In the motivating case (88mph `contracts/NFT.sol` `a4c48d61`) the
+constructor is deleted and an unguarded `init()` appears: there is no `init` at
+N-1 to diff against, and the N-1 protection was the *constructor mechanism
+itself* — one-shot and deployer-only, enforced by the EVM rather than by any AST
+node a rule inspects.
+
+Rule 10 therefore **inverts the matching direction** and keys on the contract's
+external surface rather than on per-function name matching.
+
+### Trigger
+
+For each contract present at both commits, and each **gate variable** `v` of it,
+all three must hold:
+
+| | Condition | What it encodes |
+|---|---|---|
+| **T1** | at N-1, `v` had at least one *one-shot* writer — a constructor **anywhere in the inheritance chain**, or a function carrying a one-shot init guard | a control existed |
+| **T2** | at N-1, `v` had **no** unguarded run-time writer | that control was the only run-time story |
+| **T3** | at N, `v` **has** an unguarded run-time writer | the control broke |
+
+**T2 is what makes this a regression rule.** A contract that already had an
+unguarded writer was never safe, and CHARTER.md puts "a contract that was never
+safe" out of scope by definition. Reporting current state is Slither's job;
+claiming it here would be the "Slither with extra steps" failure the charter
+names. Locked by `fixtures-r10/negative/N10-05`.
+
+**"Unguarded run-time writer"** means a function that writes `v` and is: not a
+constructor, not one-shot-guarded, does not constrain `msg.sender`, and is
+externally reachable (directly, or internal with at least one unguarded external
+caller).
+
+### `gate_vars` — the variable set the trigger ranges over
+
+State variables that an access-control decision actually **reads**: for every
+guard node that depends on `msg.sender`, the node's own state reads **plus the
+state read by functions that node invokes** (one call-hop resolution).
+
+The call-hop is not optional. OZ 4's `onlyOwner` reaches `_owner` through
+`_checkOwner() → owner()`, so the guard node itself reads **no state variable at
+all** and a node-local definition returns the empty set — measured, see
+LIMITATIONS.md §R10-M2.
+
+Deliberately tighter than `_shared.access_control_state_vars`, which returns
+everything read by a function that merely *has* a msg.sender guard (so
+`onlyOwner setFee()` would contribute `_fee` as well as `_owner`). Measured
+difference on the real 88mph contract: 5 variables vs 6.
+
+### Exclusion set — DISCARD if any is true
+
+| # | Exclusion | Why it's not a bug |
+|---|---|---|
+| 10.1 | New writer carries a one-shot init guard (`initializer`, `reinitializer(n)`, or an inline set-once flag) | still one-shot, not freely callable |
+| 10.2 | New writer constrains `msg.sender` | protection relocated, not removed |
+| 10.3 | File path matches test/mock/script patterns (segment-matched) | not production code |
+| 10.4 | Declaration is not in a file this commit actually changed | DESIGN-L2 phantom-attribution guard |
+| 10.5 | Writer is internal/private and every external caller is itself guarded | not externally reachable |
+| 10.6 | The written variable is not a gate variable | no security control is involved — this is what keeps an ordinary new setter, and a renamed getter, quiet |
+| 10.8 | The unguarded writer at N has a **same-named** counterpart at N-1 that also wrote this gate variable | the function survived and lost a guard — Rule 1 / Rule 3b territory, not a migration |
+
+**10.8 is the rule boundary and is not cosmetic.** Without it Rule 10 co-fires
+on every Rule 3b positive (measured on `fixtures/` P3b-01 and P3b-02, where
+`initialize` exists at both commits and merely drops its `initializer`
+modifier). The underlying regression there is real, but it is already owned:
+**Rule 3b owns "the guard left the function"; Rule 10 owns "the responsibility
+left the guarded function."** Matching is by NAME rather than full signature —
+the more suppressive choice, per the precision-first tie-break.
+
+### 10.7 — value-holding variables: OUT OF SCOPE FOR V1, stated not omitted
+
+v1 keys **exclusively** on gate variables. A migration that exposes an unguarded
+writer to a **value-holding** variable — a fee recipient, a treasury address, a
+withdrawal cap — is out of scope and **stays quiet, even though it can move
+funds**.
+
+This is a deliberate v1 boundary, not an oversight, and it is a real gap worth
+stating plainly rather than discovering later. Widening to value-holding state
+is an extension, not a tweak: "read by a msg.sender-dependent guard" is a crisp
+structural definition, and "holds value" has no equally crisp one. Guessing at
+it is how precision dies. Any such widening needs its own fixture set first,
+including negatives, exactly as this rule did.
+
+### Additional CONFIRMED requirements
+
+Unchanged from every other rule: the six evidence fields, and liveness = LIVE.
+The rule concludes `severity_hint = CONFIRMED`; `src/verdict.py` still caps the
+verdict at CANDIDATE when liveness is absent. On the 88mph re-run with no
+address supplied, the finding is correctly a CANDIDATE.
+
+---
+
 # Rules deliberately NOT built (state this in your README — it reads as maturity)
 
 | OWASP cat. | Why no deterministic rule |
@@ -277,6 +376,7 @@ When two rules fire on the same commit:
 - Report **one** finding with the highest-severity rule as primary, others as contributing factors. Never split one regression into three findings — that's inflation and triage teams notice.
 - If Rule 1 and Rule 3a both fire, it is a Rule 3a finding (proxy takeover subsumes function-level access control).
 - If Rule 2 and Rule 5 both fire, it is likely a single reentrancy finding — merge.
+- Rule 10 vs Rules 1/3b is settled **inside Rule 10** by exclusion 10.8, not by arbitration after the fact: if the unguarded writer at N already wrote the same gate variable under the same name at N-1, the function survived and lost a guard, which is Rules 1/3b territory and Rule 10 stays quiet. Arbitration cannot fix this after the fact, because both findings would be true — the boundary has to be a trigger condition.
 
 # Per-rule calibration requirement
 
