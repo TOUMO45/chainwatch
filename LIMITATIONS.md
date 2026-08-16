@@ -1656,8 +1656,11 @@ Chainwatch run: 1/1 pairs analysed, 8/9 rules executed, 0 findings.
 
 ## METHODOLOGY — never diagnose from an error that came through a fallback
 
-**Project-level lesson, not tied to any one finding. Three instances so far, all
-in trajectory mode, all costly.**
+**Project-level lesson, not tied to any one finding. Four instances so far, all
+costly. The first three share a mechanism (a fallback reported its own error in
+place of the real one); the fourth is the same family seen from the other side —
+a check that LOOKS correct is unverified until something adversarial is thrown
+at it.**
 
 Chainwatch has two retry loops, both deliberate and both correct as features:
 `_shared._compile` retries every installed solc when the ambient one refuses a
@@ -1672,6 +1675,7 @@ precisely what makes it dangerous.
 | 1 | "`_storage.py` does not honor the walker's `SOLC_VERSION`, falls back to ambient 0.7.6" (TODO.md, pre-PHASE 6) | Never established. The 0.7.6 text was the retry loop's last candidate. |
 | 2 | WALK-L2: "Rule 3c ran solc in the wrong directory — TOTAL COVERAGE LOSS, 42/42 errors, FIXED" | Also never reproduced. A second plausible mechanism asserted with the same confidence as the first, and a 42/42 figure from a different run pasted onto a 4-pair measurement. Retracted; the defect is real in code but latent. |
 | 3 | 88mph run: "current compiler is 0.7.6" on Rule 3c, with `SOLC_VERSION=0.5.17` explicitly set | `solc 0.5.17` has no `--combined-json storage-layout` **at all** (`Invalid option to --combined-json: storage-layout`). Nothing to do with versions. The first attempt failed on an unsupported option; 0.7.6 is simply last in the candidate ranking. |
+| 4 | `agent/verify.py`'s `_EXPLOIT` pattern, read and reviewed as correct | It matched nothing ending in punctuation. The regex closed with ``, and a word boundary can never follow `(` or `)` — so `abi.encodeWithSelector(` and `exploit()` were silently unmatched. The hallucination gate had a hole in it that inspection did not reveal; `tests/test_agent_tools.py::test_exploit_material_is_caught` found it on the first adversarial run (19/20), which is the only reason it is not still there. |
 
 Instance 2 is the worst of the three, because it was produced *while
 investigating instance 1* — the fallback fooled the same investigation twice,
