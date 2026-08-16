@@ -96,14 +96,15 @@ and put all remaining effort there.
    explicitly.
 4. No invented APIs. If unsure how Slither's API works, read the actual installed
    library source. Do not guess method names.
-5. **Read-only on every external target.** Never modify a target repository's
-   tracked content, index, branches, or HEAD. Never push to, commit to, or
-   authenticate beyond public-read on any repository or chain this project
-   analyzes. Never send a transaction. Ever.
-   Worktree metadata under `.git/worktrees/` may be created as an implementation
-   detail of read-only analysis (WALK-L6) — this is git's own mechanism for
-   inspecting multiple commits without checkout, and is reversible/removable,
-   unlike a content write.
+5. **Read-only on every external target.** Never write to, push to, commit to, or
+   authenticate beyond public-read on any repository or chain this project analyzes.
+   Never send a transaction. Ever.
+
+   > *Provenance (historical record, not a carve-out):* verified via **WALK-L6**.
+   > An earlier implementation created git worktree metadata in the target's
+   > `.git/`; this was identified and fixed by routing all git operations through
+   > a scratch mirror clone (`history.mirror_clone()`). Confirmed **absent**, not
+   > merely unchanged, on a read-only-mounted target.
 6. Commit after every green gate.
 7. Run `./guard.sh check` before AND after every work session. If it reports TAMPERED,
    **stop and show the diff — never silently revert, never work around it.** Do not run
