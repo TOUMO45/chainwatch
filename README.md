@@ -28,6 +28,7 @@ python chainwatch.py --repo <path-or-url> --root contracts --limit 30
 
 ```bash
 python chainwatch.py --repo <path> --address 0xYourProxy --json report.json
+python chainwatch.py --from-json report.json --generate-reports   # no re-scan
 ```
 
 The web app is a thin shell over `src/scan.py` — the same engine the CLI uses,
@@ -143,6 +144,20 @@ project exists to avoid.
   on a real repository (reserve-protocol) — five must stay quiet, and the one
   that was never an FP must still fire. A fix that silences everything fails
   this test.
+- `tests/test_agent_tools.py` proves the agent's hallucination gate by feeding
+  it drafts that must be rejected: an invented commit hash, an invented address,
+  an invented source path, an out-of-range line, an invented `Contract.function`,
+  three overclaim phrasings, a stripped header, and exploit material. A gate that
+  has never rejected anything is not known to work.
+- `tests/test_verdict.py` pins the classifier, including that a rule's CANDIDATE
+  ceiling can never be raised by complete evidence.
+
+**Coverage is repo-dependent and reported as such.** On a modern window of
+reserve-protocol every commit pair analysed; on a 25-pair walk into that same
+repo's older history only **5 of 72 file comparisons completed (6.9%)**, because
+57 of them pin exact compiler versions that were not installed. That number is
+printed, not hidden — see `HIST-L2` in LIMITATIONS.md. A finding count is only
+meaningful next to it.
 
 Every rule's known blind spots are recorded per rule in
 **[LIMITATIONS.md](LIMITATIONS.md)**. Two worth knowing before reading any
@@ -153,6 +168,52 @@ result:
 - Rules 3b and 3c cannot fire on ERC-7201 namespaced storage in the general
   case (the OpenZeppelin 5.x default). On such repos a quiet result from those
   two rules means *unmeasured*, not *safe*.
+
+---
+
+## What has and has not been demonstrated
+
+The project's own charter set seven success criteria. Six are met. The seventh
+is not, and it is recorded as a **scope finding rather than a checkbox** — the
+full reasoning, including the five disclosed-incident candidates that were
+searched and rejected with reasons, is in
+**[SUBMISSION-NOTES.md](SUBMISSION-NOTES.md)**. The short version, unsoftened:
+
+> **Criterion #6 as written is unsatisfiable within responsible-disclosure
+> constraints.** CONFIRMED requires `liveness == LIVE`. A regression that is live
+> on-chain and not yet fixed is an undisclosed vulnerability on a funded
+> contract — not something to put in public material. Responsible targets are
+> already patched, so their liveness is `PATCHED` and they cap at CANDIDATE. The
+> only targets that could produce a public CONFIRMED are exactly the ones it
+> would be irresponsible to publish.
+
+The real-world demonstration is therefore Reserve Protocol's
+`ActFacet.revenueOverview` at commit `e27227b2` — a real repo, a real commit, a
+`try/catch` removed from a function that kept its name *and* signature, attributed
+to lines 117-118. It caps at **CANDIDATE** because required evidence field 4 is
+*"externally callable **and** state-changing"* and the function is a view. No rule
+was changed and no exception written to reach that answer; it falls out of the
+model.
+
+The honest one-line claim, recorded so public material has something to match:
+
+> Chainwatch located the exact commit that removed a control in a real public
+> protocol, attributed it to the function and line, and then **declined to call
+> it CONFIRMED** because one of its six required evidence fields was not
+> established.
+
+Not *"Chainwatch found a confirmed vulnerability."* It did not, and the
+distinction is the product.
+
+Separately, capability 11 **is** proven on real mainnet data: the vulnerable
+88mph NFT implementation behind three EIP-1167 clones returns **LIVE**, with
+normalized runtime bytecode matching the compiled artifact exactly, and the
+paired no-optimizer control returns UNKNOWN rather than guessing PATCHED. Every
+surface that shows a LIVE verdict shows this with it:
+
+> LIVE = this exact bytecode is present on-chain at this address and is what
+> executes there. It does NOT mean the contract is currently reachable, funded,
+> or exploitable — liveness compares code, not risk.
 
 ---
 

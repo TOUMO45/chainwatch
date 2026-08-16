@@ -98,3 +98,63 @@ likely a coordinated-disclosure engagement, not a hackathon artifact. The
 machinery is in place and proven end-to-end (capability 11 returns LIVE on real
 mainnet bytecode — see LIMITATIONS.md §Capability 11 and the 88mph measurement);
 what is missing is an appropriate target, not a capability.
+
+---
+
+## Devpost registration — track and pitch
+
+**Track: "The Taskmaster."** Confirmed as the correct fit, and the reason is the
+architecture rather than the topic: the submission is an autonomous agent that
+*acts* on a finished analysis — triaging findings, pulling evidence, reading the
+real diff, drafting, mechanically verifying its own output, revising, and saving
+an artifact — rather than a chat interface over a security tool. The 30%
+*architectural discipline* weight is where this project is strongest, and the
+boundary it is built on (a deterministic engine decides; the model only explains)
+is the thing worth judging.
+
+### Pitch — revised 2026-08-16
+
+The earlier pitch was drafted when Chainwatch was an engine with no agent, no web
+app, no container and a read-only claim that turned out to be inaccurate. All
+four of those changed, so the sentence changed with them.
+
+> **Chainwatch finds the exact commit where a smart contract's security control
+> was removed, proves whether that broken version is the bytecode live on-chain,
+> and hands a Gemini agent a finished verdict to write up — an agent that can
+> read the evidence but cannot decide what counts as a finding, and whose every
+> claim is mechanically checked against the engine's record before it is saved.**
+
+If a shorter line is needed:
+
+> **Every other tool tells you a contract is vulnerable now. Chainwatch tells you
+> which commit made it vulnerable, whether that code is live on-chain, and — when
+> the evidence is incomplete — refuses to call it confirmed.**
+
+### What must not drift in submission copy
+
+Three claims are load-bearing and all three are easy to accidentally inflate:
+
+1. **No CONFIRMED finding exists.** The real-world demonstration is a CANDIDATE,
+   and the cap is the point. Never write "found a vulnerability".
+2. **LIVE means bytecode identity, not exploitability.** `LIVE_CAVEAT` travels
+   with every LIVE verdict, including in a video frame.
+3. **Coverage is repo-dependent.** 100% on a modern window; 6.9% of file
+   comparisons on an older 25-pair walk. Quote the number that matches the run
+   being shown.
+
+### Status of the submission checklist
+
+| Item | State |
+|---|---|
+| Track selected | The Taskmaster — confirmed |
+| Pitch | revised above for current scope |
+| Working product | engine + CLI + web app + agent, all locally verified |
+| Container | built and smoke-tested locally |
+| Cloud Run deploy | **pending** — needs a GCP project and credentials |
+| Demo video | script drafted (`DEMO-SCRIPT.md`), **not recorded** |
+| Devpost form submitted | **not submitted** — requires the human |
+
+**Chainwatch cannot register itself.** Devpost account actions — creating the
+submission, selecting the track, uploading the video, clicking submit — are the
+human's to perform. Everything above is prepared so that step is filling a form,
+not writing copy under deadline.
