@@ -36,6 +36,25 @@ by default: starting a scan installs the target repo's dependencies (with
 lifecycle scripts disabled) and reads its history, which is not an endpoint to
 put on a network.
 
+### Generating a dossier (capability 12)
+
+```bash
+python chainwatch.py --repo <path> --root contracts --generate-reports
+```
+
+or click **Generate report** on any finding in the web UI. The agent may only
+read a finished finding record through six tools; it cannot analyse, cannot
+reach a chain or a repository's source, and cannot change a verdict. Every
+document it produces is re-verified mechanically against the finding record
+before it is written — a draft citing a commit hash, address, path or line that
+is not in the record is refused, not corrected.
+
+Needs `GEMINI_API_KEY` in `.env`. **The deterministic engine never needs one**;
+a scan is complete and unaffected without it. The free tier allows 15 model
+requests per minute and one dossier costs several, so the runner paces itself
+and reports when it is waiting. Moving to a paid tier is a config change
+(`--rpm`), not an architecture change.
+
 **Setup**
 
 ```bash

@@ -149,7 +149,7 @@ def print_report(rep: dict) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Chainwatch trajectory scanner")
-    ap.add_argument("--repo", required=True, help="local path or clone URL")
+    ap.add_argument("--repo", help="local path or clone URL (omit only with --from-json)")
     ap.add_argument("--address", help="deployed address for the liveness gate")
     ap.add_argument("--rpc-url", help="override RPC_URL from .env")
     ap.add_argument("--limit", type=int, default=50,
@@ -161,7 +161,29 @@ def main() -> int:
                     help="skip the survives-to-HEAD re-run (faster, weaker evidence)")
     ap.add_argument("--json", help="write the full report here")
     ap.add_argument("--quiet", action="store_true", help="suppress progress lines")
+    ap.add_argument("--generate-reports", action="store_true",
+                    help="after the scan, have the Gemini agent draft a dossier for "
+                         "each finding (capability 12). Needs GEMINI_API_KEY.")
+    ap.add_argument("--from-json",
+                    help="skip scanning and load a previously written report JSON; "
+                         "pair with --generate-reports to draft from an earlier scan")
+    ap.add_argument("--reports-dir", default="reports",
+                    help="where generated dossiers are written (default: reports/)")
+    ap.add_argument("--rpm", type=int, default=None,
+                    help="model requests per minute budget (default 12, sized for the "
+                         "Gemini free tier's 15). Raising it is a config change only.")
     args = ap.parse_args()
+
+    # --from-json: report generation over a completed scan, no repo walk.
+    if args.from_json:
+        rep = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
+        print_report(rep)
+        if args.generate_reports:
+            _generate_reports(rep, args)
+        return 0
+
+    if not args.repo:
+        ap.error("--repo is required (or use --from-json to read a finished scan)")
 
     repo = args.repo
     if repo.startswith(CLONE_SCHEMES):
@@ -184,7 +206,57 @@ def main() -> int:
     if args.json:
         Path(args.json).write_text(json.dumps(rep, indent=2), encoding="utf-8")
         print(f"\nfull report written to {args.json}")
+    if args.generate_reports:
+        _generate_reports(rep, args)
     return 0
+
+
+def _generate_reports(rep: dict, args) -> None:
+    """Capability 12 over a finished scan. Same gate as everywhere else."""
+    from agent import FindingStore
+    from agent import runner as R
+
+    findings = rep.get("findings") or []
+    if not findings:
+        print("\nNo findings to report on.")
+        return
+    if not R.api_key_present():
+        print("\nGEMINI_API_KEY is not configured, so no dossiers were drafted.")
+        print("The scan above is complete and unaffected: the deterministic engine")
+        print("never calls a model. Set GEMINI_API_KEY in .env to enable this step.")
+        return
+
+    store = FindingStore(rep)
+    out_dir = Path(args.reports_dir)
+    rpm = args.rpm or R.DEFAULT_RPM
+    print(f"\n{'=' * 78}\nGENERATING DOSSIERS  ({len(findings)} finding(s), "
+          f"model {R.DEFAULT_MODEL}, {rpm} model-requests/min budget)\n{'=' * 78}")
+
+    def on_event(ev):
+        kind = ev.get("kind")
+        if kind == "tool":
+            print(f"    tool: {ev['tool']}")
+        elif kind == "throttle":
+            print(f"    pacing {ev['seconds']}s to stay inside the rate limit…")
+        elif kind == "retry":
+            print(f"    {ev['reason']}; the server asked for {ev['seconds']}s, waiting…")
+        elif kind == "error":
+            print(f"    ERROR: {ev['message']}")
+
+    results = R.generate_all_sync(store, out_dir, rpm=rpm, on_event=on_event)
+    print()
+    for res in results:
+        f = store.get(res["finding_id"]) or {}
+        who = f"{f.get('contract')}.{f.get('function')}"
+        if res["status"] == "success":
+            print(f"  OK       {who:<34} verified, {res['path']}")
+        else:
+            print(f"  FAILED   {who:<34} {res.get('error_message', '')[:80]}")
+            for v in res.get("violations", [])[:5]:
+                print(f"             rejected [{v['kind']}] {v['span']!r}")
+    ok = sum(1 for r in results if r["status"] == "success")
+    print(f"\n  {ok}/{len(results)} dossiers written and re-verified against the "
+          f"finding record.")
 
 
 if __name__ == "__main__":

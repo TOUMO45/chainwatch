@@ -230,3 +230,33 @@ def test_malformed_slot_map_still_refused(store):
     tools.bind(store)
     res = tools.verify_report(store.ids()[0], "not a mapping at all {{{")
     assert res["status"] == "error" and "JSON" in res["error_message"]
+
+
+# ------------------------------------------------------------- rate limiting
+
+
+def test_rate_limiter_paces_to_the_budget():
+    """The free tier allows 15 model requests/minute and one finding costs
+    several, so pacing is part of the product, not the test harness. Proven on
+    a compressed window rather than by waiting a real minute."""
+    import asyncio
+    from agent.runner import RateLimiter
+
+    async def go():
+        lim = RateLimiter(max_requests=3, window=0.6)
+        waits = [await lim.acquire() for _ in range(7)]
+        return waits
+
+    waits = asyncio.run(go())
+    assert waits[:3] == [0.0, 0.0, 0.0], "first burst must not be delayed"
+    assert any(w > 0 for w in waits[3:]), "budget exhaustion must introduce a wait"
+
+
+def test_retry_delay_uses_the_servers_number():
+    """A 429 carries the delay the server wants; guessing our own is worse."""
+    from agent.runner import _retry_delay_from, _is_rate_limited
+
+    exc = RuntimeError("429 RESOURCE_EXHAUSTED ... {'retryDelay': '10s'} ...")
+    assert _is_rate_limited(exc)
+    assert 10.0 < _retry_delay_from(exc) <= 12.0
+    assert _retry_delay_from(RuntimeError("boom"), default=7.0) == 7.0

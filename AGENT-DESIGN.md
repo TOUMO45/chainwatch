@@ -30,6 +30,14 @@ unlikely to be *tested* on 3.14. This is the single most likely early blocker
 and must be settled by an install-and-import smoke test before any agent code,
 not after.
 
+**Rate limits are a config change, not an architecture change.** The Gemini
+free tier allows 15 `generate_content` requests per minute per model, and one
+finding costs roughly five to eight of them. `agent/runner.py` paces at the
+individual MODEL REQUEST via ADK's `before_model_callback`, and honours the
+server's own `retryDelay` on a 429. Moving to a paid tier means raising
+`RateLimiter(max_requests=...)` (or passing `--rpm`) — no code path, tool, or
+boundary moves.
+
 **Do we need ADK at all?** `google-genai` alone supports automatic function
 calling and would be lighter. ADK is still the recommendation: it supplies the
 session/state model and the Cloud Run deployment path (2e), and the track is

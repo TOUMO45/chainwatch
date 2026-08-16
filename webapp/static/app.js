@@ -314,11 +314,97 @@ function openDrawer(f) {
         <span class="val">${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span></li>`
     ).join("")}</ul>
 
+    <h3 class="d-h">Dossier <span class="muted">(capability 12 — the agent explains,
+      it never decides)</span></h3>
+    <div id="report-box">
+      <button id="gen-report" class="genbtn">Generate report</button>
+      <span id="gen-note" class="muted"></span>
+    </div>
+
     <h3 class="d-h">The change itself</h3>
     <div id="diff" class="diff"><div class="loading">loading diff…</div></div>`;
 
   $("drawer").classList.remove("hidden");
+  wireReport(f);
   loadDiff(f);
+}
+
+/* ---- capability 12: request a dossier and poll for it ------------------- */
+
+async function wireReport(f) {
+  const btn = $("gen-report"), note = $("gen-note");
+  if (!f.finding_id) { btn.disabled = true; note.textContent = "re-run the scan to enable"; return; }
+
+  let agent = { available: false };
+  try { agent = await (await fetch("/api/agent")).json(); } catch (e) { /* offline */ }
+  if (!agent.available) {
+    btn.disabled = true;
+    note.textContent = "GEMINI_API_KEY not configured — the engine above needs no key, only this step does";
+    return;
+  }
+  note.textContent = `${agent.model}, ${agent.rpm_budget} model-requests/min budget`;
+
+  // Already generated (or generating) in this session? Show it.
+  const existing = await (await fetch(`/api/scan/${JOB}/report/${f.finding_id}`)).json();
+  if (existing.status && existing.status !== "none") return showReport(f, existing);
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    await fetch(`/api/scan/${JOB}/report/${f.finding_id}`, { method: "POST" });
+    pollReport(f);
+  };
+}
+
+async function pollReport(f) {
+  const box = $("report-box");
+  for (;;) {
+    const r = await (await fetch(`/api/scan/${JOB}/report/${f.finding_id}`)).json();
+    if (r.status !== "running") return showReport(f, r);
+    box.innerHTML = `<div class="genlog"><b>drafting…</b>${
+      (r.log || []).map((l) => `<div>${esc(l)}</div>`).join("")}</div>`;
+    await new Promise((res) => setTimeout(res, 1200));
+  }
+}
+
+function showReport(f, r) {
+  const box = $("report-box");
+  if (r.status === "error") {
+    box.innerHTML = `<div class="why"><b>Report refused.</b> ${esc(r.error_message || "")}
+      ${(r.violations || []).map((v) =>
+        `<div>rejected [${esc(v.kind)}] ${esc(v.span)}</div>`).join("")}</div>`;
+    return;
+  }
+  if (r.status !== "success") { box.innerHTML = `<div class="loading">no report yet</div>`; return; }
+  box.innerHTML =
+    `<div class="genok">✓ verified against the finding record — every hash, address,
+       path and line in this document came from the engine, not the model</div>
+     <div class="report">${mdToHtml(r.markdown || "")}</div>`;
+}
+
+/* Minimal markdown renderer: headings, blockquote, bold, code, lists. Kept
+   inline because a published page must be self-contained. */
+function mdToHtml(md) {
+  const lines = md.split("\n");
+  const out = [];
+  let inList = false;
+  for (const raw of lines) {
+    const l = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+      .replace(/`(.+?)`/g, "<code>$1</code>");
+    const h = l.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { if (inList) { out.push("</ul>"); inList = false; }
+             out.push(`<h${h[1].length + 2}>${h[2]}</h${h[1].length + 2}>`); continue; }
+    if (/^&gt;\s?/.test(l)) { out.push(`<blockquote>${l.replace(/^&gt;\s?/, "")}</blockquote>`); continue; }
+    if (/^\s*[-*]\s+/.test(l)) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${l.replace(/^\s*[-*]\s+/, "")}</li>`); continue;
+    }
+    if (inList) { out.push("</ul>"); inList = false; }
+    if (/^---+$/.test(l.trim())) { out.push("<hr>"); continue; }
+    out.push(l.trim() ? `<p>${l}</p>` : "");
+  }
+  if (inList) out.push("</ul>");
+  return out.join("");
 }
 
 async function loadDiff(f) {

@@ -79,6 +79,9 @@ class Job:
     q: "queue.Queue[dict]" = field(default_factory=queue.Queue)
     stop: threading.Event = field(default_factory=threading.Event)
     repo_path: Optional[Path] = None
+    # Capability 12: one entry per finding the user asked a dossier for.
+    # {finding_id: {status, markdown, error_message, log:[...]}}
+    reports: dict = field(default_factory=dict)
 
     def push(self, ev: dict) -> None:
         self.events.append(ev)
@@ -110,6 +113,11 @@ class ScanRequest(BaseModel):
     rpc_url: Optional[str] = None
     rules: Optional[list[str]] = None
     check_head_survival: bool = True
+    # Explicit "prev:cur" commit pairs instead of walking recent history. This
+    # is what makes a demo (or a re-check of a previously root-caused case)
+    # reproducible rather than dependent on whatever the repo's tip happens to
+    # be. Mirrors ScanOptions.explicit_pairs exactly.
+    pairs: Optional[list[str]] = None
 
 
 # --------------------------------------------------------------------------- helpers
@@ -154,8 +162,17 @@ def _run_job(job: Job, req: ScanRequest) -> None:
                 rpc_url=req.rpc_url or None,
                 rules=req.rules or None,
                 check_head_survival=req.check_head_survival,
+                explicit_pairs=[tuple(p.split(":", 1)) for p in (req.pairs or [])
+                                if ":" in p] or None,
             )
             job.report = scan(opts, on_event=job.push, should_stop=job.stop.is_set)
+            # Stable per-finding handles, computed by the agent layer rather than
+            # the engine: the report format is ground truth and should not grow a
+            # field because a front end wants a button target.
+            from agent.store import finding_id as _fid
+
+            for f in job.report.get("findings", []):
+                f["finding_id"] = _fid(f)
             job.status = "cancelled" if job.stop.is_set() else "done"
         except Exception as exc:  # noqa: BLE001 - surfaced to the browser, not swallowed
             job.status = "error"
@@ -268,6 +285,83 @@ def get_source(job_id: str, file: str, rev: str, start: int = 1, end: int = 0):
 @app.get("/api/rules")
 def rules():
     return {"order": RULE_ORDER, "titles": RULE_TITLES}
+
+
+# ----------------------------------------------------- capability 12: dossiers
+
+
+@app.get("/api/agent")
+def agent_status():
+    """Whether the report layer is usable. The engine never needs a key; only
+    this does, and the UI must be able to say so rather than fail obscurely."""
+    from agent import runner as R
+
+    return {"available": R.api_key_present(), "model": R.DEFAULT_MODEL,
+            "rpm_budget": R.DEFAULT_RPM}
+
+
+def _run_report(job: Job, finding_id: str) -> None:
+    """Draft one dossier in the background. Rate limiting lives in the runner,
+    so a free-tier pause shows up as progress rather than a stalled request."""
+    from agent import FindingStore
+    from agent import runner as R
+
+    slot = job.reports[finding_id]
+    try:
+        store = FindingStore(job.report or {})
+        def on_event(ev):
+            kind = ev.get("kind")
+            if kind == "tool":
+                slot["log"].append(f"tool: {ev['tool']}")
+            elif kind == "throttle":
+                slot["log"].append(f"pacing {ev['seconds']}s to stay inside the "
+                                   f"free-tier rate limit")
+            elif kind == "retry":
+                slot["log"].append(f"{ev['reason']}; server asked for "
+                                   f"{ev['seconds']}s, waiting")
+            elif kind == "error":
+                slot["log"].append(f"error: {ev['message']}")
+
+        res = R.generate_report_sync(store, finding_id, ROOT / "reports",
+                                     on_event=on_event)
+        slot["status"] = res["status"]
+        slot["markdown"] = res.get("markdown", "")
+        slot["error_message"] = res.get("error_message", "")
+        slot["violations"] = res.get("violations", [])
+        slot["verified"] = res.get("verified")
+        slot["path"] = res.get("path")
+    except Exception as exc:  # noqa: BLE001
+        slot["status"] = "error"
+        slot["error_message"] = f"{type(exc).__name__}: {exc}"[:400]
+
+
+@app.post("/api/scan/{job_id}/report/{finding_id}")
+def start_report(job_id: str, finding_id: str):
+    job = JOBS.get(job_id)
+    if not job or not job.report:
+        raise HTTPException(404, "no such scan")
+    if not any(f.get("finding_id") == finding_id
+               for f in job.report.get("findings", [])):
+        raise HTTPException(404, "no such finding in this scan")
+    existing = job.reports.get(finding_id)
+    if existing and existing["status"] == "running":
+        return {"status": "running"}
+    job.reports[finding_id] = {"status": "running", "markdown": "",
+                               "error_message": "", "log": [], "violations": []}
+    threading.Thread(target=_run_report, args=(job, finding_id),
+                     daemon=True).start()
+    return {"status": "running"}
+
+
+@app.get("/api/scan/{job_id}/report/{finding_id}")
+def get_report(job_id: str, finding_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "no such scan")
+    slot = job.reports.get(finding_id)
+    if not slot:
+        return {"status": "none"}
+    return slot
 
 
 @app.get("/")
