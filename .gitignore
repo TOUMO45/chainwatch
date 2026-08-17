@@ -49,3 +49,7 @@ realworld-test/88mph-src/
 
 # Agent layer: generated reports. Reproducible from a scan report + the agent.
 reports/
+realworld-test/v3-core/
+realworld-test/v3-periphery/
+realworld-test/compound-v2/
+realworld-test/aave-v2/
