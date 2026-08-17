@@ -1816,9 +1816,35 @@ while `_gate_vars` was returning nothing.
 ### RC-INLINE1 — inlining an inherited body reads as a CEI reordering
 
 **Type: FALSE POSITIVE, Rule 2b. MEASURED on a real protocol commit during the
-B4 stress re-run. DOCUMENTED ONLY — the logic fix is deliberately OUT OF SCOPE
-for the Section B commit that records it, because Section B is a coverage and
-environment change and must not touch any rule's logic.**
+B4 stress re-run. FIXED.**
+
+> **STATUS: FIXED.** Closed by `_after_call_writes()` in `src/rules/rule2b.py` —
+> a delegation-resolving replacement for the body-local
+> `_cfg.state_writes_after_calls`, kept LOCAL to rule 2b so that `_cfg.py` and
+> rule 2a are untouched. Locked by `fixtures-r2b-inline/` (1 positive,
+> 3 negatives; pre-fix **precision 0.33 FAIL** → post-fix **1.00 / 1.00 PASS**).
+> All 16 fixture sets PASS with pre-existing counts unchanged — including
+> `fixtures-r2b` at 3/7, the set most exposed to this change, since making the
+> write-set transitive could have cancelled an existing true positive.
+>
+> **Closed empirically, not just by fixture.** The originating pair
+> `57d092db..0cfe9683` re-run through `src/scan.py`: **6/6 files analysed,
+> 0 errors, `findings: 0`** — Rule 2b is now quiet on
+> `CurveStableRTokenMetapoolCollateral.refresh`, where it previously produced
+> the single finding of the entire 25-pair stress run.
+>
+> **Two limitations of that proof, stated rather than left implied.** (1) The
+> positive direction — a genuine CEI break hidden inside an inlining commit —
+> is proven ONLY by the synthetic `P2bi-01`. No commit in the 25-pair Reserve
+> sample exercises that shape, so there is no real-world evidence for it.
+> (2) The claim "the 25-pair set now has zero Rule 2b fires" is DERIVED from
+> re-running the one pair that produced the one finding, not from re-running
+> the 12.8-hour stress test.
+>
+> Everything below this line is the ORIGINAL entry, preserved as provenance.
+> Its fix direction posed the resolve-vs-distinguish question as open; Step 1
+> measured the answer (Slither DOES resolve `super.X()` to its target
+> `Function`), so the first option was taken.
 
 **The case.** Reserve Protocol `0cfe9683` ("Convex ETH+/ETH Collateral Plugin",
 PR #1113, 2024-04-11), file
@@ -1910,6 +1936,86 @@ inside an inlining commit — must still fire). Without that positive, the
 obvious fix degenerates into "any inlining commit is safe", which replaces a
 vacuous-empty-set with a vacuous-blanket-pass: the same failure, inverted a
 third time.
+
+---
+
+### RC-INLINE2 — `cei_correct` calls a delegating function CEI-correct, vacuously
+
+**Type: FALSE NEGATIVE, Rule 2a (exclusion 2.2). Same root cause as RC-INLINE1,
+opposite direction. NOT FIXED — and it carries HIGHER urgency than a typical
+open item, for the reason in the next paragraph.**
+
+**Why this ranks above RC-INLINE1 despite being the smaller-looking bug.**
+RC-INLINE1 was a false POSITIVE: it fired, a human read it, and it was
+classified and fixed within one session. RC-INLINE2 is a false NEGATIVE, and a
+miss is **silent** — Rule 2a stays quiet, no artifact is produced, nothing
+surfaces for review, and the absence of a finding is indistinguishable from a
+clean result. Chainwatch's entire coverage-honesty discipline exists because of
+exactly this asymmetry: HIST-L2 was a silence that read as a headline
+precision result. A false positive costs credibility once; a false negative can
+cost it permanently and without ever announcing itself.
+
+**Mechanism.** `_cfg.py`:
+
+```python
+def cei_correct(fn: Function) -> bool:
+    if not has_external_call(fn):
+        return True
+    return not state_writes_after_calls(fn)
+```
+
+`state_writes_after_calls` is body-local — the same property that produced
+RC-INLINE1. For a function whose body is a delegation
+(`registry.sync(); super.refresh();`) it returns the EMPTY set, so
+`cei_correct` returns **True**. But that emptiness is not evidence the writes
+are correctly ordered; it is the absence of any local writes to have an
+ordering. The parent's writes — which really do land after an external call —
+are never inspected.
+
+`rule2a.py:132` consumes it as exclusion 2.2:
+
+```python
+if cei_correct(fn_a):
+    continue        # DISCARDED
+```
+
+So a function that delegates its body to a CEI-broken parent is **discarded as
+CEI-correct**, and Rule 2a never evaluates it.
+
+**Evidence.** Not observed on a real commit — derived from reading the shared
+helper while fixing RC-INLINE1, and grounded in the same measurement that
+proved RC-INLINE1: the Step 1 probe showed `ChildDelegating.refresh` has
+`state_writes_after_calls = (EMPTY)` while the parent it delegates to has
+`{exposedRef, savedLow}`. `cei_correct` on that function returns True today.
+The 25-pair Reserve sample contains no case that would have surfaced it, which
+is consistent with a false negative and is not evidence of absence.
+
+**Scope.**
+- Rule 2a only. Rule 2b is fixed (RC-INLINE1) and does not use `cei_correct`.
+- Any function whose body delegates to a parent that writes state after an
+  external call — the same delegate-then-inline hierarchies RC-INLINE1 covers,
+  read from the other end.
+- The **de-inlining direction** is the sharpest instance: N-1 delegates to a
+  CEI-broken parent (discarded as "correct"), N removes the delegation. Rule
+  2a's comparison starts from a baseline that was never true.
+
+**Fix direction (NOT implemented).** The resolver already exists —
+`rule2b._after_call_writes()` — and the honest fix is to promote it into `_cfg`
+so `cei_correct` and Rule 2a share it. That is deliberately NOT a
+copy-paste-and-ship: it changes a SHARED helper, so it reaches Rule 2a's
+verdicts and needs the same justification standard Rule 10's `gate_vars`
+used, plus its own fixture set FIRST — at minimum a negative (delegating to a
+correctly-ordered parent, must stay quiet) and a positive (delegating to a
+CEI-broken parent, must fire where it is currently discarded). Note the
+positive is the hard one to build and the whole point: it is the case that is
+silently missed today, so nothing existing can be adapted into it.
+
+**Do not "fix" this by making `cei_correct` conservative.** Returning False
+whenever a function contains an internal call would trade a silent miss for a
+flood of Rule 2a false positives — the vacuous-blanket-pass failure this
+project has now met three times in different clothing (R10-M2's empty set,
+RC-INLINE1's empty set, and the blanket-suppression trap `P2bi-01` was built to
+catch). The answer is to compute the real ordering fact, not to guess safely.
 
 ---
 

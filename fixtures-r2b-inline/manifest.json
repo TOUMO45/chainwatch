@@ -1,0 +1,50 @@
+[
+  {
+    "id": "N2bi-01",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": "RC-INLINE1",
+    "path": "negative/N2bi-01",
+    "source_path": "contracts/plugins/MetapoolCollateral.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "THE RC-INLINE1 SHAPE, faithful to Reserve 0cfe9683 (CurveStableRTokenMetapoolCollateral.refresh). At N-1 the override delegates entirely: `pairedRegistry.sync(); super.refresh();`. The parent, present UNCHANGED at both commits, writes exposedRef/savedLow after its own `pool.sync()`. At N that parent body is INLINED into the override, order untouched. Execution order is identical across the pair; only the code's location changed. Fires today because state_writes_after_calls is body-local (_cfg.py:102), so the N-1 set is EMPTY - not because ordering was correct, but because the delegating function has no writes of its own - and rule2b.py:196 reads that emptiness as evidence, making every write at N look newly-moved. EXPECTED: quiet after the fix. Locks RC-INLINE1."
+  },
+  {
+    "id": "N2bi-02",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": "RC-INLINE1",
+    "path": "negative/N2bi-02",
+    "source_path": "contracts/plugins/ChildVault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "NAIVE-FIX GUARD - case A-prime. The delegating call is forward-reachable from an external call in the CALLER (`registry.sync(); super.refresh();`), and the parent writes `cached` BEFORE its own `pool.sync()`. In real execution `cached` is therefore written after registry.sync(), but `state_writes_after_calls(parent)` evaluated IN ISOLATION returns empty for it. A fix that merely unions `state_writes_after_calls(callee)` under-reports the N-1 set here and STILL FIRES - RC-INLINE1 surviving in subtler form. Reserve's own case cannot catch this, because its parent happens to write only after its own call, so naive and correct coincide there. EXPECTED: quiet after the fix; a fix that passes N2bi-01 but fails this one is incomplete."
+  },
+  {
+    "id": "P2bi-01",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P2bi-01",
+    "source_path": "contracts/plugins/ChildLedger.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "HARD POSITIVE - a genuine CEI break HIDDEN INSIDE an inlining commit. Same delegate-then-inline shape as N2bi-01, but the ordering really does change. At N-1: `super.refresh(); registry.sync();` where the parent writes `settled` BEFORE its own pool.sync() - so across the whole flattened execution `settled` precedes every external call. At N the inlined body reorders it to `pool.sync(); settled = 1; registry.sync();` - `settled` is now written AFTER an external call and is read by the contract's own `stale()` guard. This is the case that proves the fix is not a blanket 'any commit containing an inlining is safe' suppression, which would replace a vacuous-empty-set with a vacuous-blanket-pass - the same failure inverted a third time. EXPECTED: fires before AND after the fix, but note it currently fires for the WRONG reason (the vacuous empty N-1 set) and must fire after the fix for the RIGHT one (a genuinely enlarged after-call set)."
+  },
+  {
+    "id": "N2bi-03",
+    "rule": 2,
+    "sub_rule": "2b",
+    "label": "negative",
+    "exclusion_ref": null,
+    "path": "negative/N2bi-03",
+    "source_path": "contracts/plugins/ChildRegistry.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "SUPER CALL WITH NO INLINING RELATIONSHIP - reach guard. `super.refresh()` is present at BOTH commits and nothing is inlined; the override has its own local writes throughout and only a constant changes (localCount + 1 -> + 2). TWO HONEST NOTES, both measured rather than assumed. (1) This case is ALREADY quiet before the fix - the same variable sits after the same call at both commits, so `moved` is empty either way. It locks no current bug; it is a no-unintended-reach check whose value is entirely in the after-fix run. (2) The fix is NOT gated on detecting an inlining pattern, and this fixture proves it: delegation resolution applies here too, adding BaseRegistry.epoch to BOTH sides' after-call sets (super.refresh() is forward-reachable from feed.sync()). The sets genuinely change; the verdict does not, because the change is symmetric. That is the property worth locking - the new logic runs everywhere and only alters a verdict where the ordering fact actually differs - and it is stronger than 'the logic does not activate here', which would have been the wrong claim."
+  }
+]
