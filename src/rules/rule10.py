@@ -75,7 +75,9 @@ Exclusions handled:
 
 from pathlib import Path
 
+from slither.analyses.data_dependency.data_dependency import is_dependent
 from slither.core.declarations import Function
+from slither.slithir.operations import LowLevelCall, Send, Transfer
 
 from ._shared import (
     accept_finding,
@@ -112,6 +114,52 @@ def _gate_vars(contract) -> set:
                 callee = getattr(ir, "function", None)
                 if isinstance(callee, Function):
                     out.update(callee.all_state_variables_read())
+    return out
+
+
+def _value_vars(contract) -> set:
+    """State variables that RECEIVE FUNDS - closes the 10.7 gap.
+
+    Structural, never nominal. A variable qualifies because a native
+    value-moving operation sends to a destination that is data-dependent on it:
+    `Transfer` (`addr.transfer(x)`), `Send` (`addr.send(x)`), or a `LowLevelCall`
+    carrying a call value (`addr.call{value: x}("")`). Naming it `treasury` or
+    `feeRecipient` counts for nothing - name matching across commits is the
+    precise blind spot RC-RENAME1 exists to document, and re-introducing it to
+    close 10.7 would be a poor trade.
+
+    `fixtures-r10v/negative/N10v-03` is what makes this test real: an `oracle`
+    address, migrated in exactly the P10v-01 shape, that is only ever READ
+    through `IOracle(oracle).price()`. It is address-typed and unguarded and
+    must stay quiet, so an implementation that treated every address-typed
+    state variable as value-holding fails there while passing everything else.
+
+    SCOPE LIMIT, DELIBERATE AND STATED (see RULES.md 10.7): NATIVE value moves
+    only. An ERC20 `transfer(recipient, amount)` does NOT qualify its recipient
+    here, even though that is the more common real-world treasury shape. The
+    project already recognises that ABI in `_shared.ERC20_RETURN_FNS` for Rule
+    5, so including it would be consistent - but it widens the candidate set
+    and therefore the false-positive surface, and this rule is the least
+    battle-tested one in the set. The narrower option ships first; widening it
+    is a fixture-first change of its own, not a tweak.
+    """
+    out: set = set()
+    for fn in contract.functions:
+        if not fn.is_implemented:
+            continue
+        for node in fn.nodes:
+            for ir in node.irs:
+                dest = None
+                if isinstance(ir, (Transfer, Send)):
+                    dest = getattr(ir, "destination", None)
+                elif isinstance(ir, LowLevelCall):
+                    if getattr(ir, "call_value", None) is not None:
+                        dest = getattr(ir, "destination", None)
+                if dest is None:
+                    continue
+                for var in contract.state_variables:
+                    if var is dest or is_dependent(dest, var, contract):
+                        out.add(var)
     return out
 
 
@@ -162,8 +210,11 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
         if contract_b is None:
             continue  # new contract at N: nothing migrated, nothing regressed
 
-        for var in _gate_vars(contract_a):
+        gate_a = _gate_vars(contract_a)
+        value_a = _value_vars(contract_a)
+        for var in gate_a | value_a:
             var_name = var.canonical_name
+            var_class = "gate" if var in gate_a else "value" 
 
             oneshot_b, unguarded_b = _classify(contract_b, var_name)
             if not oneshot_b:
@@ -214,6 +265,7 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                         "owasp": "SC01",
                         "trigger": "control-migrated-to-unguarded-entry-point",
                         "gate_variable": var_name,
+                        "variable_class": var_class,
                         "oneshot_writers_before": [
                             f"{f.contract_declarer.name}.{f.full_name}"
                             for f in oneshot_b

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "P10v-01",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P10v-01",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "VALUE-HOLDING MIGRATION (closes 10.7). Identical T1/T2/T3 shape to P10-01, on a variable that holds FUNDS rather than authority: `treasury` is established only by the constructor at N-1, its sole run-time writer is an onlyOwner setter, and at N the constructor is gone and an unguarded `external init(address payable)` sets it. `treasury` qualifies structurally because it is the DESTINATION of a native value move (`treasury.transfer(amount)`) - never because of its name, which would repeat exactly the blind spot RC-RENAME1 was about. EXPECTED: quiet before the value-variable extension, fires after."
+  },
+  {
+    "id": "N10v-01",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "T2",
+    "path": "negative/N10v-01",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "NEVER SAFE, SO NOT A REGRESSION. At N-1 an unguarded `rescueTreasury` already writes the treasury; at N the P10v-01 `init` is added alongside it. T2 fails, so this stays quiet - the value-variable extension inherits the same regression-not-state discipline the gate-variable path has, rather than becoming a current-state fund-risk scanner. The value-holding extension is exactly where that boundary is most tempting to cross, which is why this negative exists."
+  },
+  {
+    "id": "N10v-02",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "10.2",
+    "path": "negative/N10v-02",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "CORRECTLY-GUARDED MIGRATION on a value variable. Same constructor-to-init migration as P10v-01, but `init` carries onlyOwner. T1 and T2 hold exactly as in the positive, so this can only stay quiet via exclusion 10.2 - it cannot pass for the wrong reason. EXPECTED: quiet."
+  },
+  {
+    "id": "N10v-03",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "10.6",
+    "path": "negative/N10v-03",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "NON-VALUE-HOLDING ADDRESS - the over-match guard. Structurally identical migration (constructor deleted, unguarded init added, address state variable written), but `oracle` is only ever READ through `IOracle(oracle).price()` and is never a value destination nor read by any msg.sender guard. It is therefore neither a gate variable nor a value variable, and the trigger never ranges over it. This is what proves the extension keys on 'this address receives funds', not on 'this is an address'. EXPECTED: quiet. Without this case, an implementation that simply treated every address-typed state variable as value-holding would pass the positive and every other negative."
+  },
+  {
+    "id": "N10v-04",
+    "rule": 10,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": "T3",
+    "path": "negative/N10v-04",
+    "source_path": "contracts/Vault.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "ORDINARY ADMIN OPERATION. The constructor is NOT removed; the commit merely ADDS a guarded `rotateTreasury(address payable) onlyOwner`. Rotating a treasury behind an owner gate is routine protocol maintenance, and a fund-risk rule that flagged it would be unusable in practice. T3 fails because the new writer is msg.sender-constrained, so no unguarded run-time writer exists at N. EXPECTED: quiet."
+  }
+]

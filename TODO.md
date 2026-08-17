@@ -477,7 +477,15 @@ frozen fixtures unaffected. Do not fix without measurement first.
       unguarded and satisfies T3. Not reachable with OZ 4/5 (both read their
       flags directly at the guard node), but it is the direction a future OZ
       refactor would break. Watch on the next OZ major.
-- [ ] **Rule 10 exclusion 10.7 — value-holding state variables.** v1 keys only
+- [x] **Rule 10 exclusion 10.7 — value-holding state variables. DONE
+      2026-08-17.** Trigger now ranges over gate_vars U value_vars; a value
+      variable is one a NATIVE value move (Transfer/Send/LowLevelCall with a
+      call value) sends to, determined structurally via data dependency, never
+      by name. Locked by `fixtures-r10v/` (1 positive, 4 negatives, 1.00/1.00).
+      STILL OPEN, deliberately narrower: ERC20 `transfer(recipient, amount)`
+      recipients do NOT qualify, so ERC20 treasury migrations are still missed.
+      Widening needs its own fixture-first pass. Original item follows.
+- [ ] ~~**Rule 10 exclusion 10.7 — value-holding state variables.** v1 keys only
       on gate variables, so a migration exposing an unguarded writer to a fee
       recipient or treasury address stays quiet even though it can move funds.
       Stated in RULES.md §10.7 rather than left silent. Widening needs its own

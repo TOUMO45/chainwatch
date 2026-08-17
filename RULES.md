@@ -336,19 +336,36 @@ modifier). The underlying regression there is real, but it is already owned:
 left the guarded function."** Matching is by NAME rather than full signature —
 the more suppressive choice, per the precision-first tie-break.
 
-### 10.7 — value-holding variables: OUT OF SCOPE FOR V1, stated not omitted
+### 10.7 — value-holding variables: NOW IN SCOPE, with one stated limit
 
-v1 keys **exclusively** on gate variables. A migration that exposes an unguarded
-writer to a **value-holding** variable — a fee recipient, a treasury address, a
-withdrawal cap — is out of scope and **stays quiet, even though it can move
-funds**.
+**CLOSED.** The trigger ranges over `gate_vars ∪ value_vars`. T1/T2/T3 and every
+exclusion are unchanged — this was purely a widening of *which variables* the
+rule considers, which is why it extends Rule 10 rather than shipping as a
+separate rule.
 
-This is a deliberate v1 boundary, not an oversight, and it is a real gap worth
-stating plainly rather than discovering later. Widening to value-holding state
-is an extension, not a tweak: "read by a msg.sender-dependent guard" is a crisp
-structural definition, and "holds value" has no equally crisp one. Guessing at
-it is how precision dies. Any such widening needs its own fixture set first,
-including negatives, exactly as this rule did.
+A **value variable** is one that receives funds, determined structurally: a
+native value-moving operation (`Transfer`, `Send`, or a `LowLevelCall` carrying
+a call value) sends to a destination that is data-dependent on it. Naming it
+`treasury` counts for nothing — name matching is the exact blind spot
+RC-RENAME1 documents, and re-introducing it here would be a poor trade.
+
+`fixtures-r10v/negative/N10v-03` is what makes the definition testable: an
+`oracle` address migrated in exactly the positive's shape, only ever *read*
+through `IOracle(oracle).price()`. Address-typed, unguarded, and it must stay
+quiet — so an implementation that treated every address-typed state variable as
+value-holding fails there while passing everything else.
+
+Findings carry `variable_class: "gate" | "value"` so the two are never conflated
+downstream.
+
+**STATED LIMIT — native value moves only.** An ERC20 `transfer(recipient,
+amount)` does **not** qualify its recipient, even though that is the more
+common real-world treasury shape. The project already recognises that ABI in
+`_shared.ERC20_RETURN_FNS` for Rule 5, so including it would be consistent —
+but it widens the candidate set and therefore the false-positive surface, and
+Rule 10 is the least battle-tested rule in the set. The narrower option ships
+first. Widening to ERC20 recipients is a fixture-first change of its own, and
+until it happens **Rule 10 will miss ERC20 treasury migrations**.
 
 ### Additional CONFIRMED requirements
 
