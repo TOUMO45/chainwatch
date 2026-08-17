@@ -173,6 +173,55 @@ def verify_report(finding_id: str, slots_json: str) -> dict:
     return _verify(assemble(facts, slots), facts)
 
 
+def explain_impact(finding_id: str) -> dict:
+    """Return the impact-narration skeleton for ONE existing finding.
+
+    This tool EXPLAINS a finding the deterministic engine already produced. It
+    cannot create a finding, promote a CANDIDATE to CONFIRMED, or change any
+    verdict field - the verdict, the header and the fact block are rendered from
+    the stored record by code, and only slot prose comes from you. If the
+    evidence looks insufficient to you, say so in the slots; that does not
+    change the verdict.
+
+    Every rule that applies to draft_report applies here unchanged: no restating
+    hashes, addresses, line numbers or paths; no exploit material; and for a
+    CANDIDATE, no assertion that anything is confirmed or exploitable.
+
+    Args:
+        finding_id: id from list_findings.
+    """
+    if (err := _need_store()):
+        return err
+    facts = _STORE.facts(finding_id)
+    if not facts.get("verdict"):
+        return {"status": "error", "error_message": f"no finding with id {finding_id}"}
+    return skeleton(facts, kind="impact")
+
+
+def verify_impact(finding_id: str, slots_json: str) -> dict:
+    """Check drafted impact prose against the finding record. Mechanical, not a model.
+
+    Same gate as verify_report, over the impact slot set: every commit hash,
+    address, source path, line reference and qualified name must already appear
+    in the finding record, and a CANDIDATE keeps its fixed header with no
+    severity/impact section and no assertive language. Fix every violation and
+    verify again.
+
+    Args:
+        finding_id: id from list_findings.
+        slots_json: JSON object of {slot_key: prose}.
+    """
+    if (err := _need_store()):
+        return err
+    facts = _STORE.facts(finding_id)
+    if not facts.get("verdict"):
+        return {"status": "error", "error_message": f"no finding with id {finding_id}"}
+    ok, slots = _coerce_slots(slots_json)
+    if not ok:
+        return {"status": "error", "error_message": slots}
+    return _verify(assemble(facts, slots, kind="impact"), facts)
+
+
 def save_report(finding_id: str, slots_json: str) -> dict:
     """Assemble and save the final report for one finding.
 
@@ -209,4 +258,5 @@ def save_report(finding_id: str, slots_json: str) -> dict:
 
 
 ALL_TOOLS = [list_findings, get_finding, get_diff,
-             draft_report, verify_report, save_report]
+             draft_report, verify_report, save_report,
+             explain_impact, verify_impact]

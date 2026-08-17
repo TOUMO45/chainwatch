@@ -65,6 +65,41 @@ SLOTS: dict[str, list[dict]] = {
 }
 
 
+# Impact narration slots (capability: explain_impact). A SECOND slot set over
+# the SAME finding record, header, fact block and verification gate - not a
+# second document type with its own rules. The engine's verdict is never an
+# input the model can touch: `header_for` still writes the framing, `assemble`
+# still drops unknown keys, and `verify` still applies every CANDIDATE
+# structural constraint. This tool narrates ONE existing finding; it cannot
+# create one, promote one, or reclassify one.
+IMPACT_SLOTS: dict[str, list[dict]] = {
+    CONFIRMED: [
+        {"key": "what_changes", "title": "What changes for the contract",
+         "guidance": "In plain language, what the code permits after this commit that it did "
+                     "not permit before. Facts from the record only."},
+        {"key": "who_is_exposed", "title": "Who is exposed",
+         "guidance": "Which participants depend on the control that was removed. Describe "
+                     "roles conceptually; do not name real people, protocols, or addresses "
+                     "that are not in the record."},
+        {"key": "preconditions", "title": "Preconditions for it to matter",
+         "guidance": "What must be true of the deployment for this to have consequences - "
+                     "e.g. that the affected version is the live one. State them as "
+                     "conditions, not as established facts. No exploit steps."},
+    ],
+    CANDIDATE: [
+        {"key": "what_changes", "title": "What the change would mean if it were confirmed",
+         "guidance": "Conditional language only. This finding has NOT met the bar, so describe "
+                     "what WOULD follow if it did, never what does follow."},
+        {"key": "what_is_unknown", "title": "What is still unknown",
+         "guidance": "Walk the missing evidence fields in the record and say what each absence "
+                     "prevents anyone from concluding. This is the point of the document."},
+        {"key": "preconditions", "title": "Preconditions that were not established",
+         "guidance": "State the conditions that would have to hold, and note that the record "
+                     "does not establish them. No severity, no impact rating, no exploit "
+                     "material."},
+    ],
+}
+
 def header_for(facts: dict) -> str:
     """The hardcoded framing line for this verdict. Code writes this, never the model."""
     if facts.get("verdict") == CONFIRMED:
@@ -75,9 +110,18 @@ def header_for(facts: dict) -> str:
     return CANDIDATE_HEADER.format(missing=", ".join(missing) if missing else "none recorded")
 
 
-def skeleton(facts: dict) -> dict:
+def _slot_set(kind: str) -> dict:
+    return IMPACT_SLOTS if kind == "impact" else SLOTS
+
+
+def skeleton(facts: dict, kind: str = "report") -> dict:
     """What the model is asked to fill: the header it CANNOT change, the facts
-    already rendered, and the empty prose slots."""
+    already rendered, and the empty prose slots.
+
+    `kind` selects WHICH slot set, never anything else. The header, the fact
+    block, the unknown-key dropping in `assemble` and the whole verification
+    gate are shared, so a second narration type cannot acquire weaker rules
+    than the first by construction."""
     verdict = facts.get("verdict") or CANDIDATE
     return {
         "status": "success",
@@ -86,7 +130,9 @@ def skeleton(facts: dict) -> dict:
         "header": header_for(facts),
         "header_is_fixed": True,
         "facts_rendered_by_code": _fact_block(facts),
-        "slots": [dict(s, content="") for s in SLOTS.get(verdict, SLOTS[CANDIDATE])],
+        "kind": kind,
+        "slots": [dict(s, content="")
+                  for s in _slot_set(kind).get(verdict, _slot_set(kind)[CANDIDATE])],
         "rules": [
             "Fill only the 'content' of each slot. Everything else is rendered by code.",
             "Do not restate commit hashes, addresses, line numbers or file paths - they are "
@@ -127,7 +173,8 @@ def _fact_block(facts: dict) -> str:
     return "\n".join(lines)
 
 
-def assemble(facts: dict, slot_content: Optional[dict] = None) -> str:
+def assemble(facts: dict, slot_content: Optional[dict] = None,
+             kind: str = "report") -> str:
     """Render the final markdown.
 
     The header and the fact block come from `facts`. `slot_content` supplies
@@ -136,7 +183,8 @@ def assemble(facts: dict, slot_content: Optional[dict] = None) -> str:
     """
     verdict = facts.get("verdict") or CANDIDATE
     slot_content = slot_content or {}
-    known = {s["key"]: s for s in SLOTS.get(verdict, SLOTS[CANDIDATE])}
+    table = _slot_set(kind)
+    known = {s["key"]: s for s in table.get(verdict, table[CANDIDATE])}
 
     out = [f"# {header_for(facts)}", ""]
     if verdict == CANDIDATE:

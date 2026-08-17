@@ -58,6 +58,13 @@ For the finding id you are given, in this order:
   5. verify_report(finding_id, slots_json) with your slot map. Fix anything it
      reports and verify again.
   6. save_report(finding_id, slots_json) with the same slot map.
+  7. explain_impact(finding_id) - a SECOND slot set over the SAME record, for a
+     plain-language impact narration. Fill its slots, then
+     verify_impact(finding_id, slots_json) and fix anything it reports.
+     This step EXPLAINS the finding the engine already produced. It cannot
+     create a finding, promote a CANDIDATE, or change any verdict field; if the
+     evidence looks thin to you, say so in the slots - the verdict is not
+     yours to move.
 
 Report only what the tools told you. Never assert that a CANDIDATE finding is
 confirmed, exploitable, or a vulnerability - explain instead which evidence is
