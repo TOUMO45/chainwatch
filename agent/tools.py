@@ -13,6 +13,7 @@ the complete surface the model is allowed to touch.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Optional
@@ -222,6 +223,131 @@ def verify_impact(finding_id: str, slots_json: str) -> dict:
     return _verify(assemble(facts, slots, kind="impact"), facts)
 
 
+# Fields that bear on RELATIVE priority. Every one is already in the finding
+# record - this list exists so the ranking material is explicit and auditable,
+# not assembled ad hoc per call.
+_RANK_FIELDS = ("finding_id", "rule_id", "owasp", "verdict", "liveness",
+                "survives_to_head", "contract", "function", "file", "line",
+                "detail")
+
+
+def rank_findings(finding_ids_json: str) -> dict:
+    """Return the priority-relevant facts for SEVERAL existing findings, so they
+    can be ordered relative to one another.
+
+    This tool does NOT rank. It hands you the facts the records already contain
+    and you supply the ordering, which verify_ranking then checks. It cannot
+    create a finding, promote a CANDIDATE, or change any verdict field: the
+    verdicts below are reproduced from the stored records and are not yours to
+    move. If two findings differ in verdict, say so as a fact - do not treat
+    ordering as re-grading.
+
+    Rank on what the records show. Typical signals, strongest first: liveness
+    LIVE over UNKNOWN; survives_to_head true over false; a CONFIRMED verdict
+    over a CANDIDATE; a state-changing declaration over a view. Cite ONLY
+    fields returned here.
+
+    Args:
+        finding_ids_json: JSON array of finding ids from list_findings.
+    """
+    if (err := _need_store()):
+        return err
+    try:
+        ids = json.loads(finding_ids_json)
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            raise ValueError
+    except Exception:
+        return {"status": "error",
+                "error_message": "finding_ids_json must be a JSON array of id strings"}
+    if len(ids) < 2:
+        return {"status": "error",
+                "error_message": "ranking needs at least two finding ids"}
+
+    items, missing = [], []
+    for fid in ids:
+        facts = _STORE.facts(fid)
+        if not facts.get("verdict"):
+            missing.append(fid)
+            continue
+        items.append({k: facts.get(k) for k in _RANK_FIELDS})
+    if missing:
+        return {"status": "error",
+                "error_message": f"no finding with id(s): {', '.join(missing)}"}
+    return {
+        "status": "success",
+        "count": len(items),
+        "findings": items,
+        "rules": [
+            "Return one entry per finding given, no more and no fewer.",
+            "Cite only the fields shown here. Do not infer TVL, funds at risk, "
+            "or real-world stakes that are not in the record.",
+            "The verdict is decided by the engine. Ordering is not re-grading.",
+        ],
+    }
+
+
+def verify_ranking(finding_ids_json: str, ranking_json: str) -> dict:
+    """Check a ranking against the records. Mechanical, not a model.
+
+    Rejects an invented finding id, a dropped or duplicated one, a rank that is
+    not a permutation of 1..N, and any rationale asserting a fact absent from
+    that finding's own record (same gate as verify_report/verify_impact).
+
+    Args:
+        finding_ids_json: the same JSON array passed to rank_findings.
+        ranking_json: JSON array of {finding_id, rank, rationale}.
+    """
+    if (err := _need_store()):
+        return err
+    try:
+        ids = list(json.loads(finding_ids_json))
+        ranking = json.loads(ranking_json)
+        assert isinstance(ranking, list)
+    except Exception:
+        return {"status": "error",
+                "error_message": "both arguments must be JSON arrays"}
+
+    violations: list[dict] = []
+
+    def cite(kind, span, reason):
+        violations.append({"kind": kind, "span": str(span), "reason": reason})
+
+    got = [r.get("finding_id") for r in ranking if isinstance(r, dict)]
+    for fid in got:
+        if fid not in ids:
+            cite("invented", fid, "ranked a finding that was not among the inputs")
+    for fid in ids:
+        if fid not in got:
+            cite("dropped", fid, "input finding is missing from the ranking")
+    for fid in set(got):
+        if got.count(fid) > 1:
+            cite("duplicate", fid, "finding ranked more than once")
+
+    ranks = sorted(r.get("rank") for r in ranking if isinstance(r, dict))
+    if ranks != list(range(1, len(ranking) + 1)):
+        cite("rank", ranks, f"ranks must be a permutation of 1..{len(ranking)}")
+
+    for r in ranking:
+        if not isinstance(r, dict):
+            continue
+        fid = r.get("finding_id")
+        if fid not in ids:
+            continue
+        facts = _STORE.facts(fid)
+        if not facts.get("verdict"):
+            continue
+        res = _verify(str(r.get("rationale") or ""), facts)
+        for v in res.get("violations", []):
+            # A rationale is prose about ONE finding; the CANDIDATE header and
+            # section constraints belong to the report document, not here.
+            if v["kind"] in ("header", "section"):
+                continue
+            cite(v["kind"], v["span"], f"{fid}: {v['reason']}")
+
+    return {"status": "success", "ok": not violations,
+            "violation_count": len(violations), "violations": violations[:50]}
+
+
 def save_report(finding_id: str, slots_json: str) -> dict:
     """Assemble and save the final report for one finding.
 
@@ -259,4 +385,5 @@ def save_report(finding_id: str, slots_json: str) -> dict:
 
 ALL_TOOLS = [list_findings, get_finding, get_diff,
              draft_report, verify_report, save_report,
-             explain_impact, verify_impact]
+             explain_impact, verify_impact,
+             rank_findings, verify_ranking]

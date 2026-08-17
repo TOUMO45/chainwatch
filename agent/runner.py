@@ -65,6 +65,12 @@ For the finding id you are given, in this order:
      create a finding, promote a CANDIDATE, or change any verdict field; if the
      evidence looks thin to you, say so in the slots - the verdict is not
      yours to move.
+  8. If you were given MORE THAN ONE finding id: rank_findings(finding_ids_json)
+     returns the priority-relevant fields of each, and
+     verify_ranking(finding_ids_json, ranking_json) checks your ordering.
+     Return every finding you were given, exactly once, with ranks 1..N. Cite
+     only fields the tool returned - never TVL, funds at risk, or real-world
+     stakes, which are not in the record. Ordering is not re-grading.
 
 Report only what the tools told you. Never assert that a CANDIDATE finding is
 confirmed, exploitable, or a vulnerability - explain instead which evidence is
