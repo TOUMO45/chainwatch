@@ -619,11 +619,90 @@ def solc_available(version: str | None) -> bool:
         return False
 
 
+# Versions this PROCESS has already tried to install and failed on. Without it,
+# a walk over history that pins one absent version N times would re-attempt the
+# same doomed download N times - 26 times for 0.8.17 on the Reserve stress set.
+# Successes need no memo: solc_available() sees them immediately afterwards.
+_INSTALL_FAILED: dict[str, str] = {}
+
+
+def ensure_solc(version: str | None) -> tuple[bool, str]:
+    """Make `version` available, installing it if necessary.
+
+    Returns (available, reason) where reason is one of `no-pin`, `cache-hit`,
+    `installed`, `install-failed: ...`, `install-failed-earlier: ...` — the
+    caller logs it, so a coverage report can always explain WHY a comparison
+    was or was not attempted (finding HIST-L2).
+
+    THE GUARD IS NOT AN OPTIMISATION. `solc_available()` is checked first
+    because `install_artifacts` calls `get_available_versions()`
+    unconditionally at the top of its body, BEFORE its own
+    already-installed check — so calling it on a cache hit still costs a
+    network round-trip for the release list. On a 25-pair walk that is dozens
+    of pointless fetches, and it would make an offline run fail on versions
+    that are already present on disk.
+
+    SAFETY (CHARTER rule 5). This runs no code from the analysed repository.
+    solc-select fetches a compiler binary from `binaries.soliditylang.org`
+    (the official Solidity distribution) and verifies it against the published
+    sha256 AND keccak256 checksums, raising on mismatch. There is no lifecycle
+    script and no target-supplied payload, so the HIST-L3 problem - `npm`/`yarn`
+    executing a TARGET's postinstall - has no analogue here. The target repo
+    influences only WHICH version string is requested, and `install_artifacts`
+    refuses any version absent from the official release list.
+    """
+    if not version:
+        return True, "no-pin"
+    if solc_available(version):
+        return True, "cache-hit"
+    if version in _INSTALL_FAILED:
+        return False, f"install-failed-earlier: {_INSTALL_FAILED[version]}"
+    try:
+        from solc_select.solc_select import install_artifacts
+
+        ok = install_artifacts([version], silent=True)
+        if not ok:
+            # install_artifacts returns False (rather than raising) when the
+            # version is not in the official release list.
+            _INSTALL_FAILED[version] = "not an available solc release"
+            return False, f"install-failed: {_INSTALL_FAILED[version]}"
+    except Exception as exc:  # noqa: BLE001 - network, disk, checksum mismatch
+        _INSTALL_FAILED[version] = f"{type(exc).__name__}: {exc}"[:160]
+        return False, f"install-failed: {_INSTALL_FAILED[version]}"
+
+    # Trust the filesystem, not the return value: confirm it is really there.
+    if solc_available(version):
+        return True, "installed"
+    _INSTALL_FAILED[version] = "install reported success but version still absent"
+    return False, f"install-failed: {_INSTALL_FAILED[version]}"
+
+
 _EXACT_PIN = re.compile(r"^\s*(\d+\.\d+\.\d+)\s*$")
+
+
+def exact_pin(pragma_expr: str | None) -> str | None:
+    """The version an EXACT pin names, whether or not it is installed.
+
+    Split out from `unsatisfiable_exact_pin` so a caller can distinguish "this
+    file has no exact pin" from "it has one and that one is already present" —
+    the two cases that function deliberately collapses into None. The auto-
+    provision path needs them apart, because it must be able to LOG a cache hit
+    rather than silently take the same branch as a caret range.
+    """
+    m = _EXACT_PIN.match(pragma_expr or "")
+    return m.group(1) if m else None
 
 
 def unsatisfiable_exact_pin(pragma_expr: str | None) -> str | None:
     """The version this file REQUIRES and that is not installed, or None.
+
+    SUPERSEDED AND CURRENTLY UNCALLED. The HIST-L2 pre-flight in `src/scan.py`
+    now uses `exact_pin()` + `ensure_solc()` instead, because an absent pinned
+    compiler is no longer a reason to skip — it is a reason to fetch. This is
+    kept because the reasoning below is what the auto-provision path inherited
+    (only an EXACT pin is decidable without implementing semver), and because
+    LIMITATIONS.md §HIST-L2 refers to it by name. Delete it only together with
+    that provenance, not as a stray tidy-up.
 
     Pre-flight for finding HIST-L2. Deliberately narrow: it only judges an
     EXACT pin (`pragma solidity 0.8.19;`), because that is the one case where
@@ -637,10 +716,9 @@ def unsatisfiable_exact_pin(pragma_expr: str | None) -> str | None:
     exact pins on two absent versions, and each one paid nine failed rule
     invocations before reporting an error that named the wrong compiler.
     """
-    m = _EXACT_PIN.match(pragma_expr or "")
-    if not m:
+    version = exact_pin(pragma_expr)
+    if version is None:
         return None
-    version = m.group(1)
     return None if solc_available(version) else version
 
 

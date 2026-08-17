@@ -48,6 +48,7 @@ import re
 import subprocess
 import time
 import traceback
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -178,6 +179,11 @@ class Coverage:
     # toolchain as a broken rule (finding HIST-L2).
     files_skipped: int = 0
     file_skips: list[dict] = field(default_factory=list)
+    # Every compiler auto-provision decision (HIST-L2): cache-hit, installed, or
+    # install-failed. Recorded even on success, so a run can always account for
+    # WHY a comparison became analysable - the same transparency standard the
+    # skip reasons already meet.
+    solc_installs: list[dict] = field(default_factory=list)
     rule_errors: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
@@ -196,6 +202,16 @@ class Coverage:
             "file_skips": self.file_skips[:200],
             "skips": self.skips,
             "rule_errors": self.rule_errors[:200],
+            "solc_provision_counts": dict(
+                Counter(r["result"].split(":")[0] for r in self.solc_installs)
+            ),
+            "solc_installs": self.solc_installs[:200],
+            # Distinct versions actually DOWNLOADED by this run, so the bound
+            # HIST-L2 asked for ("say up front which versions it will fetch")
+            # is at least reported after the fact.
+            "solc_versions_installed": sorted(
+                {r["version"] for r in self.solc_installs if r["result"] == "installed"}
+            ),
         }
 
 
@@ -371,18 +387,38 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
             # start - and the error they eventually produce names whichever
             # compiler the fallback loop happened to try last, not the missing
             # one. Decide it here, once, and say which version is missing.
-            missing = None
+            # AUTO-PROVISION (finding HIST-L2). An exact pin is decidable, and
+            # when the compiler is absent it is also FIXABLE: fetch it rather
+            # than skip. Both sides are asked, because a diff can straddle a
+            # pragma bump and either side being uncompilable dooms the pair.
+            # ensure_solc is called even when the version IS present, so a cache
+            # hit is LOGGED rather than silently taking the same branch as a
+            # caret range - otherwise the coverage report can never show why a
+            # comparison was cheap.
+            pin_blocked = None
             for side in (after_p, before_p):
-                missing = H.unsatisfiable_exact_pin(_shared.source_pragma_expr(side))
-                if missing:
+                pin = H.exact_pin(_shared.source_pragma_expr(side))
+                if pin is None:
+                    continue  # caret/range: solc_candidates + solc arbitrate
+                got, why = H.ensure_solc(pin)
+                cov.solc_installs.append({
+                    "pair": f"{prev[:12]}..{cur[:12]}", "file": rel,
+                    "version": pin, "result": why,
+                })
+                if why != "cache-hit":
+                    emit_event("solc-provision", version=pin, result=why)
+                if not got:
+                    pin_blocked = (pin, why)
                     break
-            if missing:
+            if pin_blocked:
+                version, why = pin_blocked
                 cov.files_skipped += 1
                 cov.file_skips.append({
                     "pair": f"{prev[:12]}..{cur[:12]}", "file": rel,
-                    "reason": f"solc {missing} not installed",
+                    "reason": f"solc {version} unavailable ({why})",
                 })
-                emit_event("file-skip", file=rel, reason=f"solc {missing} not installed")
+                emit_event("file-skip", file=rel,
+                           reason=f"solc {version} unavailable ({why})")
                 continue
 
             ranges = changed_line_ranges(origin, prev, cur, rel)

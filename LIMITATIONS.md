@@ -1813,6 +1813,106 @@ while `_gate_vars` was returning nothing.
 
 ---
 
+### RC-INLINE1 — inlining an inherited body reads as a CEI reordering
+
+**Type: FALSE POSITIVE, Rule 2b. MEASURED on a real protocol commit during the
+B4 stress re-run. DOCUMENTED ONLY — the logic fix is deliberately OUT OF SCOPE
+for the Section B commit that records it, because Section B is a coverage and
+environment change and must not touch any rule's logic.**
+
+**The case.** Reserve Protocol `0cfe9683` ("Convex ETH+/ETH Collateral Plugin",
+PR #1113, 2024-04-11), file
+`contracts/plugins/assets/curve/CurveStableRTokenMetapoolCollateral.sol`.
+Rule 2b fired on `refresh()` with "moved a state write across an external call".
+
+At N-1 the override is two lines:
+
+```solidity
+function refresh() public override {
+    pairedAssetRegistry.refresh();
+    super.refresh();               // already handles all necessary default checks
+}
+```
+
+At N it is ~80 lines that INLINE the parent's body and add a
+`pairedBasketHandler.isReady()` check. The parent —
+`CurveStableCollateral.refresh()`, present unchanged at BOTH commits — already
+had exactly this shape:
+
+```solidity
+try this.underlyingRefPerTok() returns (uint192 underlyingRefPerTok_) {
+    ...
+    exposedReferencePrice = underlyingRefPerTok_;      // write AFTER an external call
+    try this.tryPrice() returns (uint192 low, uint192 high, uint192) {
+        savedLowPrice = low; savedHighPrice = high; lastSave = uint48(block.timestamp);
+```
+
+**Execution order did not change.** `exposedReferencePrice` was written after
+`this.underlyingRefPerTok()` at N-1 too — inside the parent rather than inside
+the override. Code moved between contracts; nothing moved across a call.
+
+**Mechanism, read from the source rather than inferred.** `_cfg.py:102`:
+
+```python
+def state_writes_after_calls(fn: Function) -> set:
+    call_nodes = [node for node, _ in external_call_nodes(fn)]   # fn's OWN nodes
+    ...
+    for node in after: out.update(node.state_variables_written)
+```
+
+Body-local: it never descends into `super.refresh()`. So at N-1 it returns the
+**empty set** — not because the writes were correctly ordered, but because the
+function has no writes of its own. `rule2b.py` then computes:
+
+```python
+after_at_n1_names = {v.canonical_name for v in state_writes_after_calls(fn_b)}
+moved = {v for v in after_at_n if v.canonical_name not in after_at_n1_names}
+```
+
+With the N-1 set empty, **every** write at N is classified as newly-moved, and
+the trigger fires.
+
+**The generalisation.** Rule 2b's precondition "at N-1 all state writes preceded
+every external call" is satisfied **VACUOUSLY** whenever the N-1 function
+delegates its body to a parent. Absence of writes is being read as evidence of
+correct ordering.
+
+**Relation to R10-M2 — same shape, inverted, and that inversion is the point.**
+R10-M2 was an empty set silently standing in for a real answer, which made five
+negatives pass while evaluating nothing. Here an empty set stands in for a real
+answer and makes a check FIRE. A vacuous emptiness is a false negative in one
+direction and a false positive in the other; this project has now met both. The
+lesson is not "check for empty sets" but "an empty set must never be
+interpreted as a measured result until you know WHY it is empty."
+
+**Scope.** Any commit that inlines, flattens, or de-delegates an inherited
+implementation — a routine refactor, and common in plugin/collateral hierarchies
+where an override starts as `super.X()` and later needs custom behaviour.
+Independent of Rule 2a (which keys on mutex presence, unchanged here).
+
+**Not a Reserve issue, stated explicitly so this entry cannot be misread.** The
+commit is a public merged PR, the execution semantics are unchanged by it, the
+try/catch-around-`this.tryPrice()` pattern is Reserve's long-standing audited
+design predating the commit, and the verdict was CANDIDATE with no liveness
+evidence. This entry records a defect in **Chainwatch**, not in Reserve.
+
+**Fix direction (NOT implemented, and deliberately not in this commit).** The
+open question is whether Slither resolves a `super.X()` call to its target at
+the IR level. If it does, `state_writes_after_calls` can include the delegated
+body's own after-call writes — the function's real behaviour includes what it
+delegates. If it does not, the fallback is to treat "N-1 body consists only of
+delegating calls, with no local writes" as a DISTINCT case from "N-1 genuinely
+writes nothing", and exclude it from the comparison rather than resolve it.
+**Which of those is possible must be MEASURED before either is designed.**
+Fixtures first, in both directions: a negative (inlined parent body, order
+genuinely unchanged — must go quiet) and a positive (a genuine reorder hidden
+inside an inlining commit — must still fire). Without that positive, the
+obvious fix degenerates into "any inlining commit is safe", which replaces a
+vacuous-empty-set with a vacuous-blanket-pass: the same failure, inverted a
+third time.
+
+---
+
 ### WALK-L7 — a rule can be fully registered, fully tested, and never run
 
 **Type: PIPELINE WIRING. A shipped rule was silently absent from the product.

@@ -495,12 +495,27 @@ frozen fixtures unaffected. Do not fix without measurement first.
       yarn 2+. Use `YARN_ENABLE_SCRIPTS=0` in the environment, NOT simply drop
       the flag: the flag exists to satisfy CHARTER rule 5, and dropping it
       trades a skipped pair for arbitrary code execution.
-      **Downgraded in urgency, not closed.** With HIST-L5 fixed, the FIRST yarn
-      command (`yarn install --immutable --mode=skip-build`, which IS Berry
-      syntax and does skip build scripts) now succeeds, so the broken fallback
-      is no longer reached on Berry repos. It is still wrong and still the only
-      thing standing between a yarn-1 repo and an install, so it stays open —
-      but it is no longer blocking Reserve.
+      ~~**Downgraded in urgency, not closed.** With HIST-L5 fixed, the FIRST
+      yarn command (`yarn install --immutable --mode=skip-build`, which IS
+      Berry syntax and does skip build scripts) now succeeds, so the broken
+      fallback is no longer reached on Berry repos. It is still wrong and still
+      the only thing standing between a yarn-1 repo and an install, so it stays
+      open — but it is no longer blocking Reserve.~~
+      **RETRACTED 2026-08-17 — PRIORITY RAISED BACK UP.** The B4 stress re-run
+      contradicts the "no longer reached" claim directly: 2 of 25 pairs
+      (`feab683c..6fed5516`, `55f24458..aab30189`) skipped with
+      `env-reconstruction-failed (dep-missing)`, and the attached detail is
+      `Unknown Syntax Error: Unsupported option name ("--ignore-scripts")` —
+      i.e. the fallback WAS reached, so the first command did not succeed.
+      **And the root cause is now UNKNOWN, not merely unfixed.** That message
+      is the SECOND command's error; the retry loop discarded whatever made the
+      Berry command fail. This is METHODOLOGY Face A verbatim — *an error
+      surfaced through a fallback describes the fallback* — and it is blocking
+      the diagnosis, not just the fix. Order of work is therefore forced: the
+      open item "retry loops must report the FIRST failure, not just the last"
+      must land BEFORE HIST-L3 can be diagnosed at all. Do not attempt a
+      HIST-L3 fix against the `--ignore-scripts` symptom; it is not known to be
+      the cause.
 - [x] **HIST-L5 — remove our own node_modules junction before installing.**
       DONE. `_unlink_node_modules` runs before any installer and refuses to
       touch a real directory. This was the ROOT CAUSE beneath HIST-L4: an
@@ -511,14 +526,23 @@ frozen fixtures unaffected. Do not fix without measurement first.
       the first attempt at this fix was destructive (rmtree'd unmarked entries)
       and is retracted in LIMITATIONS.md §HIST-L4. Verification now reads and
       never deletes.
-- [ ] **Section 1b must be re-run after HIST-L2.** The current result
-      (`findings: 0`) is UNMEASURED, not clean — 5/72 comparisons completed. It
-      says nothing about false positives and must not be cited as if it did.
-- [ ] **Section 1c is not answerable from this run.** Wall clock was 4150s for
-      25 pairs, but ~93% of comparisons failed fast rather than doing work, so
-      that is not a throughput baseline for rule execution. Re-profile after
-      HIST-L2, and split the measurement into env-install / Slither-compile /
-      rule-execution before proposing any optimisation.
+- [x] **Section 1b re-run after HIST-L2. DONE 2026-08-17.** Coverage
+      **60/72 = 83.3%** (was 5/72 = 6.9%), `files_skipped` 57 → **0**. The
+      `findings: 0` that could not be cited is now `findings: 1`, and that one
+      fire is classified: RC-INLINE1, a Rule 2b false positive, not a Reserve
+      issue. The remaining 12 errored files are all HIST-L1 dependency
+      reconstruction, none of them compiler provisioning.
+- [ ] **Section 1c performance — now answerable, and the answer is bad.** The
+      B4 re-run took **46191s (12.8h) for 25 pairs / 72 file comparisons**,
+      against 4150s before, because ~93% of comparisons went from failing fast
+      to genuinely compiling and running ten rules. Full-history walks at
+      current per-file compile cost (~640s avg observed this run) are
+      impractical beyond small/targeted commit samples. Any future E2-E4
+      real-protocol scan should default to a bounded, deliberately-selected
+      commit sample (as B4 did with 25 pairs), not an attempt at full history,
+      unless parallelization or incremental caching across runs is built first.
+      Still not split into env-install / Slither-compile / rule-execution;
+      do that before proposing any specific optimisation.
 
 ## SECTION C — open-item sweep, 2026-08-16
 
