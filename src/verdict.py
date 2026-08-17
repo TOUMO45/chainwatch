@@ -74,6 +74,14 @@ PRE_POST: dict[str, tuple[str, str]] = {
     "4": ("pragma_before", "pragma_after"),
     "5": ("checked_before", "checked_after"),
     "6": ("guarded_before", "guarded_after"),
+    # Rule 10's pre-state is that the variable was established ONE-SHOT at N-1
+    # (a constructor anywhere in the chain, or an init-guarded function); its
+    # post-state is the unguarded run-time writer that exists at N. Absent
+    # here, every rule 10 finding carried pre_state=null / post_state=null and
+    # could never have reached CONFIRMED even with liveness - the exact failure
+    # tests/test_verdict.py::test_every_shipped_rule_has_pre_post_and_exclusions
+    # exists to catch, and it caught it.
+    "10": ("oneshot_writers_before", "unguarded_writer_after"),
 }
 
 EXCLUSIONS_EVALUATED: dict[str, tuple[str, ...]] = {
@@ -86,6 +94,7 @@ EXCLUSIONS_EVALUATED: dict[str, tuple[str, ...]] = {
     "4": ("4.1", "4.2", "4.3", "4.4", "4.5", "4.6"),
     "5": ("5.1", "5.2", "5.4", "5.5", "5.6", "R5-L1 per-site ordinal"),
     "6": ("6.1", "6.2", "6.3", "6.5", "6.7", "RC-OZ5-R6 pointer gate"),
+    "10": ("10.1", "10.2", "10.3", "10.4", "10.5", "10.6", "10.8"),
 }
 
 # Rules whose subject is a contract-level fact, where "externally callable
