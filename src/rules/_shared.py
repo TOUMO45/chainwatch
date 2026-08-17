@@ -75,6 +75,9 @@ for _name in ("CryticCompile", "Slither", "Printers", "Detectors"):
     logging.getLogger(_name).setLevel(logging.CRITICAL)
 
 _PARSE_CACHE: dict[str, Slither] = {}
+# Failures, memoised alongside successes. See `parse` for why this is not
+# merely an optimisation and why its scope is already correct.
+_PARSE_FAIL_CACHE: dict[str, Exception] = {}
 
 
 # --------------------------------------------------------------------------
@@ -249,6 +252,16 @@ def _compile(path) -> Slither:
 def parse(path) -> Slither:
     """Compile+analyze a file, memoized per absolute path.
 
+    FAILURES ARE MEMOISED TOO. Previously only successes were stored - the
+    assignment `_PARSE_CACHE[key] = _compile(path)` simply never ran when
+    `_compile` raised - so each of the nine rules that route through here paid
+    the entire compile attempt again on an uncompilable file. Combined with the
+    retry fan-out that was 90 attempts per bad file; the exact-pin
+    short-circuit cut that to 9, and this cuts it to 1. The scope is inherited,
+    not invented: `reset_caches()` clears both memos and is already called
+    after every checkout, so a cached failure can never outlive the content
+    that caused it.
+
     CACHE CONTRACT: the key is the path alone, so this memo is only sound while
     a given path's CONTENT does not change within one process. That holds for
     the scorer (fixture files are static on disk) but NOT for a trajectory
@@ -257,16 +270,35 @@ def parse(path) -> Slither:
     will silently re-serve the previous commit's analysis for the new one.
     """
     key = str(Path(path).resolve())
-    if key not in _PARSE_CACHE:
+    if key in _PARSE_CACHE:
+        return _PARSE_CACHE[key]
+    if key in _PARSE_FAIL_CACHE:
+        # Re-raise the ORIGINAL error, not a summary of it. A caller that sees
+        # a different message on the second rule than the first would be
+        # debugging the cache instead of the file (METHODOLOGY Face A).
+        raise _PARSE_FAIL_CACHE[key]
+    try:
         _PARSE_CACHE[key] = _compile(path)
+    except Exception as exc:
+        _PARSE_FAIL_CACHE[key] = exc
+        raise
     return _PARSE_CACHE[key]
 
 
 def reset_caches() -> None:
     """Drop the parse memo. Required between commits by any caller that reuses
     a filesystem path for different content (see the cache contract on
-    `parse`). Cheap: the next `parse` simply recompiles."""
+    `parse`). Cheap: the next `parse` simply recompiles.
+
+    Clears the FAILURE memo too, and that is what makes the failure memo safe:
+    a cached failure is only ever consulted within the same checkout, because
+    every caller that reuses a path for different content already calls this
+    between commits (src/scan.py:341, walker.py:172). A file that fails to
+    compile at commit N and succeeds at N+1 is therefore never mistakenly
+    reported as still broken - the memo does not survive the checkout that
+    changed the content."""
     _PARSE_CACHE.clear()
+    _PARSE_FAIL_CACHE.clear()
 
 
 def is_test_path(path: str) -> bool:
