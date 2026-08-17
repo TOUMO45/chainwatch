@@ -677,7 +677,13 @@ def ensure_solc(version: str | None) -> tuple[bool, str]:
     return False, f"install-failed: {_INSTALL_FAILED[version]}"
 
 
-_EXACT_PIN = re.compile(r"^\s*(\d+\.\d+\.\d+)\s*$")
+# A leading bare `=` is part of the exact-pin spelling, not an operator:
+# `pragma solidity =0.7.6;` pins as tightly as `pragma solidity 0.7.6;`.
+# Uniswap v3-core/periphery use that form throughout, and without the `=?`
+# neither auto-install (B3) nor the compile fast path would engage for them.
+# `>=` and `<=` do NOT match, because the digits cannot follow their first
+# character — those stay ranges and keep the retry fallback.
+_EXACT_PIN = re.compile(r"^\s*=?\s*(\d+\.\d+\.\d+)\s*$")
 
 
 def exact_pin(pragma_expr: str | None) -> str | None:

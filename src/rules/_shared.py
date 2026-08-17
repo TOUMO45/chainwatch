@@ -155,10 +155,19 @@ def exact_pin_installed(path) -> str | None:
     Returns None for a caret/range pragma (`^0.8.0`, `>=0.5.0<0.8.0`) and for an
     exact pin whose compiler is absent — both of which must keep the retry
     fallback below. `version_tuple` already rejects anything carrying an
-    operator, so no new parsing is introduced: `^0.8.0` yields () because
+    operator, so little new parsing is introduced: `^0.8.0` yields () because
     "^0" is not a digit string.
+
+    `=X.Y.Z` IS an exact pin and is normalised here. Uniswap v3-core and
+    v3-periphery both write their pin that way (33 and 40 occurrences at HEAD),
+    and without this they would take neither the fast path nor B3's
+    auto-install. Only a LEADING bare `=` is stripped, so `>=0.7.6` and
+    `<=0.7.6` are untouched — they do not start with `=` and remain ranges.
     """
-    vt = version_tuple(source_pragma_expr(path))
+    expr = (source_pragma_expr(path) or "").strip()
+    if expr.startswith("="):
+        expr = expr[1:].strip()
+    vt = version_tuple(expr)
     if len(vt) != 3:
         return None
     version = ".".join(str(p) for p in vt)
