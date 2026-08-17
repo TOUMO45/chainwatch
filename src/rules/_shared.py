@@ -149,6 +149,27 @@ def solc_candidates(path) -> list[str]:
     return sorted(versions, key=rank, reverse=True)
 
 
+def exact_pin_installed(path) -> str | None:
+    """The EXACT version this file pins, if that version is installed; else None.
+
+    Returns None for a caret/range pragma (`^0.8.0`, `>=0.5.0<0.8.0`) and for an
+    exact pin whose compiler is absent — both of which must keep the retry
+    fallback below. `version_tuple` already rejects anything carrying an
+    operator, so no new parsing is introduced: `^0.8.0` yields () because
+    "^0" is not a digit string.
+    """
+    vt = version_tuple(source_pragma_expr(path))
+    if len(vt) != 3:
+        return None
+    version = ".".join(str(p) for p in vt)
+    try:
+        from solc_select.solc_select import installed_versions
+
+        return version if version in installed_versions() else None
+    except Exception:  # noqa: BLE001 - solc-select absent: take the old path
+        return None
+
+
 def _compile(path) -> Slither:
     """Compile with the ambient compiler; if it refuses the file's pragma, retry
     with each installed solc until one accepts it.
@@ -158,7 +179,39 @@ def _compile(path) -> Slither:
     SOLC_VERSION can compile. The ambient version is always tried first and is
     always restored, so a run whose files all match the configured compiler
     behaves exactly as before this fallback existed.
+
+    FAN-OUT SHORT-CIRCUIT for exact pins. An exact pragma pin can be satisfied
+    by exactly one compiler, by construction, so when that compiler is present
+    there is nothing for the retry loop to discover: if the pinned version
+    cannot compile the file, no other version can either. Trying the remaining
+    eight is pure waste, and MEASURED it is the dominant cost of any run
+    containing an uncompilable file - 90 Slither invocations per failing file
+    (9 rules that route through `parse` x 10 attempts each), of which exactly
+    one is informative. `parse` memoises only SUCCESSES, so every rule pays the
+    whole fan-out again.
+
+    The short-circuit also fixes a METHODOLOGY Face A instance in passing: the
+    error that escapes now comes from the compiler the file actually pins,
+    instead of from whichever candidate the loop happened to try last.
+
+    Note the pinned version is set EXPLICITLY rather than relying on the ambient
+    one. Skipping the fallback while letting a mismatched ambient compiler make
+    the only attempt would turn a satisfiable pin into a failure - the ambient
+    version is frequently not the pinned one, and finding the pinned one is what
+    the loop below was originally for.
     """
+    pinned = exact_pin_installed(path)
+    if pinned is not None:
+        saved = os.environ.get("SOLC_VERSION")
+        os.environ["SOLC_VERSION"] = pinned
+        try:
+            return Slither(str(path), solc_remaps=remaps_for(path))
+        finally:
+            if saved is None:
+                os.environ.pop("SOLC_VERSION", None)
+            else:
+                os.environ["SOLC_VERSION"] = saved
+
     try:
         return Slither(str(path), solc_remaps=remaps_for(path))
     except Exception:
