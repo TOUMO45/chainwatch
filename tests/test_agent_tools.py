@@ -44,11 +44,26 @@ def facts(store):
 
 def test_agent_never_imports_a_rule():
     """AGENT-DESIGN.md property 1: the agent layer cannot reach the engine's
-    decision code. Checked on the real import graph, not by inspection."""
-    import agent, agent.store, agent.templates, agent.tools, agent.verify  # noqa: F401
+    decision code. Checked on the real import graph, not by inspection.
 
-    offenders = [name for name in sys.modules
-                 if name.startswith("src.rules")]
+    Runs in a SUBPROCESS. The previous version inspected THIS process's global
+    sys.modules, so any other test module that had already imported the engine
+    (tests/test_verdict.py imports src.scan) left src.rules loaded and this
+    assertion failed on pollution it did not cause - it passed alone and failed
+    in a full run, the signature of a test measuring the wrong thing. A fresh
+    interpreter importing ONLY the agent layer is the actual claim.
+    """
+    import subprocess
+
+    probe = "; ".join([
+        "import sys",
+        "import agent, agent.store, agent.templates, agent.tools, agent.verify",
+        "print(','.join(n for n in sys.modules if n.startswith('src.rules')))",
+    ])
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True,
+                         text=True, cwd=str(ROOT), timeout=120)
+    assert out.returncode == 0, f"probe failed: {out.stderr[-400:]}"
+    offenders = [n for n in out.stdout.strip().split(",") if n]
     assert not offenders, (
         f"agent layer pulled in engine rule modules: {offenders}")
 
