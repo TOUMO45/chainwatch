@@ -38,6 +38,7 @@ realworld-test/oz5/
 .b4-stress.json
 .scan-*.json
 .b2-*.json
+.e2-*.json
 
 # Real-repo clones analysed in trajectory mode (read-only targets, not ours).
 realworld-test/reserve-src/
