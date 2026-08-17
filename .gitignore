@@ -32,6 +32,13 @@ realworld-test/oz5/
 .walker-cache/
 .walker-out*.json
 
+# Stress/scan run reports. Same category as the above - not ground truth - but
+# note .b4-stress.json costs ~12.8h of wall clock to regenerate, so it is kept
+# on disk deliberately rather than deleted.
+.b4-stress.json
+.scan-*.json
+.b2-*.json
+
 # Real-repo clones analysed in trajectory mode (read-only targets, not ours).
 realworld-test/reserve-src/
 realworld-test/88mph-src/
