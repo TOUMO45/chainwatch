@@ -155,14 +155,25 @@ def _call_records(fn) -> list:
             dest_key, trusted = _dest_key_and_trust(resolved)
 
             # Checked = return value tainted into a guard, or inside try/catch.
+            #
+            # `lvalue` is read defensively: slither's `Transfer` operation
+            # (`addr.transfer(x)`) has NO lvalue attribute at all, and touching
+            # it raised AttributeError rather than returning None. `.transfer`
+            # reverts on failure instead of returning a bool, so there is no
+            # return value to check and no Rule 5 question to ask - the correct
+            # answer here is "unchecked-by-return = False", which is what
+            # getattr gives. Found when a fixture first used a native
+            # `.transfer()`; every earlier real-repo run used SafeERC20 and
+            # never constructed this IR.
             checked_by_return = False
-            if ir.lvalue is not None:
+            lvalue = getattr(ir, "lvalue", None)
+            if lvalue is not None:
                 for gnode in guard_nodes:
                     if guard_checks_call_return(gnode, taint):
                         # taint is function-wide; confirm THIS call's lvalue reaches
                         # the guard by checking the guard reads something tainted
                         # from this call's lvalue specifically.
-                        if _lvalue_reaches_guard(fn, ir.lvalue, gnode):
+                        if _lvalue_reaches_guard(fn, lvalue, gnode):
                             checked_by_return = True
                             break
 
