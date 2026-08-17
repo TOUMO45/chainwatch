@@ -1942,8 +1942,33 @@ third time.
 ### RC-INLINE2 — `cei_correct` calls a delegating function CEI-correct, vacuously
 
 **Type: FALSE NEGATIVE, Rule 2a (exclusion 2.2). Same root cause as RC-INLINE1,
-opposite direction. NOT FIXED — and it carries HIGHER urgency than a typical
-open item, for the reason in the next paragraph.**
+opposite direction. FIXED.**
+
+> **STATUS: FIXED.** `cei_correct` now asks `_cfg.after_call_writes_resolved`
+> instead of the body-local `state_writes_after_calls`, and `rule2a`'s evidence
+> set uses the same resolved view — fixing only the gate would have cleared it
+> and then emitted a finding listing no variables. Locked by
+> `fixtures-r2a-inline/` (1 positive, 2 negatives, precision 1.00 / recall
+> 1.00); 17 fixture sets PASS with counts identical to baseline.
+>
+> The resolver was **moved into `_cfg.py`** rather than duplicated: rule 2a
+> cannot import rule 2b (rule 2b already imports rule 2a, so that edge would be
+> a cycle), and two copies of this much subtle CFG logic would drift. Rule 2b's
+> local copy was collapsed onto the shared one in the same change.
+>
+> **The trap this fix had to avoid, locked by `N2ai-02`:** making `cei_correct`
+> return False whenever an internal call exists would trade a silent miss for a
+> false-positive flood. There the delegated parent writes no state at all and
+> CEI genuinely is correct, so it must stay quiet — and does.
+>
+> **Live re-check, stated honestly.** Four Reserve pairs plus the 88mph pair
+> produced **no** new Rule 2a fire, and the 88mph result is unchanged (1
+> finding, rule 10, CANDIDATE). No case in the history available to this
+> project exercises the positive direction, so **`P2ai-01` is the only proof
+> that a violation hidden behind delegation now fires.** That is a real limit
+> on the evidence, recorded rather than hidden.
+>
+> Everything below is the original entry, preserved as provenance.
 
 **Why this ranks above RC-INLINE1 despite being the smaller-looking bug.**
 RC-INLINE1 was a false POSITIVE: it fired, a human read it, and it was

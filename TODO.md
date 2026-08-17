@@ -447,9 +447,15 @@ frozen fixtures unaffected. Do not fix without measurement first.
       trusting a fixture: §R10-M1, §R10-M2.
 - [ ] Section 1c performance profiling is still not done; the 25-pair stress run
       gives a throughput number to start from once it completes.
-- [ ] **RC-INLINE2 (2026-08-17)** — de-inlining direction, false-negative risk on
+- [x] **RC-INLINE2 (2026-08-17) — DONE.** `cei_correct` and rule 2a's evidence
+      set both resolve delegated bodies via `_cfg.after_call_writes_resolved`,
+      which rule 2b now shares instead of keeping a local copy. Locked by
+      `fixtures-r2a-inline/` (1.00/1.00). No real-world case exercises the
+      positive direction; P2ai-01 is its only proof, stated in LIMITATIONS.md.
+      Original item text follows.
+      ~~Original: de-inlining direction, false-negative risk on
       Rule 2a's `cei_correct` (already flagged as residual in RC-INLINE1's Step 1)
-      needs its own fixture-first pass, separate from RC-INLINE1's fix.
+      needs its own fixture-first pass, separate from RC-INLINE1's fix.~~
 
 ## Open after Rule 10 (Section A, 2026-08-16)
 

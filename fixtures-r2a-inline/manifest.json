@@ -1,0 +1,38 @@
+[
+  {
+    "id": "P2ai-01",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P2ai-01",
+    "source_path": "contracts/plugins/ChildBad.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "RC-INLINE2, THE SILENT MISS. The reentrancy mutex is removed at N (present at N-1), and the CEI violation it was protecting is INHERITED: the parent writes `tally` AFTER its own `pool.sync()`, and the child reaches it via `registry.sync(); super.refresh();` - so in real execution `tally` is written after two external calls with no mutex. Rule 2a is SILENT on this before the fix: exclusion 2.2 calls `cei_correct(fn_a)`, which asks `state_writes_after_calls` - body-local - gets the EMPTY set because the child writes nothing of its own, and concludes CEI is provably correct. It is not correct; there is simply nothing local to have an ordering. EXPECTED: fires after the fix. This is the false-NEGATIVE direction, which is more dangerous than RC-INLINE1's false positive: a miss is silent, whereas a false positive at least surfaces for human review."
+  },
+  {
+    "id": "N2ai-01",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "negative",
+    "exclusion_ref": "2.2",
+    "path": "negative/N2ai-01",
+    "source_path": "contracts/plugins/ChildGood.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "GENUINELY CORRECT AFTER RESOLUTION. Same mutex removal as P2ai-01, but the delegation runs BEFORE any external call in the child (`super.refresh(); registry.sync();`) and the parent writes `tally` BEFORE its own `pool.sync()`. Across the flattened execution every write precedes every call, so CEI really is correct and exclusion 2.2 must still apply. This is the case that separates the two resolution rules: because the delegating call is NOT forward-reachable from an external call in the caller, only the callee's own after-its-own-call writes count - and it has none. A resolver that unconditionally counted every write of every callee would fire here and be wrong. EXPECTED: quiet before AND after the fix."
+  },
+  {
+    "id": "N2ai-02",
+    "rule": 2,
+    "sub_rule": "2a",
+    "label": "negative",
+    "exclusion_ref": "2.2",
+    "path": "negative/N2ai-02",
+    "source_path": "contracts/plugins/ChildNoWrite.sol",
+    "remaps": "oz4",
+    "solc": "0.8.20",
+    "summary": "BLANKET-FALSE GUARD. Same mutex removal and the same `registry.sync(); super.refresh();` shape as the POSITIVE - the delegation IS forward-reachable from an external call - but the parent writes no state at all. There is therefore nothing written after any call and CEI is correct. This locks the trap the loop's own brief names: making `cei_correct` return False whenever an internal call exists would trade RC-INLINE2's silent miss for a false-positive flood, and this case would fire. It is the 2a-side counterpart of P2bi-01. EXPECTED: quiet before AND after the fix."
+  }
+]

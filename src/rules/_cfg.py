@@ -27,6 +27,7 @@ from slither.core.variables.state_variable import StateVariable
 from slither.slithir.operations import (
     Assignment,
     HighLevelCall,
+    InternalCall,
     LibraryCall,
     LowLevelCall,
     Send,
@@ -112,13 +113,86 @@ def state_writes_after_calls(fn: Function) -> set:
     return out
 
 
+def after_call_writes_resolved(fn: Function, _seen: set | None = None) -> set:
+    """`state_writes_after_calls`, plus the writes fn DELEGATES to.
+
+    `state_writes_after_calls` is body-local: it walks fn's own CFG and never
+    enters an internal call. For a function whose body IS a delegation -
+    `registry.sync(); super.refresh();` - it returns the EMPTY set, and callers
+    then read that emptiness as a fact about ordering. It is not: there are no
+    writes to HAVE an ordering. That single confusion produced two findings in
+    opposite directions - RC-INLINE1 (rule 2b fired on a refactor) and
+    RC-INLINE2 (rule 2a stayed silent on a real violation).
+
+    Slither resolves `super.X()` to its target: the call is an `InternalCall`
+    whose `.function` is the real `Function`. Verified against the IR before
+    this was written.
+
+    TWO CASES, and collapsing them is the trap:
+
+      1. The internal call is forward-reachable from an external call in fn.
+         The callee therefore RUNS after that call, so EVERY write it makes is
+         after a call, whatever its own internal ordering is.
+      2. Otherwise, ordering is decided inside the callee, and the same
+         question recurses into it.
+
+    Case 2 is what keeps `fixtures-r2a-inline/negative/N2ai-01` quiet - a
+    delegation that precedes the caller's own external call, to a parent that
+    writes before its own. A resolver that unconditionally counted every write
+    of every callee would fire there and be wrong.
+
+    Lives here, beside its siblings, rather than in one rule module: both rule
+    2a (`cei_correct`) and rule 2b need the identical fact, and rule 2a cannot
+    import rule 2b - rule 2b already imports rule 2a, so that edge would be a
+    cycle. Duplicating this much subtle CFG logic in two modules invites the
+    copies to drift.
+    """
+    if _seen is None:
+        _seen = set()
+    if fn in _seen:
+        return set()          # recursion guard: mutual/self internal calls
+    _seen.add(fn)
+
+    out = set(state_writes_after_calls(fn))
+
+    call_nodes = [node for node, _ in external_call_nodes(fn)]
+    after_nodes = _forward_reachable(call_nodes) if call_nodes else set()
+
+    for node in fn.nodes:
+        for ir in node.irs:
+            if not isinstance(ir, InternalCall):
+                continue
+            callee = getattr(ir, "function", None)
+            if not isinstance(callee, Function) or callee in _seen:
+                continue
+            if node in after_nodes:
+                for reached in reachable(callee):
+                    out.update(reached.state_variables_written)
+            else:
+                out.update(after_call_writes_resolved(callee, _seen))
+    return out
+
+
 def cei_correct(fn: Function) -> bool:
     """Exclusion 2.2: no state write occurs after any external call - i.e. every
     state write the function makes precedes every external call. Vacuously true
-    when the function makes no external call (2.1 handles that separately)."""
+    when the function makes no external call (2.1 handles that separately).
+
+    RC-INLINE2: this asks `after_call_writes_resolved`, not the body-local
+    version. A function that delegates its body to a parent with a real CEI
+    violation has an EMPTY local after-call write set, and answering from that
+    returned "provably correct" for a function that is provably nothing of the
+    sort - a SILENT MISS, the dangerous direction. Locked by
+    `fixtures-r2a-inline/positive/P2ai-01`.
+
+    Deliberately NOT "False whenever an internal call exists": that trades a
+    silent miss for a false-positive flood and is locked against by
+    `fixtures-r2a-inline/negative/N2ai-02`, where the delegated parent writes
+    no state at all and CEI really is correct.
+    """
     if not has_external_call(fn):
         return True
-    return not state_writes_after_calls(fn)
+    return not after_call_writes_resolved(fn)
 
 
 def all_call_dests_trusted_immutable(fn: Function) -> bool:

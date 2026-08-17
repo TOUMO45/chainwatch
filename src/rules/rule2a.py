@@ -40,6 +40,7 @@ from pathlib import Path
 
 from ._cfg import (
     all_call_dests_trusted_immutable,
+    after_call_writes_resolved,
     cei_correct,
     has_external_call,
     has_setclear_mutex,
@@ -134,7 +135,10 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
 
         # CEI is broken (a state write follows an external call). Decide between
         # a CONFIRMED direct reentrancy and a CANDIDATE read-only reentrancy.
-        writes_after = state_writes_after_calls(fn_a)
+        # RC-INLINE2: the same resolved view the 2.2 gate above used. Reading
+        # the body-local set here instead would clear the gate on a delegated
+        # violation and then emit a finding whose evidence lists no variables.
+        writes_after = after_call_writes_resolved(fn_a)
         own_guard_vars = own_guard_state_reads(fn_a)
 
         # DESIGN-L2: only attribute a fire to a declaration in a file actually

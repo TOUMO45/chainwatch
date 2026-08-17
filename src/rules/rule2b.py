@@ -57,8 +57,7 @@ from slither.slithir.operations import (
 )
 
 from ._cfg import (
-    _forward_reachable,
-    external_call_nodes,
+    after_call_writes_resolved,
     has_external_call,
     has_setclear_mutex,
     own_guard_state_reads,
@@ -76,84 +75,6 @@ from ._shared import (
 from .rule2a import _candidate_map, _reads_by_repo_view
 
 RULE_ID = "2b"
-
-
-def _after_call_writes(fn: Function, _seen: set | None = None) -> set:
-    """`state_writes_after_calls`, plus the writes fn DELEGATES to (RC-INLINE1).
-
-    WHY THIS IS NOT `_cfg.state_writes_after_calls`. That helper is body-local:
-    it walks fn's own CFG and never enters an internal call. For a function
-    whose body IS a delegation - `pairedRegistry.sync(); super.refresh();` - it
-    returns the EMPTY set, and rule 2b then reads that emptiness as "every
-    write preceded every call at N-1". It is not evidence of correct ordering;
-    it is the absence of any writes to have an ordering. When the next commit
-    inlines the parent's body unchanged, every inherited write looks newly
-    moved and the rule fires on a refactor. Measured on Reserve `0cfe9683`
-    (LIMITATIONS.md §RC-INLINE1).
-
-    Slither resolves `super.X()` to its target: the call is an `InternalCall`
-    whose `.function` is the real `Function`, and `_shared.reachable` already
-    follows it — so the information was always available, just not consulted
-    here. Verified against the IR before this was written, not assumed.
-
-    TWO CASES, and collapsing them is the trap:
-
-      1. The internal call is forward-reachable from an external call in fn.
-         The callee therefore RUNS after that call, so EVERY write it makes is
-         after a call, whatever the callee's own internal ordering is.
-      2. Otherwise, only the callee's own after-its-own-call writes count, and
-         the same question recurses into it.
-
-    A naive fix that always uses case 2 under-reports case 1 — the callee's
-    pre-call writes vanish — leaving RC-INLINE1 alive wherever the parent
-    writes before its own external call. That is locked by
-    `fixtures-r2b-inline/negative/N2bi-02`, which Reserve's own shape cannot
-    catch (its parent happens to write only after its own call, so the two
-    cases coincide there).
-
-    Applies to EVERY internal call, not just `super.` — there is no
-    inlining-pattern detector here and deliberately so. A rule that had to
-    recognise "this commit is an inlining" would be guessing at intent; this
-    just computes the ordering fact correctly everywhere. `N2bi-03` locks the
-    consequence: the resolved sets change on an unrelated super call too, and
-    the verdict does not, because the change is symmetric.
-
-    Kept LOCAL to rule 2b rather than fixed in `_cfg`, per the project's
-    standing preference for the narrowest fix. `_cfg.state_writes_after_calls`
-    and its other caller `cei_correct` (used by rule 2a) are untouched — and
-    `cei_correct` carries this same defect in the opposite, false-NEGATIVE
-    direction, recorded as §RC-INLINE2 and deliberately not fixed here.
-
-    Returns StateVariable objects, not names: the caller intersects the N-side
-    result with `own_guard_state_reads(fn_a)`, which yields objects from the
-    same compilation.
-    """
-    if _seen is None:
-        _seen = set()
-    if fn in _seen:
-        return set()          # recursion guard: mutual/self internal calls
-    _seen.add(fn)
-
-    out = set(state_writes_after_calls(fn))
-
-    call_nodes = [node for node, _ in external_call_nodes(fn)]
-    after_nodes = _forward_reachable(call_nodes) if call_nodes else set()
-
-    for node in fn.nodes:
-        for ir in node.irs:
-            if not isinstance(ir, InternalCall):
-                continue
-            callee = getattr(ir, "function", None)
-            if not isinstance(callee, Function) or callee in _seen:
-                continue
-            if node in after_nodes:
-                # Case 1: the callee executes after an external call.
-                for reached in reachable(callee):
-                    out.update(reached.state_variables_written)
-            else:
-                # Case 2: ordering is decided inside the callee.
-                out.update(_after_call_writes(callee, _seen))
-    return out
 
 
 _ADMIN_CMP_OPS = (BinaryType.EQUAL, BinaryType.NOT_EQUAL)
@@ -277,8 +198,8 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         # RC-INLINE1: both sides go through the delegation-resolving version, so
         # a body that delegates at N-1 is compared against what it actually
         # does, not against the empty set its own body happens to contain.
-        after_at_n1_names = {v.canonical_name for v in _after_call_writes(fn_b)}
-        after_at_n = _after_call_writes(fn_a)
+        after_at_n1_names = {v.canonical_name for v in after_call_writes_resolved(fn_b)}
+        after_at_n = after_call_writes_resolved(fn_a)
         # Variables that went from before-every-call (N-1) to after-a-call (N).
         moved = {v for v in after_at_n if v.canonical_name not in after_at_n1_names}
         if not moved:
