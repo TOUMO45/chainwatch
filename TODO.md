@@ -768,3 +768,29 @@ a reason. Nothing dropped silently.
       sample, so 88mph's `FINDINGS=0` says nothing about rule 10's behaviour on
       that repo. A targeted re-run including that pair is the honest way to
       claim anything about rule 10 on 88mph.
+
+## Open after the Step 4 ERC20 widening (2026-08-18)
+
+- [ ] **WALK-L8 — a scan MUTATES shared per-repo worktree state, so an unrelated
+      scan can invalidate a later analysis of the same repository.** Found the
+      hard way: an ERC20 live re-check sampling 6 pairs across 2906 Reserve
+      commits left `.walker-worktrees/<repo-hash>/` with `node_modules`
+      reconstructed for a much newer dependency set, and the NEXT analysis of
+      `f43202a3..e27227b2` then failed every file with
+      `Source "@reserve-protocol/trusted-fillers/..." not found`. That surfaced
+      as `tests/test_realworld_reserve.py` failing with "the known TRUE POSITIVE
+      did not fire", which reads like a detection regression and is not one -
+      0 of 8 files compiled, so nothing could fire. Deleting the worktree
+      restored 3/3.
+      The scratch directory is keyed by repo path alone, so every scan of a repo
+      shares one mutable env. Fix direction: key the worktree/dependency state
+      by EnvSpec as well as repo, or reset it per run. Until then, a failing
+      real-world test should be checked for `files_ok=0` BEFORE it is read as a
+      detection change - the coverage line distinguishes the two, exactly as
+      HIST-L2 said it would.
+- [ ] **Rule 10 residual: SafeERC20 wrapper transfers are still invisible.**
+      `safeTransfer`/`safeTransferFrom` compile to a `LibraryCall`, not a
+      `HighLevelCall`, so the ERC20 widening does not match them. Reserve uses
+      that pattern throughout, which is why its live re-check returned 0
+      findings and why that zero is consistent rather than reassuring. Widening
+      to library calls needs its own fixtures.

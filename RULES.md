@@ -358,14 +358,25 @@ value-holding fails there while passing everything else.
 Findings carry `variable_class: "gate" | "value"` so the two are never conflated
 downstream.
 
-**STATED LIMIT — native value moves only.** An ERC20 `transfer(recipient,
-amount)` does **not** qualify its recipient, even though that is the more
-common real-world treasury shape. The project already recognises that ABI in
-`_shared.ERC20_RETURN_FNS` for Rule 5, so including it would be consistent —
-but it widens the candidate set and therefore the false-positive surface, and
-Rule 10 is the least battle-tested rule in the set. The narrower option ships
-first. Widening to ERC20 recipients is a fixture-first change of its own, and
-until it happens **Rule 10 will miss ERC20 treasury migrations**.
+**ERC20 recipients now count**, by ARGUMENT POSITION on exactly two methods:
+`transfer(to, amount)` → argument 0, `transferFrom(from, to, amount)` →
+argument **1**. Names come from `_shared.ERC20_RETURN_FNS`, which Rule 5 already
+depends on, so no new convention is introduced.
+
+Widening brought three false-positive risks native-only never had, each locked
+by its own negative:
+
+| risk | why it is not a treasury | fixture |
+|---|---|---|
+| `approve(spender, amount)` | names a SPENDER, not a destination; no value moves to it, and approving a DEX router is routine | `N10e-01` |
+| `transferFrom` argument 0 | that is the SOURCE — value moves AWAY from it | `N10e-02` |
+| every other ERC20 method | `balanceOf`, `allowance` and friends are reads | `N10e-03` |
+
+**RESIDUAL GAP, STATED.** A transfer through a wrapper library — SafeERC20's
+`safeTransfer` — compiles to a `LibraryCall`, not a `HighLevelCall`, and is
+**not** matched. Reserve uses exactly that pattern throughout, so Rule 10 still
+does not see its treasury moves. Widening to library calls needs its own
+fixtures and is not done here.
 
 ### Additional CONFIRMED requirements
 

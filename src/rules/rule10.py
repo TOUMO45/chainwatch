@@ -77,9 +77,16 @@ from pathlib import Path
 
 from slither.analyses.data_dependency.data_dependency import is_dependent
 from slither.core.declarations import Function
-from slither.slithir.operations import LowLevelCall, Send, Transfer
+from slither.slithir.operations import (
+    HighLevelCall,
+    LibraryCall,
+    LowLevelCall,
+    Send,
+    Transfer,
+)
 
 from ._shared import (
+    ERC20_RETURN_FNS,
     accept_finding,
     constrains_msg_sender,
     declared_in_repo,
@@ -134,14 +141,29 @@ def _value_vars(contract) -> set:
     must stay quiet, so an implementation that treated every address-typed
     state variable as value-holding fails there while passing everything else.
 
-    SCOPE LIMIT, DELIBERATE AND STATED (see RULES.md 10.7): NATIVE value moves
-    only. An ERC20 `transfer(recipient, amount)` does NOT qualify its recipient
-    here, even though that is the more common real-world treasury shape. The
-    project already recognises that ABI in `_shared.ERC20_RETURN_FNS` for Rule
-    5, so including it would be consistent - but it widens the candidate set
-    and therefore the false-positive surface, and this rule is the least
-    battle-tested one in the set. The narrower option ships first; widening it
-    is a fixture-first change of its own, not a tweak.
+    ERC20 recipients count too, by ARGUMENT POSITION on exactly two methods:
+    `transfer(to, amount)` -> argument 0, `transferFrom(from, to, amount)` ->
+    argument 1. That is the common real-world treasury shape and native-only
+    detection could not see it. The ABI names come from
+    `_shared.ERC20_RETURN_FNS`, which Rule 5 already depends on, so no new
+    convention is introduced.
+
+    THREE EXCLUSIONS THE NATIVE-ONLY VERSION DID NOT NEED, each locked by a
+    fixture, because widening to ERC20 brings its own false positives:
+
+      * `approve(spender, amount)` names a SPENDER, not a destination - no value
+        moves to it, and approving a DEX router is routine (N10e-01). Matching
+        on "an address passed to an ERC20 call" would make a router approval
+        indistinguishable from a treasury rotation.
+      * `transferFrom`'s recipient is argument 1. Argument 0 is the SOURCE, and
+        value moves AWAY from it (N10e-02).
+      * every other ERC20 method moves nothing - `balanceOf`, `allowance` and
+        friends are reads (N10e-03).
+
+    RESIDUAL GAP, STATED: a transfer through a wrapper library (SafeERC20's
+    `safeTransfer`) is a LibraryCall, not a HighLevelCall, and is not matched
+    here. Reserve uses exactly that pattern, so this rule still does not see
+    its treasury moves. Widening to library calls needs its own fixtures.
     """
     out: set = set()
     for fn in contract.functions:
@@ -155,6 +177,15 @@ def _value_vars(contract) -> set:
                 elif isinstance(ir, LowLevelCall):
                     if getattr(ir, "call_value", None) is not None:
                         dest = getattr(ir, "destination", None)
+                elif isinstance(ir, HighLevelCall) and not isinstance(ir, LibraryCall):
+                    fname = getattr(ir, "function_name", None)
+                    fname = str(fname) if fname is not None else None
+                    if fname in ERC20_RETURN_FNS:
+                        args = list(getattr(ir, "arguments", []) or [])
+                        # transfer(to, amount) -> 0 ; transferFrom(from, to, amt) -> 1
+                        pos = 1 if fname == "transferFrom" else 0
+                        if len(args) > pos:
+                            dest = args[pos]
                 if dest is None:
                     continue
                 for var in contract.state_variables:

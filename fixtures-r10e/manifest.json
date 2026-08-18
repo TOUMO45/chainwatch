@@ -1,0 +1,26 @@
+[
+  {
+    "id": "P10e-01", "rule": 10, "sub_rule": null, "label": "positive",
+    "exclusion_ref": null, "path": "positive/P10e-01",
+    "source_path": "contracts/Fees.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "ERC20 TREASURY MIGRATION - the gap 10.7 left open after the native-only pass. `feeRecipient` is established one-shot by the constructor at N-1 with no unguarded run-time writer; at N the constructor is gone and an unguarded external `init` sets it. It qualifies as value-holding because it is argument 0 of an ERC20 `transfer(to, amount)` - the most common real-world treasury shape, and the one native Transfer/Send detection cannot see. EXPECTED: quiet before the ERC20 widening, fires after."
+  },
+  {
+    "id": "N10e-01", "rule": 10, "sub_rule": null, "label": "negative",
+    "exclusion_ref": "10.6", "path": "negative/N10e-01",
+    "source_path": "contracts/Swapper.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "APPROVE IS NOT A PAYMENT. Structurally identical migration, but `router` is only ever passed to `approve(spender, amount)`. An allowance grant names a SPENDER, not a destination - no value moves to it - and approving a DEX router is routine. This is the FP risk that native-only detection never had: match on 'address passed to an ERC20 call' and a router approval becomes indistinguishable from a treasury rotation. EXPECTED: quiet."
+  },
+  {
+    "id": "N10e-02", "rule": 10, "sub_rule": null, "label": "negative",
+    "exclusion_ref": "10.6", "path": "negative/N10e-02",
+    "source_path": "contracts/Collector.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "ARGUMENT POSITION MATTERS. `payer` is argument 0 of `transferFrom(from, to, amount)` - the SOURCE, not the recipient. Value moves AWAY from it. Taking position 0 as the destination for every ERC20 call would mark the payer as value-holding and fire here; the recipient of transferFrom is argument 1. EXPECTED: quiet."
+  },
+  {
+    "id": "N10e-03", "rule": 10, "sub_rule": null, "label": "negative",
+    "exclusion_ref": "10.6", "path": "negative/N10e-03",
+    "source_path": "contracts/Watcher.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "READ-ONLY ERC20 CALL. `observed` is passed only to `balanceOf(who)` - a view that moves nothing. Confirms the widening admits exactly transfer/transferFrom and not the rest of the ERC20 surface. EXPECTED: quiet."
+  }
+]
