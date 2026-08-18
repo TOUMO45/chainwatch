@@ -91,19 +91,34 @@ def _is_storage_struct_pointer_local(v) -> bool:
     return isinstance(vtype, UserDefinedType) and isinstance(vtype.type, Structure)
 
 
-def _param_guarded_names(fn: Function, contract) -> set:
-    """Names of fn's parameters that have a parameter-dependent guard reachable
-    from fn (its body, modifiers, and always-called internal callees), excluding
-    guards that depend on msg.sender (those are Rule 1's).
+def _param_guarded_positions(fn: Function, contract) -> dict:
+    """{parameter INDEX: parameter name} for parameters with a parameter-
+    dependent guard reachable from fn (its body, modifiers, and always-called
+    internal callees), excluding guards that depend on msg.sender (Rule 1's).
 
-    Returns NAMES (strings), not Parameter objects, so the result can be compared
-    across the before/after compilations without hitting the cross-commit object
-    identity trap (DESIGN-L1).
+    KEYED BY POSITION, NOT NAME (finding RC-RENAME2). Keying by `p.name` meant a
+    pure parameter rename - `amount` -> `liquidity`, with the require intact -
+    left the N-1 name absent at N and read as a removed check. Measured on
+    Uniswap v3-periphery f3ab2f1aa21a.
+
+    Position is the right key because it is what the ABI uses and what survives
+    a rename, and because it is SAFE here by construction: `_candidate_map` pairs
+    functions on `(contract, full_name)`, and `full_name` carries TYPES rather
+    than parameter names. Two functions matched by Rule 6 therefore already have
+    an identical type signature, so index i means the same slot on both sides.
+
+    Deliberately NOT string similarity on names (Levenshtein and friends). Name
+    matching is the blind spot this project keeps paying for - RC-RENAME1,
+    RC-RENAME2 - not the remedy for it.
+
+    The name is carried along only so the emitted evidence stays readable; it is
+    never compared. That keeps DESIGN-L1 satisfied - nothing crosses the two
+    compilations except ints and strings.
     """
     params = list(fn.parameters)
     if not params:
-        return set()
-    guarded: set = set()
+        return {}
+    guarded: dict = {}
     for f in reachable(fn):
         taint = external_call_return_taint(f)
         for node in guard_nodes(f):
@@ -117,12 +132,12 @@ def _param_guarded_names(fn: Function, contract) -> set:
             if guard_checks_call_return(node, taint):
                 continue
             reads = node.variables_read
-            for p in params:
-                if p.name in guarded:
+            for idx, p in enumerate(params):
+                if idx in guarded:
                     continue
                 # Direct read of the parameter always counts.
                 if any(v == p for v in reads):
-                    guarded.add(p.name)
+                    guarded[idx] = p.name
                     continue
                 # Fallback: any read data-dependent on the parameter (covers
                 # modifier args, downstream call args, and a state var the
@@ -137,7 +152,7 @@ def _param_guarded_names(fn: Function, contract) -> set:
                     if _is_storage_struct_pointer_local(v):
                         continue
                     if is_dependent(v, p, contract):
-                        guarded.add(p.name)
+                        guarded[idx] = p.name
                         break
     return guarded
 
@@ -170,19 +185,27 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
         if not _writes_state_or_moves_value(fn_a):
             continue
 
-        guarded_b = _param_guarded_names(fn_b, contract_b)
+        guarded_b = _param_guarded_positions(fn_b, contract_b)
         if not guarded_b:
             continue
-        guarded_a = _param_guarded_names(fn_a, contract_a)
+        guarded_a = _param_guarded_positions(fn_a, contract_a)
 
-        # DESIGN-L1: diff by parameter NAME (strings from two separate
-        # compilations), never by Slither object identity.
-        if guarded_b - guarded_a:
+        # DESIGN-L1: diff by parameter POSITION (ints from two separate
+        # compilations), never by Slither object identity - and never by name,
+        # which a rename breaks (RC-RENAME2).
+        lost_idx = set(guarded_b) - set(guarded_a)
+        if lost_idx:
             # DESIGN-L2: only attribute to a declaration in a file actually
             # changed in this commit.
             if not accept_finding(fn_a, case_meta):
                 continue
-            lost = sorted(guarded_b - guarded_a)
+            # Report the AFTER-commit name where the slot still exists, so the
+            # message names the parameter as the reader will find it at N.
+            after_params = list(fn_a.parameters)
+            lost = sorted(
+                (after_params[i].name if i < len(after_params) else guarded_b[i])
+                for i in lost_idx
+            )
             emit(
                 case_meta, RULE_ID, decl=fn_a,
                 detail=(
@@ -192,8 +215,9 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                 ),
                 evidence={
                     "owasp": "SC05", "unguarded_parameters": lost,
-                    "guarded_before": sorted(guarded_b),
-                    "guarded_after": sorted(guarded_a),
+                    "guarded_before": sorted(guarded_b.values()),
+                    "guarded_after": sorted(guarded_a.values()),
+                    "lost_parameter_positions": sorted(lost_idx),
                     "visibility_after": fn_a.visibility,
                     "writes_state_after": _writes_state_or_moves_value(fn_a),
                 },

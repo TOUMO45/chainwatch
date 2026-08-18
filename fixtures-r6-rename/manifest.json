@@ -1,0 +1,14 @@
+[
+  {
+    "id": "N6r-01", "rule": 6, "sub_rule": null, "label": "negative",
+    "exclusion_ref": "RC-RENAME2", "path": "negative/N6r-01",
+    "source_path": "contracts/Positions.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "RC-RENAME2. A PURE parameter rename, `amount` -> `liquidity`, with `require(amount > 0)` becoming `require(liquidity > 0)` - the validation is intact. Fires before the fix because `_param_guarded_names` keys guarded parameters by `p.name`, so the N-1 name is simply absent at N and reads as a lost guard. Measured on Uniswap v3-periphery f3ab2f1aa21a (NonfungiblePositionManager.decreaseLiquidity, commit 'Events in the NFT Contract'). This is the rename mechanism the project predicted when retiring RC-5 and had never observed. EXPECTED: quiet after the fix."
+  },
+  {
+    "id": "P6r-01", "rule": 6, "sub_rule": null, "label": "positive",
+    "exclusion_ref": null, "path": "positive/P6r-01",
+    "source_path": "contracts/Positions.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "THE HARD POSITIVE - a genuine guard REMOVAL wearing a rename's clothes. Same `amount` -> `liquidity` rename as N6r-01, but `require(... > 0)` is DELETED as well. This is what stops the fix becoming 'any commit containing a parameter rename is safe': position-keying must still see that the parameter at index 1 was validated at N-1 and is not at N. EXPECTED: fires before AND after the fix."
+  }
+]

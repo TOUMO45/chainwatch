@@ -2176,8 +2176,33 @@ at N-1, matched by canonical name against `contract_b.state_variables`.
 ### RC-RENAME2 — a parameter rename reads as a removed require (Rule 6)
 
 **Type: FALSE POSITIVE, Rule 6. MEASURED on Uniswap v3-periphery
-`f3ab2f1aa21a`, `NonfungiblePositionManager.decreaseLiquidity`. DOCUMENTED, NOT
-FIXED.**
+`f3ab2f1aa21a`, `NonfungiblePositionManager.decreaseLiquidity`. FIXED.**
+
+> **STATUS: FIXED.** `_param_guarded_names` became
+> `_param_guarded_positions`, keyed by parameter INDEX rather than name.
+>
+> **Position is safe here by construction, not by luck.** `_candidate_map`
+> pairs functions on `(contract, full_name)`, and `full_name` carries TYPES, not
+> parameter names — so two functions Rule 6 matches already have an identical
+> type signature and index *i* means the same slot on both sides. The real
+> rename confirms it: `decreaseLiquidity(uint256,uint128,uint256,uint256,
+> uint256)` is byte-identical across the pair while `amount` became `liquidity`.
+>
+> **Deliberately NOT string similarity on names.** Levenshtein-style matching
+> would be a heuristic, and name matching is the blind spot this project keeps
+> paying for (RC-RENAME1, and this) rather than the remedy for it.
+>
+> Names are still carried in the dict values, but only so emitted evidence stays
+> readable — they are never compared, so DESIGN-L1 still holds: nothing crosses
+> the two compilations except ints and strings.
+>
+> Locked by `fixtures-r6-rename/` (1.00/1.00): `N6r-01` pure rename must go
+> quiet, `P6r-01` **rename PLUS a genuinely deleted require must still fire** —
+> the case that stops this becoming "any commit containing a parameter rename is
+> safe". Live re-check on the real pair: **0 findings**. 21 fixture sets PASS,
+> including `fixtures-r6` (4/9) and `fixtures-r6-oz5` (1/2) unchanged.
+>
+> Original entry below as provenance.
 
 **This is the rename mechanism the project predicted and had never observed.**
 TODO.md, on retiring RC-5: *"The rename mechanism remains **empirically

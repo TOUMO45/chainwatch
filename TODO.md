@@ -531,7 +531,11 @@ fixture-first pass.
       (`Quoter.amountOutCached`, transient storage). Fix direction: restrict
       `moved` to variables present in `contract_b.state_variables`.
 
-- [ ] **RC-RENAME2 — a parameter rename reads as a removed require (Rule 6).**
+- [x] **RC-RENAME2 — DONE 2026-08-18.** Rule 6 keys guarded parameters by
+      POSITION, safe because _candidate_map matches on full_name (types, not
+      names). fixtures-r6-rename 1.00/1.00; live pair 0 findings. Original
+      follows.
+- [ ] ~~**RC-RENAME2 — a parameter rename reads as a removed require (Rule 6).**
       THE RENAME MECHANISM THIS PROJECT PREDICTED AND HAD NEVER OBSERVED. The
       RC-5 retirement note said it "remains empirically unobserved ... a future
       real-repo hit is a NEW finding under a new label". This is that hit, on

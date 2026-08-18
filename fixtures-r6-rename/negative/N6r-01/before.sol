@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.20;
+
+contract Positions {
+    mapping(uint256 => uint128) public liquidityOf;
+
+    function decreaseLiquidity(uint256 tokenId, uint128 amount) external {
+        require(amount > 0, "zero");
+        liquidityOf[tokenId] -= amount;
+    }
+}
