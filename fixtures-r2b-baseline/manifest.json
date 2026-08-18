@@ -1,0 +1,20 @@
+[
+  {
+    "id": "N2bn-01", "rule": 2, "sub_rule": "2b", "label": "negative",
+    "exclusion_ref": "RC-NEWCALL1", "path": "negative/N2bn-01",
+    "source_path": "contracts/Manager.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "RC-NEWCALL1. At N-1 `permit` makes NO external call, so state_writes_after_calls returns the empty set BY CONSTRUCTION (`if not call_nodes: return set()`) - not because writes preceded anything. The commit adds the function's first external call, and the pre-existing `approved = v` now follows it, so every write reads as newly moved. Rule 2b's premise is that a write CHANGED position relative to a call; at N-1 there was no call to be positioned against. Same logic as CHARTER's never-safe exclusion, applied to ordering. Measured on Uniswap v3-periphery a796106e098c (NonfungiblePositionManager.permit, EIP-1271 support added). EXPECTED: quiet after the fix."
+  },
+  {
+    "id": "N2bn-02", "rule": 2, "sub_rule": "2b", "label": "negative",
+    "exclusion_ref": "RC-NEWVAR1", "path": "negative/N2bn-02",
+    "source_path": "contracts/Quoter.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "RC-NEWVAR1. The external call already existed at N-1; the commit introduces a NEW state variable (`amountOutCached`) used as transient storage - written before the call and deleted after it. A variable absent at N-1 cannot appear in the N-1 after-call set, so any write to it at N is unconditionally classified as moved. A variable with no previous existence has no previous position. Measured on Uniswap v3-periphery 0239382f49b3 (Quoter.quoteExactOutputSingle). EXPECTED: quiet after the fix."
+  },
+  {
+    "id": "P2bn-01", "rule": 2, "sub_rule": "2b", "label": "positive",
+    "exclusion_ref": null, "path": "positive/P2bn-01",
+    "source_path": "contracts/Ledger.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "THE INVERSE, and the case that stops both fixes becoming blanket suppression. The external call AND the variable BOTH exist at N-1, and `settled` genuinely moves from before `pool.sync()` to after it - a real CEI ordering regression, with `settled` read by the function's own guard. Neither precondition can excuse it. EXPECTED: fires before AND after the fix."
+  }
+]

@@ -2092,7 +2092,12 @@ still fire — the second is the one any fix must be measured against.
 ### RC-NEWCALL1 — a function's FIRST external call makes every write look moved
 
 **Type: FALSE POSITIVE, Rule 2b. MEASURED on Uniswap v3-periphery
-`a796106e098c`, `NonfungiblePositionManager.permit`. DOCUMENTED, NOT FIXED.**
+`a796106e098c`, `NonfungiblePositionManager.permit`. FIXED.**
+
+> **STATUS: FIXED.** Rule 2b now requires `has_external_call(fn_b)` before
+> comparing the two after-call sets - the same precondition shape as Rule 10's
+> T2. Locked by `fixtures-r2b-baseline/negative/N2bn-01`; live re-check on the
+> real pair produces **0 findings**. Original entry below as provenance.
 
 **Mechanism.** `_cfg.state_writes_after_calls` opens with
 
@@ -2128,7 +2133,19 @@ a call (quiet), and a genuine reorder where both commits already had calls
 ### RC-NEWVAR1 — a state variable introduced at N cannot have "moved"
 
 **Type: FALSE POSITIVE, Rule 2b. MEASURED on Uniswap v3-periphery
-`0239382f49b3`, `Quoter.quoteExactOutputSingle`. DOCUMENTED, NOT FIXED.**
+`0239382f49b3`, `Quoter.quoteExactOutputSingle`. FIXED.**
+
+> **STATUS: FIXED.** `moved` is now restricted to variables present in
+> `contract_b.state_variables`, matched by canonical name. Locked by
+> `fixtures-r2b-baseline/negative/N2bn-02`; live re-check produces **0
+> findings**.
+>
+> Building that fixture caught a fixture-fidelity error worth recording: the
+> first version left the new variable unread by any guard, so it went quiet via
+> exclusion 2.9 rather than reproducing the defect - passing for the wrong
+> reason. The real `Quoter` reads `amountOutCached` in a guard, which is what
+> routes it to the fire path, and the fixture now does too. Original entry
+> below as provenance.
 
 **Mechanism.** Rule 2b diffs the two after-call write sets by
 `canonical_name`. A variable that does not exist at N-1 cannot appear in the
@@ -2388,7 +2405,26 @@ hole in it reports "verified" forever.
    `verify_report` is tested with an invented hash, an invented address, an
    invented path, an out-of-range line, an invented qualified name, three
    overclaim phrasings, a stripped header, and exploit material.
-5. **A passing test proves the unit works, never that it runs.** See §WALK-L7.
+5. **An empty set is a measurement only when you know WHY it is empty.**
+   Six instances now, across four rules, and they are one mistake: a set that
+   is empty because *nothing was there to measure* gets read as a set that is
+   empty because *the property held*.
+
+   | # | finding | the empty thing | read as | actually |
+   |---|---|---|---|---|
+   | 1 | R10-M2 | gate-variable set, OZ 4 reads `_owner` one call-hop away | "no gate variables" | the guard node reads nothing DIRECTLY |
+   | 2 | RC-INLINE1 | after-call writes of a delegating function | "ordering was correct" | the function has no writes of its OWN |
+   | 3 | RC-INLINE2 | same, via `cei_correct` | "CEI provably correct" | same, and it SILENCED a real violation |
+   | 4 | RC-NEWCALL1 | after-call writes with no call at N-1 | "writes preceded the call" | there was no call |
+   | 5 | RC-NEWVAR1 | a variable's N-1 position | "it moved" | it did not exist |
+   | 6 | RC-EXTRACT1 | arithmetic in a body after extraction | "SafeMath removed" | it moved to a helper |
+
+   **The check, applied from here on: before treating an absence as evidence,
+   name the thing that would have been there.** If it cannot be named, the set
+   is not a measurement. Instances 1-3 and 6 are body-local questions asked of
+   a function whose body moved; 4-5 are baselines that never existed. A seventh
+   instance should be recognisable from this table alone.
+6. **A passing test proves the unit works, never that it runs.** See §WALK-L7.
    Deliberately NOT filed as a fifth instance above: those four are all
    *plausibility mistaken for verification*, where the evidence was
    misread. WALK-L7 is the opposite shape — every gate was green and every

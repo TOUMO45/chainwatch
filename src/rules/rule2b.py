@@ -172,7 +172,7 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
     before_map = _candidate_map(before)
     after_map = _candidate_map(after)
 
-    for key, (fn_b, _contract_b) in before_map.items():
+    for key, (fn_b, contract_b) in before_map.items():
         # Same function must still exist at N (matched by contract + signature).
         if key not in after_map:
             continue
@@ -198,10 +198,28 @@ def run(before_path: Path, after_path: Path, case_meta: dict):
         # RC-INLINE1: both sides go through the delegation-resolving version, so
         # a body that delegates at N-1 is compared against what it actually
         # does, not against the empty set its own body happens to contain.
+        # RC-NEWCALL1: the N-1 side must have HAD an external call. Without
+        # one, `state_writes_after_calls` returns the empty set by
+        # construction - `if not call_nodes: return set()` - and that emptiness
+        # says nothing about ordering, because there was no call for a write to
+        # be positioned against. Every write would then read as newly moved.
+        # This is CHARTER's never-safe exclusion applied to ordering, and it is
+        # the same precondition shape as Rule 10's T2.
+        if not has_external_call(fn_b):
+            continue
+
         after_at_n1_names = {v.canonical_name for v in after_call_writes_resolved(fn_b)}
         after_at_n = after_call_writes_resolved(fn_a)
+
+        # RC-NEWVAR1: a variable that did not exist at N-1 has no previous
+        # position, so it cannot have MOVED to a new one. Matched by canonical
+        # name because the two commits are separate compilations.
+        existed_at_n1 = {v.canonical_name for v in contract_b.state_variables}
+
         # Variables that went from before-every-call (N-1) to after-a-call (N).
-        moved = {v for v in after_at_n if v.canonical_name not in after_at_n1_names}
+        moved = {v for v in after_at_n
+                 if v.canonical_name not in after_at_n1_names
+                 and v.canonical_name in existed_at_n1}
         if not moved:
             # No write crossed the call between commits. Covers N2b-02 (already
             # after the call at N-1, so present in both sets and cancelled).

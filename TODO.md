@@ -511,7 +511,9 @@ fixture-first pass.
       commit that extracts a helper AND genuinely drops SafeMath inside it,
       which must still fire.
 
-- [ ] **RC-NEWCALL1 — Rule 2b fires when a function gains its FIRST external
+- [x] **RC-NEWCALL1 — DONE 2026-08-18.** `has_external_call(fn_b)` precondition;
+      N2bn-01; live pair 0 findings. Original follows.
+- [ ] ~~**RC-NEWCALL1 — Rule 2b fires when a function gains its FIRST external
       call.** `state_writes_after_calls` returns the empty set by construction
       when there are no call nodes, so every write after the newly-added call
       reads as moved. Measured on v3-periphery `a796106e098c`
@@ -521,7 +523,9 @@ fixture-first pass.
       directions: no-call-at-N-1 gaining one (quiet), and a genuine reorder
       where both commits already had calls (must still fire).
 
-- [ ] **RC-NEWVAR1 — Rule 2b fires on a state variable introduced at N.** A
+- [x] **RC-NEWVAR1 — DONE 2026-08-18.** `moved` restricted to variables present
+      at N-1; N2bn-02; live pair 0 findings. Original follows.
+- [ ] ~~**RC-NEWVAR1 — Rule 2b fires on a state variable introduced at N.** A
       variable absent at N-1 cannot be in the N-1 set, so any write to it is
       unconditionally "moved". Measured on v3-periphery `0239382f49b3`
       (`Quoter.amountOutCached`, transient storage). Fix direction: restrict
