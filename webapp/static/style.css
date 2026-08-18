@@ -237,3 +237,35 @@ h3.d-h { font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
 .report blockquote { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--candidate);
                      background: rgba(240, 180, 41, .07); color: var(--dim); }
 .report hr { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
+
+/* Scan-level failure banner.
+ *
+ * A scan that never ran and a scan that found nothing look identical unless
+ * the failure is shown at the same weight as a result. This sits ABOVE the
+ * coverage block for the same reason coverage sits above the findings: the
+ * reader must meet the reason before the numbers. It survives a page reload,
+ * because an error the user cannot re-read is an error they will re-cause. */
+.alert {
+  border: 1px solid var(--confirmed);
+  border-left-width: 4px;
+  background: rgba(255, 95, 86, .09);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+.alert.hidden { display: none; }
+.alert-head {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--confirmed);
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+.alert-body { font-size: 13.5px; line-height: 1.55; color: var(--text); }
+.alert-note { font-size: 12px; color: var(--dim); margin-top: 7px; }
+.alert.warn {
+  border-color: var(--candidate);
+  background: rgba(240, 180, 41, .09);
+}
+.alert.warn .alert-head { color: var(--candidate); }

@@ -18,6 +18,20 @@ let SOURCE = null;
 let REPORT = null;
 let RULE_TITLES = {};
 
+/* A scan that could not run must say so at the same weight as a result.
+ * "0 findings" and "the clone failed" are different claims and the UI must
+ * never let one be mistaken for the other - the same rule the coverage block
+ * already follows. */
+function showAlert(head, body, note, kind) {
+  const el = $("alert");
+  el.className = "alert" + (kind === "warn" ? " warn" : "");
+  el.innerHTML = `<div class="alert-head">${esc(head)}</div>
+    <div class="alert-body">${esc(body)}</div>` +
+    (note ? `<div class="alert-note">${esc(note)}</div>` : "");
+}
+
+function clearAlert() { $("alert").className = "alert hidden"; $("alert").innerHTML = ""; }
+
 // ---------------------------------------------------------------- bootstrap
 
 fetch("/api/rules").then((r) => r.json()).then((d) => {
@@ -50,6 +64,21 @@ async function restoreLast() {
       render(REPORT);
       setStatus(`${last.status} (previous scan)`, last.status === "done" ? "done" : "");
       log("info", `restored scan ${JOB} of ${last.repo}`);
+      return;
+    }
+    /* No report means the scan never produced one - it failed before or during
+     * the walk. Previously this branch did nothing at all, so a reload after a
+     * failed scan showed an idle page with an empty log: the user was left with
+     * no trace that anything had gone wrong, or why. */
+    if (last.status === "error" || last.status === "cancelled") {
+      setStatus(`${last.status} (previous scan)`, last.status === "error" ? "error" : "");
+      showAlert(
+        last.status === "error" ? "This scan could not run" : "Scan cancelled",
+        last.error || "no reason was recorded",
+        `${last.repo} — nothing was analysed, so this is not a result about the code.`,
+        last.status === "error" ? "" : "warn");
+      $("findings-body").innerHTML =
+        `<tr class="placeholder"><td colspan="6">Not analysed — see the message above.</td></tr>`;
     }
   } catch (e) { /* nothing to restore */ }
 }
@@ -69,6 +98,7 @@ $("scan-form").addEventListener("submit", async (e) => {
   };
 
   setStatus("starting…", "running");
+  clearAlert();
   $("log").innerHTML = "";
   $("findings-body").innerHTML = `<tr class="placeholder"><td colspan="6">Scanning…</td></tr>`;
   REPORT = null;
@@ -144,7 +174,14 @@ async function finish(id, status) {
   $("cancel").disabled = true;
   setStatus(status, status === "done" ? "done" : (status === "error" ? "error" : ""));
   const data = await (await fetch(`/api/scan/${id}`)).json();
-  if (data.report) { REPORT = data.report; render(REPORT); }
+  if (data.report) { REPORT = data.report; render(REPORT); return; }
+  if (status === "error") {
+    showAlert("This scan could not run", data.error || "no reason was recorded",
+      "Nothing was analysed. This is an environment or input failure, not a "
+      + "result about the repository's code.");
+    $("findings-body").innerHTML =
+      `<tr class="placeholder"><td colspan="6">Not analysed — see the message above.</td></tr>`;
+  }
 }
 
 function log(cls, msg) {

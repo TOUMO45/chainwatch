@@ -285,3 +285,94 @@ def test_existing_poisoned_mirror_is_repaired_on_reuse(tmp_path):
                             text=True).stdout.strip()
     assert stored != ".husky", (
         "reusing a poisoned scratch mirror left the target's hooksPath in place")
+
+
+# ------------------------------------------------------- G3: never authenticate
+#
+# CHARTER rule 5 also says "never ... authenticate beyond public-read". The
+# clone path did not enforce it, and the cost was not theoretical: a mistyped
+# or private URL left `git-credential-manager` waiting on a GUI dialog nobody
+# would ever see, inside a 1800s timeout, holding the web app's single scan
+# slot the whole time.
+
+
+def test_git_can_never_prompt_for_credentials():
+    """Mechanical: the suppression is in the args and the environment, so it
+    applies to every git invocation rather than to the one call someone
+    remembered to guard."""
+    args = H.git_safety_args()
+    joined = " ".join(args)
+    assert "credential.helper=" in joined, (
+        "credential helpers are not cleared; a configured helper (Git "
+        "Credential Manager on Windows) opens a dialog and blocks forever")
+    env = H.git_safety_env()
+    assert env.get("GIT_TERMINAL_PROMPT") == "0"
+    assert env.get("GCM_INTERACTIVE") == "never"
+
+
+def test_clone_failure_is_classified_not_truncated():
+    """The old code reported `proc.stderr[:400]`, which on a failed clone is
+    the "Cloning into ..." progress line - the useful sentence is further
+    down. Every case below is real stderr text."""
+    private = H.classify_clone_failure(
+        "Cloning into 'B:\\x'...\n"
+        "fatal: could not read Username for 'https://github.com': terminal "
+        "prompts disabled")
+    assert "private" in private.lower() or "does not exist" in private.lower()
+    assert "public" in private.lower(), "must say what Chainwatch CAN scan"
+
+    gone = H.classify_clone_failure(
+        "Cloning into 'x'...\nremote: Repository not found.\n"
+        "fatal: repository 'https://github.com/a/b/' not found")
+    assert "not exist" in gone.lower() or "private" in gone.lower()
+
+    net = H.classify_clone_failure(
+        "fatal: unable to access 'https://github.com/a/b/': "
+        "Could not resolve host: github.com")
+    assert "network" in net.lower() or "reach" in net.lower()
+
+    other = H.classify_clone_failure("fatal: something nobody predicted")
+    assert "something nobody predicted" in other, (
+        "an unrecognised failure must be passed through verbatim, not "
+        "replaced by a guess")
+
+
+@pytest.mark.skipif(not _has("git"), reason="git not installed")
+def test_private_or_missing_repo_fails_in_seconds_not_minutes(tmp_path):
+    """The behaviour that actually broke the product. NETWORK TEST: it needs to
+    reach github.com to get the 401 that used to trigger the credential
+    dialog. Skipped, never silently passed, when the network is unavailable."""
+    import socket
+    import time
+
+    try:
+        socket.create_connection(("github.com", 443), timeout=10).close()
+    except OSError:
+        pytest.skip("no network")
+
+    url = "https://github.com/morpho-org/chainwatch-nonexistent-probe-9d3f1a"
+    started = time.time()
+    with pytest.raises(RuntimeError) as exc:
+        H.clone_public(url, tmp_path / "dest", timeout=300)
+    elapsed = time.time() - started
+
+    assert elapsed < 60, (
+        "clone took %.1fs; it is blocking on a credential prompt again" % elapsed)
+    msg = str(exc.value).lower()
+    assert "private" in msg or "does not exist" in msg, (
+        "unhelpful clone error: %s" % exc.value)
+
+
+@pytest.mark.skipif(not _has("git"), reason="git not installed")
+def test_clone_public_still_clones_a_real_repository(tmp_path):
+    """The other half of the guarantee: suppressing credentials must not break
+    ordinary anonymous cloning. Uses a local repo, so no network is needed and
+    nothing about the assertion depends on a third party staying online."""
+    sentinel = tmp_path / "UNUSED"
+    src, _first, _second = _hostile_repo(tmp_path, sentinel, name="clonable")
+    out = H.clone_public(src.as_uri(), tmp_path / "dest", timeout=300)
+    assert (out / ".git").exists()
+    assert (out / "A.sol").is_file()
+
+    again = H.clone_public(src.as_uri(), tmp_path / "dest", timeout=300)
+    assert again == out, "a second call must reuse the existing clone"

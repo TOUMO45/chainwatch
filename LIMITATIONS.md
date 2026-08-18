@@ -3056,3 +3056,142 @@ depended on it anyway, and it took a repository outside the fixture set to show
 that the load-bearing claim — "yarn 1 rejects this flag" — had never been run.
 **The claims most worth testing are the ones stated confidently enough in a
 comment that nobody re-checks them.**
+
+---
+
+### WALK-L10 — one mistyped URL took the whole product offline for thirty minutes
+
+**Type: AVAILABILITY + A CHARTER CLAUSE NOBODY HAD ENFORCED. Found in the same
+"paste a link and press scan" audit as WALK-L9, by doing the most ordinary
+thing a first-time user does wrong: getting the URL wrong. MEASURED, FIXED,
+verified end to end through the web app.**
+
+CHARTER rule 5 has a clause that gets less attention than "read-only":
+*"never ... authenticate beyond public-read on any repository"*. Nothing
+enforced it. `git clone` inherited the machine's credential configuration, and
+on this machine that is:
+
+```
+$ git config --get credential.helper
+manager
+```
+
+Pasting a repository that does not exist produced this, and then nothing:
+
+```
+ProcessName               Id StartTime
+git                     2632 11:41:10
+git-remote-https        6316 11:41:10
+git-credential-manager     8 11:41:10   <- blocked on a GUI dialog
+```
+
+Git Credential Manager opened a window to ask for a password. The scan ran
+from an HTTP request, so no one was ever going to see that window. `_clone`'s
+timeout is 1800s, and the web app takes a process-wide `_RUN_LOCK` and answers
+409 to any concurrent scan - so **one typo made the entire application refuse
+work for half an hour**, with the UI showing `cloning` the whole time.
+
+`GIT_TERMINAL_PROMPT=0` alone does not fix this. GCM is a separate program with
+its own idea of interactivity and does not read git's flag.
+
+#### And when it finally did fail, it said nothing useful
+
+```
+RuntimeError: clone failed: Cloning into 'B:\Desktop\Chainwatch\.webapp-clones\this-repo-does-not-exist-xyz'...
+```
+
+`proc.stderr[:400]` - and the first 400 characters of a failed clone's stderr
+are the progress line. `fatal: repository not found` was further down and got
+cut. The user was told that a clone failed, in the same words whether the repo
+was private, misspelt, or the network was down.
+
+#### And the failure did not survive a reload
+
+Worse than the truncation, and only visible by actually reloading the page:
+`restoreLast()` re-rendered a previous scan **only when it had a report**. An
+errored scan has none, so the branch did nothing at all and the page came back
+reading `idle` with an empty log. The user's failed scan left **no trace on
+screen whatsoever** - not a wrong explanation, no explanation.
+
+That is the HIST-L1 coverage invariant failing one level up. The whole point of
+printing coverage before findings is that "nothing was analysed" and "nothing
+was found" must never render the same. A scan that could not start is the
+strongest possible case of "nothing was analysed", and it rendered as a fresh
+idle page.
+
+#### Fix — IMPLEMENTED
+
+**Authentication is now impossible, not merely discouraged.** `git_safety_args`
+carries `-c credential.helper=` (an empty value RESETS the helper list rather
+than appending to it) and `git_safety_env` sets `GIT_TERMINAL_PROMPT=0`,
+`GCM_INTERACTIVE=never`, and empty `GIT_ASKPASS` / `SSH_ASKPASS`. Any one of
+those suffices; all are set because the failure mode of getting it wrong is a
+thirty-minute hang rather than an error. Both apply to EVERY git invocation,
+not just to clone, which is what makes the charter clause true mechanically.
+
+**One clone implementation.** `history.clone_public` replaces the two
+near-identical copies in `chainwatch.py` and `webapp/server.py`, for the same
+reason `scan()` is the one implementation of a scan: two copies is how one of
+them ends up without the safety flags.
+
+**`classify_clone_failure` turns git's stderr into a sentence a user can act
+on** - private/nonexistent, network unreachable, out of disk - and passes an
+unrecognised failure through VERBATIM rather than guessing. A wrong explanation
+is worse than a raw one.
+
+**The web app shows it, and keeps showing it.** A dedicated alert banner sits
+ABOVE the coverage block, on the same principle: the reader meets the reason
+before the numbers. `restoreLast` now surfaces errored and cancelled scans, and
+the findings table says `Not analysed — see the message above` rather than
+`No findings yet`.
+
+#### Verified end to end, through the browser
+
+```
+elapsed = 1s
+status: error
+error : clone failed: this repository is private, or does not exist. Chainwatch
+        clones anonymously and can only scan PUBLIC repositories - it never
+        authenticates (CHARTER rule 5). Check the URL, or use a local path to a
+        clone you already have.
+```
+
+and after a full page reload:
+
+```
+status  : error (previous scan)
+alert   : THIS SCAN COULD NOT RUN
+          clone failed: this repository is private, or does not exist...
+          https://github.com/some-org/definitely-not-a-real-repo-8f2a — nothing
+          was analysed, so this is not a result about the code.
+findings: Not analysed — see the message above.
+```
+
+1 second, not 1800. The other half of the guarantee - that suppressing
+credentials does not break ordinary anonymous cloning - is checked against a
+real public repository over HTTPS:
+
+```
+PUBLIC HTTPS CLONE, credentials disabled
+  .git   : True
+  commits: 88
+  hooksPath: B:\Desktop\Chainwatch\.git-hooks-denied
+  elapsed: 1.4s
+```
+
+#### Guarded by four tests in `tests/test_env_safety.py`
+
+`test_git_can_never_prompt_for_credentials` (mechanical, on the args and env,
+so it cannot rot into "the one call someone remembered to guard"),
+`test_clone_failure_is_classified_not_truncated` (over real stderr strings,
+including the requirement that an unknown failure survives verbatim),
+`test_private_or_missing_repo_fails_in_seconds_not_minutes` (network test with
+a hard `elapsed < 60` bound - skipped, never silently passed, when offline),
+and `test_clone_public_still_clones_a_real_repository`.
+
+#### What is still true
+
+A genuinely private repository the user has legitimate access to cannot be
+scanned. That is deliberate and it is the charter's position, not a gap:
+Chainwatch never authenticates. The supported route is to clone it yourself and
+give Chainwatch the local path, which the error message now says.

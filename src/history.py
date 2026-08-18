@@ -127,8 +127,30 @@ def git_safety_args() -> list[str]:
     holds even against a mirror whose config was poisoned by an earlier run.
     Exported because two callers run git directly rather than through `_git`:
     `webapp/server.py` (clone, diff, show) and `chainwatch.py` (clone).
+
+    An EMPTY `credential.helper` resets the helper list rather than adding to
+    it, which is what makes CHARTER rule 5's "never authenticate beyond
+    public-read" true mechanically rather than by intention. Without it, a
+    configured helper answers for us: on Windows `git-credential-manager` opens
+    a GUI dialog, and a scan launched from a web request waits on a window
+    nobody will ever see.
     """
-    return ["-c", f"core.hooksPath={hooks_deny_dir()}"]
+    return ["-c", f"core.hooksPath={hooks_deny_dir()}",
+            "-c", "credential.helper="]
+
+
+def git_safety_env() -> dict:
+    """Environment half of the same guarantee, for what `-c` cannot express.
+
+    `GIT_TERMINAL_PROMPT=0` turns a username prompt into an immediate error.
+    `GCM_INTERACTIVE=never` covers Git Credential Manager, which is a separate
+    program with its own idea of interactivity and does not read git's flag.
+    Both are belt and braces on top of the cleared helper list: any one of the
+    three alone is enough, and the failure mode of getting this wrong is a
+    thirty-minute hang rather than an error, so all three are set.
+    """
+    return {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
+            "GIT_ASKPASS": "", "SSH_ASKPASS": ""}
 
 
 def harden_repo(repo) -> None:
@@ -160,11 +182,85 @@ def harden_repo(repo) -> None:
 def _git(repo, *args, check=True, timeout=300):
     proc = subprocess.run(
         ["git", *git_safety_args(), *args],
-        cwd=str(repo), capture_output=True, text=True, timeout=timeout
+        cwd=str(repo), capture_output=True, text=True, timeout=timeout,
+        env={**os.environ, **git_safety_env()},
     )
     if check and proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed:\n{proc.stderr.strip()[:400]}")
     return proc.stdout
+
+
+# Ordered most-specific first: GitHub answers 401 for a private repo AND for
+# one that does not exist, so the credential message is the common case and
+# must not be reported as "not found" only.
+_CLONE_FAILURES = [
+    (("could not read username", "authentication failed", "invalid username or password",
+      "terminal prompts disabled", "no such identity", "permission denied (publickey)"),
+     "this repository is private, or does not exist. Chainwatch clones "
+     "anonymously and can only scan PUBLIC repositories - it never "
+     "authenticates (CHARTER rule 5). Check the URL, or use a local path to a "
+     "clone you already have."),
+    (("repository not found", "not found", "does not appear to be a git repository",
+      "could not read from remote repository"),
+     "this repository does not exist at that URL, or it is private. "
+     "Chainwatch only scans PUBLIC repositories."),
+    (("could not resolve host", "failed to connect", "connection timed out",
+      "network is unreachable", "operation timed out", "ssl certificate problem"),
+     "the network could not reach that host. This is an environment failure, "
+     "not a result about the repository - nothing was analysed."),
+    (("disk quota", "no space left"),
+     "the machine ran out of disk space while cloning. Nothing was analysed."),
+]
+
+
+def classify_clone_failure(stderr: str) -> str:
+    """A sentence a first-time user can act on, from git's stderr.
+
+    The old callers reported `stderr[:400]`, and on a failed clone the first
+    400 characters are the "Cloning into '...'" progress line - the sentence
+    that says WHY is further down and got cut. Worse, "0 findings because the
+    clone failed" and "0 findings because the code is clean" are the same
+    screen unless the reason survives.
+
+    An unrecognised failure is passed through VERBATIM rather than replaced by
+    a guess. A wrong explanation is worse than a raw one.
+    """
+    low = (stderr or "").lower()
+    for needles, message in _CLONE_FAILURES:
+        if any(n in low for n in needles):
+            return message
+    tail = " ".join((stderr or "").split())
+    return tail[-400:] if tail else "git failed without writing a reason"
+
+
+def clone_public(url: str, dest, timeout: int = 1800, on_progress=None) -> Path:
+    """Anonymous, read-only clone of a PUBLIC repository into `dest/<name>`.
+
+    One implementation for both front ends, for the same reason `scan()` is one
+    implementation of a scan: the CLI and the web app disagreeing about what a
+    clone means is how one of them ends up without the safety flags.
+
+    Full history, never shallow - trajectory is the product and a shallow clone
+    has no trajectory. Reuses an existing clone rather than re-fetching.
+    """
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    name = url.rstrip("/").split("/")[-1].removesuffix(".git")
+    target = dest / name
+    if (target / ".git").exists():
+        harden_repo(target)
+        return target
+    if on_progress:
+        on_progress(f"cloning {url} (full history, anonymous, read-only)")
+    proc = subprocess.run(
+        ["git", *git_safety_args(), "clone", url, str(target)],
+        capture_output=True, text=True, timeout=timeout,
+        env={**os.environ, **git_safety_env()},
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"clone failed: {classify_clone_failure(proc.stderr)}")
+    harden_repo(target)
+    return target
 
 
 def sol_commits(repo, limit: int, pathspec: str = "**/*.sol") -> list[str]:
@@ -280,13 +376,14 @@ def mirror_clone(source, dest) -> Path:
             pass
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, **git_safety_env()}
     proc = subprocess.run(["git", *git_safety_args(), "clone", "--bare", "--local",
                            "--quiet", str(source), str(dest)],
-                          capture_output=True, text=True, timeout=1800)
+                          capture_output=True, text=True, timeout=1800, env=env)
     if proc.returncode != 0:
         proc = subprocess.run(["git", *git_safety_args(), "clone", "--bare",
                                "--quiet", str(source), str(dest)],
-                              capture_output=True, text=True, timeout=1800)
+                              capture_output=True, text=True, timeout=1800, env=env)
         if proc.returncode != 0:
             raise RuntimeError(
                 f"could not clone {source} into scratch: {proc.stderr[:300]}")

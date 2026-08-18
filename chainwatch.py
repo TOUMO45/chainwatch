@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -30,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 from src import verdict as V  # noqa: E402
 from src import liveness as L  # noqa: E402
-from src.history import git_safety_args, harden_repo  # noqa: E402
+from src.history import clone_public  # noqa: E402
 
 
 # Anything git can clone from. `file://` is included so the clone path itself
@@ -39,22 +38,13 @@ CLONE_SCHEMES = ("http://", "https://", "git@", "ssh://", "git://", "file://")
 
 
 def clone(url: str, dest: Path) -> Path:
-    """Full-history read-only clone. Depth is NOT truncated: trajectory is the
-    product, and a shallow clone has no trajectory."""
-    dest.mkdir(parents=True, exist_ok=True)
-    name = url.rstrip("/").split("/")[-1].removesuffix(".git")
-    target = dest / name
-    if (target / ".git").exists():
-        return target
-    print(f"cloning {url} -> {target} (full history, read-only)")
-    # WALK-L9: hook lookup pinned at an empty directory we own, both on the
-    # clone itself and persisted into the repository it produces.
-    proc = subprocess.run(["git", *git_safety_args(), "clone", url, str(target)],
-                          capture_output=True, text=True)
-    if proc.returncode != 0:
-        sys.exit(f"clone failed:\n{proc.stderr[:600]}")
-    harden_repo(target)
-    return target
+    """Full-history anonymous clone, through the ONE implementation in
+    history.py. Depth is NOT truncated: trajectory is the product, and a
+    shallow clone has no trajectory."""
+    try:
+        return clone_public(url, dest, on_progress=print)
+    except RuntimeError as exc:
+        sys.exit(str(exc))
 
 
 def _print_progress(ev: dict) -> None:

@@ -42,7 +42,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 from sse_starlette.sse import EventSourceResponse  # noqa: E402
 
-from src.history import git_safety_args, harden_repo  # noqa: E402
+from src.history import clone_public, git_safety_args  # noqa: E402
 from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -125,24 +125,22 @@ class ScanRequest(BaseModel):
 
 
 def _clone(url: str, job: Job) -> Path:
-    CLONES.mkdir(parents=True, exist_ok=True)
+    """Anonymous public clone, through the ONE implementation in history.py.
+
+    A private or mistyped URL used to leave this in `cloning` for the full
+    1800s timeout, because a configured credential helper was waiting on a GUI
+    dialog - and `_RUN_LOCK` meant that one bad paste blocked every scan for
+    half an hour. `clone_public` cannot authenticate, so the same URL now fails
+    in about a second with a sentence saying why.
+    """
     name = url.rstrip("/").split("/")[-1].removesuffix(".git")
-    target = CLONES / name
-    if (target / ".git").exists():
-        job.push({"kind": "info", "message": f"reusing existing clone at {target}"})
-        return target
+    if (CLONES / name / ".git").exists():
+        job.push({"kind": "info",
+                  "message": f"reusing existing clone at {CLONES / name}"})
+        return clone_public(url, CLONES)
     job.status = "cloning"
-    job.push({"kind": "info", "message": f"cloning {url} (full history, read-only)"})
-    # git_safety_args on EVERY invocation (WALK-L9): a clone checks out a
-    # working tree, and this directory is later read by `git diff` and
-    # `git show` below. Hook lookup is pinned at an empty directory we own
-    # so nothing the target ships can be reached by any of them.
-    proc = subprocess.run(["git", *git_safety_args(), "clone", url, str(target)],
-                          capture_output=True, text=True, timeout=1800)
-    if proc.returncode != 0:
-        raise RuntimeError(f"clone failed: {proc.stderr[:400]}")
-    harden_repo(target)
-    return target
+    return clone_public(url, CLONES,
+                        on_progress=lambda m: job.push({"kind": "info", "message": m}))
 
 
 def _run_job(job: Job, req: ScanRequest) -> None:
@@ -180,6 +178,15 @@ def _run_job(job: Job, req: ScanRequest) -> None:
             for f in job.report.get("findings", []):
                 f["finding_id"] = _fid(f)
             job.status = "cancelled" if job.stop.is_set() else "done"
+        except RuntimeError as exc:
+            # Raised deliberately, with a sentence written FOR the user (see
+            # history.classify_clone_failure). Prefixing it with the exception
+            # class turns an explanation into a stack-trace fragment, so the
+            # class name is dropped here and kept below for the failures we did
+            # not anticipate, where it is the only diagnostic there is.
+            job.status = "error"
+            job.error = str(exc)
+            job.push({"kind": "error", "message": job.error})
         except Exception as exc:  # noqa: BLE001 - surfaced to the browser, not swallowed
             job.status = "error"
             job.error = f"{type(exc).__name__}: {exc}"
