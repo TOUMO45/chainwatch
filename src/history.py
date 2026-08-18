@@ -21,19 +21,33 @@ repo's history. `git worktree add` writes worktree bookkeeping into the target's
 .git; EXTRACT_ARCHIVE mode avoids even that at the cost of losing submodule
 support. Nothing is ever committed, pushed, or written to a tracked path.
 
+READ-ONLY IS NOT THE SAME AS DOES-NOT-EXECUTE, and this module got that wrong
+once (WALK-L9). A target can hand us code to run through two channels that have
+nothing to do with writing to it: package-manager lifecycle scripts, and git
+hooks reached via `core.hooksPath`. Both are now closed by construction rather
+than by convention - see `git_safety_args` / `harden_repo` for the hook channel
+and `yarn_flavor` / `install_commands` for the script channel.
+
 HIST-L1 reporting invariant: `walk()` returns per-pair outcomes with an explicit
 cause for every non-analyzed pair. A caller that reports detections without also
 reporting the analyzable/skipped ratio is reporting a broken result - "0
 detections" is meaningless without coverage.
 
-SECURITY: dependency installs run with lifecycle scripts DISABLED (npm
---ignore-scripts, yarn --mode=skip-build, pnpm --ignore-scripts). Installing a
-historical dependency set means fetching arbitrary third-party code; executing
-its postinstall hooks is a remote-code-execution surface and is not something a
-static analyser needs. Native modules will not build as a result. If a project
-genuinely requires scripts to produce a compilable tree, `install()` records
-NEEDS_SCRIPTS rather than silently enabling them - that is a human decision, per
-project.
+SECURITY: dependency installs run with lifecycle scripts DISABLED - npm and pnpm
+`--ignore-scripts`, yarn 1 `--ignore-scripts`, yarn Berry `--mode=skip-build`
+plus `YARN_ENABLE_SCRIPTS=0`. Installing a historical dependency set means
+fetching arbitrary third-party code; executing its postinstall hooks is a
+remote-code-execution surface and is not something a static analyser needs.
+Native modules will not build as a result. If a project genuinely requires
+scripts to produce a compilable tree, `install()` records NEEDS_SCRIPTS rather
+than silently enabling them - that is a human decision, per project.
+
+The yarn line matters because the two majors take INCOMPATIBLE guard flags and
+yarn 1 does not complain about Berry's: it ignores them, exits 0, and runs the
+scripts anyway. This sentence used to say "yarn --mode=skip-build" without
+qualification and was therefore false for every yarn-1 target (WALK-L9).
+`install_commands` now selects on a statically detected flavour, so which guard
+applies is a decision, not a side effect of which command failed first.
 """
 
 from __future__ import annotations
@@ -67,13 +81,86 @@ CAUSE_UNKNOWN = "unknown"
 MARKER = ".chainwatch-install-ok"
 
 # ---------------------------------------------------------------------------
-# git: read-only history access
+# git: read-only history access, and NEVER an execution surface
 # ---------------------------------------------------------------------------
+
+# WALK-L9. A git repository can be configured to run arbitrary commands on
+# ordinary read operations: `core.hooksPath` redirects hook lookup at any
+# directory, and `git checkout` fires `post-checkout` from it. That is a
+# problem for this project specifically, because
+#
+#   (a) targets DO ship hooks - husky puts them in a tracked `.husky/`
+#       directory, so they arrive with the clone, and
+#   (b) the setting that activates them was written into OUR OWN scratch
+#       mirror's config by a target's `prepare` script (see `install`), which
+#       means every later checkout of every later scan through that mirror ran
+#       target code.
+#
+# The guarantee cannot be "targets do not do this". It is enforced instead by
+# pointing hook lookup at a directory Chainwatch owns and keeps empty, on
+# EVERY invocation - so the answer does not depend on what any config says.
+HOOKS_DENY = Path(__file__).resolve().parent.parent / ".git-hooks-denied"
+
+
+def hooks_deny_dir() -> Path:
+    """The empty directory git is told to look for hooks in. Created on demand.
+
+    A real, empty, existing directory rather than `/dev/null` or a bogus path:
+    it is portable (Windows has no /dev/null path), it is unambiguous to a
+    human reading `git config`, and "the directory exists and is EMPTY" is a
+    property a test can assert directly. Nothing is ever written into it - not
+    even a `.gitignore`, which would weaken that assertion to a judgement call
+    about which filenames count as hooks; this repository's own `.gitignore`
+    keeps it out of history instead.
+    """
+    try:
+        HOOKS_DENY.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return HOOKS_DENY
+
+
+def git_safety_args() -> list[str]:
+    """`-c` overrides that must precede EVERY git subcommand we run.
+
+    Command-line `-c` outranks repository, global and system config, so this
+    holds even against a mirror whose config was poisoned by an earlier run.
+    Exported because two callers run git directly rather than through `_git`:
+    `webapp/server.py` (clone, diff, show) and `chainwatch.py` (clone).
+    """
+    return ["-c", f"core.hooksPath={hooks_deny_dir()}"]
+
+
+def harden_repo(repo) -> None:
+    """Persist the hook denial into a repository WE created.
+
+    `git_safety_args` already protects every invocation this module makes; this
+    is the second layer, for git commands issued elsewhere in the process (and
+    for a human who opens the scratch clone by hand). It also REPAIRS a scratch
+    mirror that an earlier version already let a target poison - overriding at
+    call time would leave the bad value sitting in the config file.
+
+    REFUSES to act on a path that is not itself a repository or worktree.
+    `git config` walks UP to find one, and the scratch worktrees live inside
+    Chainwatch's own checkout - so an unguarded call on a directory that had
+    lost its `.git` would write into the developer's repository instead of the
+    scratch clone. Writing config into a repository we were not asked to touch
+    is precisely the class of thing this function exists to prevent.
+    """
+    repo = Path(repo)
+    if not (repo / ".git").exists() and not (repo / "HEAD").is_file():
+        return
+    try:
+        subprocess.run(["git", "config", "core.hooksPath", str(hooks_deny_dir())],
+                       cwd=str(repo), capture_output=True, text=True, timeout=60)
+    except Exception:  # noqa: BLE001 - the -c override is the guarantee, not this
+        pass
 
 
 def _git(repo, *args, check=True, timeout=300):
     proc = subprocess.run(
-        ["git", *args], cwd=str(repo), capture_output=True, text=True, timeout=timeout
+        ["git", *git_safety_args(), *args],
+        cwd=str(repo), capture_output=True, text=True, timeout=timeout
     )
     if check and proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed:\n{proc.stderr.strip()[:400]}")
@@ -181,6 +268,10 @@ def mirror_clone(source, dest) -> Path:
     """
     source, dest = Path(source), Path(dest)
     if (dest / "HEAD").is_file() or (dest / ".git").exists():
+        # REPAIR BEFORE USE (WALK-L9). A mirror left by an earlier version may
+        # already carry a target-supplied `core.hooksPath`; reuse is the moment
+        # to clear it, not merely to override it.
+        harden_repo(dest)
         try:
             _git(dest, "fetch", "--quiet", "--prune", "origin",
                  "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*",
@@ -189,16 +280,17 @@ def mirror_clone(source, dest) -> Path:
             pass
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(["git", "clone", "--bare", "--local", "--quiet",
-                           str(source), str(dest)],
+    proc = subprocess.run(["git", *git_safety_args(), "clone", "--bare", "--local",
+                           "--quiet", str(source), str(dest)],
                           capture_output=True, text=True, timeout=1800)
     if proc.returncode != 0:
-        proc = subprocess.run(["git", "clone", "--bare", "--quiet",
-                               str(source), str(dest)],
+        proc = subprocess.run(["git", *git_safety_args(), "clone", "--bare",
+                               "--quiet", str(source), str(dest)],
                               capture_output=True, text=True, timeout=1800)
         if proc.returncode != 0:
             raise RuntimeError(
                 f"could not clone {source} into scratch: {proc.stderr[:300]}")
+    harden_repo(dest)
     # A bare clone's HEAD follows the source's default branch; make sure the
     # source's CURRENT HEAD commit is reachable, since a caller may be scanning
     # a detached or non-default checkout.
@@ -252,6 +344,10 @@ class EnvSpec:
 
     root: Path
     node_manager: str | None = None      # "yarn" | "npm" | "pnpm"
+    # "berry" | "classic" when node_manager == "yarn", else None. Decided from
+    # files at THIS commit, because a repo can migrate across its own history
+    # and the two lines take incompatible script guards (WALK-L9).
+    yarn_flavor: str | None = None
     lockfile: str | None = None
     has_submodules: bool = False
     has_foundry: bool = False
@@ -270,11 +366,15 @@ class EnvSpec:
         h = hashlib.sha256()
         for name in ("package.json", "yarn.lock", "package-lock.json",
                      "pnpm-lock.yaml", "foundry.toml", ".gitmodules",
-                     "remappings.txt"):
+                     "remappings.txt", ".yarnrc.yml"):
             f = self.root / name
             h.update(name.encode())
             h.update(f.read_bytes() if f.is_file() else b"")
         h.update((self.solc_pin or "").encode())
+        # The flavour selects a DIFFERENT install command, so two checkouts with
+        # byte-identical manifests but different flavours are different installs
+        # and must not share a cache entry (WALK-L9).
+        h.update((self.yarn_flavor or "").encode())
         return h.hexdigest()[:16]
 
 
@@ -288,6 +388,7 @@ def detect_env(root) -> EnvSpec:
     if (root / "package.json").is_file():
         if (root / "yarn.lock").is_file():
             spec.node_manager, spec.lockfile = "yarn", "yarn.lock"
+            spec.yarn_flavor = yarn_flavor(root)
         elif (root / "pnpm-lock.yaml").is_file():
             spec.node_manager, spec.lockfile = "pnpm", "pnpm-lock.yaml"
         else:
@@ -328,30 +429,103 @@ def _link_dir(link: Path, target: Path) -> None:
 
 
 INSTALL_CMDS = {
-    # Lifecycle scripts disabled in every one of these - see module docstring.
-    # The yarn list is ordered Berry-first, then yarn 1: `--mode=skip-build` is
-    # Berry syntax and yarn 1 rejects it, `--ignore-scripts` is yarn 1 syntax
-    # and Berry rejects it, so whichever runs, the other is a no-op failure.
-    "yarn": [["yarn", "install", "--immutable", "--mode=skip-build"],
-             ["yarn", "install", "--frozen-lockfile", "--ignore-scripts"]],
     "npm": [["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
             ["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund"]],
     "pnpm": [["pnpm", "install", "--frozen-lockfile", "--ignore-scripts"]],
 }
+
+# Yarn is split out because its two major lines take DIFFERENT, MUTUALLY
+# EXCLUSIVE guard flags, and the old code guessed by ordering (WALK-L9).
+#
+# The old comment claimed "`--mode=skip-build` is Berry syntax and yarn 1
+# rejects it". It does not. Measured, yarn 1.22.22, clean two-file project:
+#
+#     $ YARN_ENABLE_SCRIPTS=0 yarn install --immutable --mode=skip-build
+#     [4/4] Building fresh packages...
+#     $ node -e "...writeFileSync('PREPARE_RAN','yes')"
+#     Done in 0.17s.                          <- exit 0
+#
+# yarn 1 ignores unknown flags, EXITS 0 - so the guarded fallback beneath it
+# never ran - and executes `prepare`. `YARN_ENABLE_SCRIPTS` is a Berry setting
+# that yarn 1 does not read. The result was that every yarn-1 target with a
+# `prepare` or `postinstall` script ran its code on the scanning machine.
+YARN_CMDS = {
+    # yarn 1: `--ignore-scripts` is a real flag it obeys.
+    "classic": [["yarn", "install", "--frozen-lockfile", "--ignore-scripts"],
+                ["yarn", "install", "--ignore-scripts"]],
+    # Berry: `--ignore-scripts` is not a Berry option and passing it fails the
+    # install outright; `--mode=skip-build` plus YARN_ENABLE_SCRIPTS=0 is the
+    # guard Berry actually honours.
+    "berry": [["yarn", "install", "--immutable", "--mode=skip-build"],
+              ["yarn", "install", "--mode=skip-build"]],
+}
+
+# Berry markers, read from FILES ONLY. Deliberately not `yarn --version`: a
+# Berry project ships its own yarn under `.yarn/releases/` and points
+# `yarnPath` at it, so running the binary inside a target checkout is itself
+# executing target code - the exact thing this function exists to prevent.
+_BERRY_LOCK = re.compile(r"^\s*__metadata:", re.M)
+_PM_YARN = re.compile(r'"packageManager"\s*:\s*"yarn@(\d+)')
+
+
+def yarn_flavor(root) -> str:
+    """"berry" | "classic" - which yarn line this checkout expects.
+
+    Ambiguity resolves to "classic", and that direction is chosen on purpose.
+    Guessing classic against a real Berry project passes `--ignore-scripts`,
+    which Berry REJECTS: the install fails, the pair is skipped with a cause,
+    and coverage drops. Guessing berry against a real yarn 1 project passes
+    flags yarn 1 ignores while running scripts - it succeeds, silently, having
+    executed target code. One error costs coverage; the other costs the
+    charter. Fail toward the one that is merely expensive.
+    """
+    root = Path(root)
+    if (root / ".yarnrc.yml").is_file():
+        return "berry"
+    if (root / ".yarn" / "releases").is_dir():
+        return "berry"
+    pkg = root / "package.json"
+    if pkg.is_file():
+        m = _PM_YARN.search(pkg.read_text(encoding="utf-8", errors="ignore"))
+        if m and int(m.group(1)) >= 2:
+            return "berry"
+    lock = root / "yarn.lock"
+    if lock.is_file():
+        head = lock.read_text(encoding="utf-8", errors="ignore")[:4000]
+        if _BERRY_LOCK.search(head):
+            return "berry"
+    return "classic"
+
+
+def install_commands(manager: str, flavor: str | None = None) -> list[list[str]]:
+    """The install command list for one package manager, in fallback order.
+
+    Split out from the dict so the yarn choice is a FUNCTION OF THE DETECTED
+    FLAVOUR rather than of which command happens to fail first, and so a test
+    can assert the guard flag directly instead of inferring it from behaviour.
+    """
+    if manager == "yarn":
+        return [list(c) for c in YARN_CMDS[flavor or "classic"]]
+    return [list(c) for c in INSTALL_CMDS.get(manager, [])]
 
 # CHARTER rule 5 (never execute a target repository's code) enforced through the
 # ENVIRONMENT as well as the command line, because the command line is
 # version-dependent and the environment is not (finding HIST-L3).
 #
 # Yarn Berry has no `--ignore-scripts` flag; it reads `enableScripts`, which
-# defaults to TRUE and is true in every target checked. Today the guarantee
-# rests entirely on `--mode=skip-build` being the command that happens to run
-# first - i.e. on a fallback ordering, which is exactly the kind of accidental
-# safety this project has been burned by. `YARN_ENABLE_SCRIPTS=0` states it
-# outright and holds no matter which command wins or what a repo's .yarnrc.yml
-# says. npm's `--ignore-scripts` gets the same treatment via npm_config_*.
+# defaults to TRUE and is true in every target checked, so `YARN_ENABLE_SCRIPTS=0`
+# states the intent outright no matter what a repo's .yarnrc.yml says.
+#
+# WHAT THIS LAYER CANNOT DO, stated because believing otherwise is what caused
+# WALK-L9: `YARN_ENABLE_SCRIPTS` is a BERRY setting. Yarn 1 does not read it,
+# and there is no yarn-1 environment variable that disables lifecycle scripts.
+# For yarn 1 the command-line `--ignore-scripts` is the ONLY guard that works,
+# which is why `install_commands` selects on a statically detected flavour
+# instead of leaving the outcome to fallback ordering. The env layer is real
+# defence in depth for Berry, npm and pnpm; for yarn 1 it is decoration, and
+# the earlier code mistook it for a floor.
 INSTALL_ENV = {
-    "yarn": {"YARN_ENABLE_SCRIPTS": "0"},
+    "yarn": {"YARN_ENABLE_SCRIPTS": "0", "npm_config_ignore_scripts": "true"},
     "npm": {"npm_config_ignore_scripts": "true"},
     "pnpm": {"npm_config_ignore_scripts": "true"},
 }
@@ -424,7 +598,7 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
     _unlink_node_modules(link)
 
     env = {**os.environ, **INSTALL_ENV.get(spec.node_manager, {})}
-    for cmd in INSTALL_CMDS[spec.node_manager]:
+    for cmd in install_commands(spec.node_manager, spec.yarn_flavor):
         try:
             proc = subprocess.run(cmd, cwd=str(spec.root), capture_output=True,
                                   text=True, timeout=timeout, env=env,
@@ -432,6 +606,13 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
         except subprocess.TimeoutExpired:
             return False, CAUSE_TIMEOUT, f"{' '.join(cmd)} exceeded {timeout}s"
         detail = (proc.stdout + proc.stderr)[-600:]
+        # WALK-L9, third layer. `spec.root` is a linked worktree, so a `git
+        # config` run inside it writes to the SHARED config of the scratch
+        # mirror - which is exactly how `husky install` armed the target's
+        # hooks for every later checkout. The command-line override in
+        # `git_safety_args` already makes that inert, but leaving a poisoned
+        # value in a file we own is not something to discover twice.
+        harden_repo(spec.root)
         if proc.returncode == 0:
             break
         if any(m in detail for m in _REGISTRY_GONE):

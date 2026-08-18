@@ -54,3 +54,7 @@ realworld-test/v3-core/
 realworld-test/v3-periphery/
 realworld-test/compound-v2/
 realworld-test/aave-v2/
+
+# WALK-L9: the guaranteed-empty directory git is pointed at for hook lookup.
+# Kept out of history precisely so it stays EMPTY - see history.hooks_deny_dir.
+.git-hooks-denied/

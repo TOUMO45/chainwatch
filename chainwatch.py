@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 from src import verdict as V  # noqa: E402
 from src import liveness as L  # noqa: E402
+from src.history import git_safety_args, harden_repo  # noqa: E402
 
 
 # Anything git can clone from. `file://` is included so the clone path itself
@@ -46,10 +47,13 @@ def clone(url: str, dest: Path) -> Path:
     if (target / ".git").exists():
         return target
     print(f"cloning {url} -> {target} (full history, read-only)")
-    proc = subprocess.run(["git", "clone", url, str(target)],
+    # WALK-L9: hook lookup pinned at an empty directory we own, both on the
+    # clone itself and persisted into the repository it produces.
+    proc = subprocess.run(["git", *git_safety_args(), "clone", url, str(target)],
                           capture_output=True, text=True)
     if proc.returncode != 0:
         sys.exit(f"clone failed:\n{proc.stderr[:600]}")
+    harden_repo(target)
     return target
 
 

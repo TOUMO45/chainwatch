@@ -2805,3 +2805,254 @@ very write this fix removed.
 truth: it permits a write that no longer happens. It is permissive rather than
 false, so it is not urgent — but the stronger original phrasing is accurate
 again and the charter can be restored to it.
+
+---
+
+### WALK-L9 — a scan EXECUTED the target repository's code. Two paths, one commit to close both
+
+**Type: CHARTER VIOLATION — the same class as WALK-L6, and more serious than it.
+WALK-L6 was a stated guarantee being 95% true. This is a stated guarantee being
+FALSE: CHARTER rule 5 promises "read-only on every external target", and
+`src/history.py`'s docstring promised that dependency installs run "with
+lifecycle scripts DISABLED ... executing its postinstall hooks is a
+remote-code-execution surface". Both sentences were wrong for a whole class of
+target. MEASURED on a real repository, REPRODUCED hermetically, FIXED, and the
+prior scans on this machine audited retroactively.**
+
+Found while auditing the web app's "paste a URL and press scan" path against
+`https://github.com/morpho-org/morpho-blue`, a repository this project had never
+analysed. It was not found by looking for it; it announced itself as a coverage
+anomaly (6 of 15 commit pairs lost to `checkout-failed`) and the *reason string
+for that skip was a lie* — the checkout had succeeded.
+
+---
+
+#### Mechanism, part A: the yarn guard was Berry-only, and yarn 1 said nothing
+
+`INSTALL_CMDS["yarn"]` listed two commands and relied on ORDERING for safety:
+
+```python
+"yarn": [["yarn", "install", "--immutable", "--mode=skip-build"],        # Berry
+         ["yarn", "install", "--frozen-lockfile", "--ignore-scripts"]],  # yarn 1
+```
+
+with a comment asserting *"`--mode=skip-build` is Berry syntax and yarn 1
+rejects it"*. It does not reject it. Measured, yarn 1.22.22, a two-file project
+whose only content is a `prepare` script and an empty v1 lockfile:
+
+```
+$ YARN_ENABLE_SCRIPTS=0 yarn install --immutable --mode=skip-build
+[3/4] Linking dependencies...
+[4/4] Building fresh packages...
+$ node -e "require('fs').writeFileSync('PREPARE_RAN','yes')"
+Done in 0.17s.
+EXIT1=0
+PREPARE_RAN after cmd1: PREPARE_RAN
+```
+
+Three things are wrong at once, and each one alone would have been enough:
+
+1. yarn 1 **ignores unknown flags** rather than rejecting them;
+2. it therefore **exits 0**, so the guarded fallback beneath it never ran — the
+   safety lived in a line of code that was unreachable in exactly the case it
+   existed for;
+3. `YARN_ENABLE_SCRIPTS=0`, added by HIST-L3 specifically so the guarantee would
+   not depend on command ordering, is a **Berry** setting. Yarn 1 does not read
+   it. HIST-L3's own comment says the ordering dependency "is exactly the kind
+   of accidental safety this project has been burned by", and then rested the
+   yarn-1 case on it anyway.
+
+There is no yarn-1 environment variable that disables lifecycle scripts. For
+yarn 1 the command-line `--ignore-scripts` is the only guard that works.
+
+#### Mechanism, part B: one script armed the target's git hooks against every later scan
+
+This is the dangerous half, and it is not a variant of part A — it is a second
+defect that part A merely opened the door to.
+
+morpho-blue's `prepare` is `husky install && forge install`. `husky install`
+runs `git config core.hooksPath .husky`. Run inside a **linked worktree**, that
+writes to the worktree's shared config — which is the config of Chainwatch's own
+scratch mirror. Found on disk after the scan:
+
+```
+$ git -C .walker-worktrees/0bbc8f13b9/wt/prev config --show-origin --get-all core.hooksPath
+file:B:/Desktop/Chainwatch/.walker-worktrees/0bbc8f13b9/origin.git/config    .husky
+```
+
+`.husky/` is a **tracked directory**: it arrives with the clone, at every commit,
+on every branch. So from that moment every `git checkout` the walker performed
+executed the target's `post-checkout` hook, whose content is:
+
+```sh
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+forge install
+yarn
+```
+
+That is target-authored code invoked once per commit step, for the rest of that
+scan and every later scan through the same mirror. It ran:
+
+```
+$ git -C <worktree> checkout --detach --force c75dc82...
+HEAD is now at c75dc82 Merge pull request #729 from morpho-org/docs/max-assets
+.husky/post-checkout: line 4: forge: command not found
+husky - post-checkout hook exited with code 127 (error)
+EXIT=1
+```
+
+**It failed only because `forge` was not on this machine's PATH.** That is not a
+control; it is a coincidence. The exposure is the whole hook, not its first line.
+
+#### The coverage cost, and a skip reason that misreported reality
+
+The hook's 127 became git's exit 1, `_git` raised, and the walker booked
+`checkout-failed` — 6 of morpho-blue's 15 pairs, 40% coverage on a modern,
+well-formed repository. The recorded detail contradicts the recorded reason:
+
+```
+reason: checkout-failed
+detail: git checkout --detach --force c75dc82... failed:
+        Previous HEAD position was e03ca61 ...
+        HEAD is now at c75dc82 Merge pull request #729 ...
+```
+
+`HEAD is now at` is git reporting SUCCESS. A skip reason naming a failure that
+did not happen is worse than an unexplained skip: it points the next
+investigation at the checkout logic, which was never broken.
+
+---
+
+#### Scope — what actually executed on this machine, audited rather than assumed
+
+Every prior real-world target was checked, because "probably fine" is not a
+finding. Yarn records each install's flags in `node_modules/.yarn-integrity`,
+which makes this answerable from evidence rather than from reasoning:
+
+```
+yarn cache entries with flags=['ignoreScripts'] : 50
+yarn cache entries WITHOUT that flag            : 1
+```
+
+| target | manager | flavour | own lifecycle script | verdict |
+|---|---|---|---|---|
+| reserve-src | yarn | **berry** | `prepare: husky install` | guarded — Berry honours `--mode=skip-build`; `.husky/_` absent, mirror `core.hooksPath` unset |
+| 88mph-src | npm | — | `prepare: husky install` | guarded — `npm ci --ignore-scripts` is a real npm flag |
+| aave-v2 | npm | — | none | guarded |
+| v3-periphery | yarn | classic | none in all 77 package.json revisions | **one install ran unguarded** (below) |
+| v3-core | yarn | classic | `prepare: yarn compile` in 2 of 89 revisions | its cache entries all record `ignoreScripts`; no `build/` output in its worktrees |
+| compound-v2 | yarn | classic | none in all 20 revisions | entries record `ignoreScripts` |
+| monetrix-src | none | — | none | n/a |
+
+The one unguarded install is cache entry `671a4c8504a10c26` (imports
+`@uniswap/lib`, created 2026-08-17 22:56 during the v3-periphery walk). Yarn's
+own artifact record names exactly what ran:
+
+```
+artifacts:
+    secp256k1@3.8.0            ['build']
+    keccak@1.4.0               ['build']
+    keccak@2.1.0               ['build']
+    websocket@1.0.29           ['build', 'builderror.log']
+    @web3-js/websocket@1.0.30  ['build', 'builderror.log']
+```
+
+Five THIRD-PARTY dependency `install` scripts (`node-gyp rebuild`) executed.
+`builderror.log` shows the native build then failed and the script swallowed the
+error — but it ran. No repository's own lifecycle script executed in any prior
+scan, and **no git hook executed in any prior scan**: `core.hooksPath` is unset
+in all six pre-existing scratch mirrors, and these repos ship hooks only under
+`.husky/`, which git never consults unless something points it there.
+
+So the honest statement is not "prior scans were clean". It is: *one install, in
+one scan, ran five third-party node-gyp builds on the scanning machine; no
+target-authored repository script and no git hook ever ran before morpho-blue.*
+
+---
+
+#### Fix — IMPLEMENTED, in three layers, because one layer is what failed
+
+**1. The flavour is DETECTED, from files, before any command is chosen.**
+`history.yarn_flavor()` reads `.yarnrc.yml`, `.yarn/releases/`, package.json's
+`packageManager` field, and the lockfile header. Deliberately NOT
+`yarn --version`: a Berry project ships its own yarn under `.yarn/releases/` and
+points `yarnPath` at it, so running the binary inside a target checkout is
+itself executing target code — the precise thing the function exists to prevent.
+
+Ambiguity resolves to `classic`, on purpose. Guessing classic against a real
+Berry project passes `--ignore-scripts`, which Berry rejects: the install fails,
+the pair is skipped with a cause, coverage drops. Guessing berry against a real
+yarn 1 project passes flags yarn 1 ignores while running scripts: it succeeds,
+silently, having executed target code. **One error costs coverage; the other
+costs the charter.** Fail toward the expensive one.
+
+**2. Hook lookup is pointed at a directory Chainwatch owns and keeps empty, on
+every single git invocation.** `history.git_safety_args()` returns
+`-c core.hooksPath=<repo>/.git-hooks-denied`, and `_git` prepends it to every
+subcommand. Command-line `-c` outranks repository, global and system config, so
+this holds against a mirror that is *already* poisoned. The directory is a real,
+existing, empty directory rather than `/dev/null` — portable to Windows, legible
+in `git config` output, and "exists and is empty" is a property a test asserts
+directly, which is why not even a `.gitignore` is written into it.
+
+**3. The value is also PERSISTED, and repaired on reuse.** `mirror_clone` calls
+`harden_repo` on both the create and the reuse path, and `install` calls it
+after every installer command. Layer 2 alone would leave a target-supplied value
+sitting in a config file we own, and two callers run git directly rather than
+through `_git` (`webapp/server.py` for clone/diff/show, `chainwatch.py` for
+clone). Verified against the real poisoned mirror the original run left behind:
+
+```
+before, mirror  : .husky
+before, worktree: .husky
+after,  mirror  : B:\Desktop\Chainwatch\.git-hooks-denied
+after,  worktree: B:\Desktop\Chainwatch\.git-hooks-denied
+hook-lookup dir : exists=True  contents=EMPTY
+Worktree.checkout(c75dc8244032) -> returned normally, no exception
+raw git exit    : 0    husky mentioned in output: False
+```
+
+Against the same commit that fired the hook, through Chainwatch's own code path
+— not a synthetic re-creation of it.
+
+#### Guarded by `tests/test_env_safety.py`, which failed before the fix
+
+Ten assertions over a hermetic temp repository carrying the same payloads a real
+target does. The two that matter, quoted with their pre-fix output:
+
+```
+E  AssertionError: target lifecycle script EXECUTED during install
+   (ok=True cause='' detail='installed 50a2d5ec262055e7')
+E  AssertionError: the target repository's post-checkout hook EXECUTED during a
+   scan checkout (CHARTER rule 5)
+```
+
+`ok=True` is the part worth remembering: the old code executed target code **and
+reported success**. The hook test poisons the mirror's config on purpose before
+checking out, because the guarantee must not rest on targets choosing not to
+poison it.
+
+#### Residue, stated rather than tidied away
+
+Cache entries built before this fix were produced by an installer that could run
+scripts, and one of them demonstrably did. Nothing re-executes them — the
+analysis pipeline invokes `solc` only, never a JS build tool, so a cached tree is
+read as source and never run — but they are not reproducible under the current
+guarantee either. `rm -rf .walker-cache` forces clean rebuilds. This is recorded
+rather than done automatically, because deleting a dependency cache to re-derive
+a property is the destructive shortcut HIST-L4's fix exists to avoid.
+
+`EnvSpec.key` now covers `.yarnrc.yml` and the detected flavour, so two checkouts
+that install differently can no longer share an entry. That changes every key,
+which is itself the invalidation.
+
+#### The lesson, which is HIST-L5's and WALK-L6's again
+
+A safety property that depends on which command happens to fail first is not a
+safety property. HIST-L3 wrote that sentence down, then shipped a guarantee that
+depended on it anyway, and it took a repository outside the fixture set to show
+that the load-bearing claim — "yarn 1 rejects this flag" — had never been run.
+**The claims most worth testing are the ones stated confidently enough in a
+comment that nobody re-checks them.**

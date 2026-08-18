@@ -42,6 +42,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 from sse_starlette.sse import EventSourceResponse  # noqa: E402
 
+from src.history import git_safety_args, harden_repo  # noqa: E402
 from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -132,10 +133,15 @@ def _clone(url: str, job: Job) -> Path:
         return target
     job.status = "cloning"
     job.push({"kind": "info", "message": f"cloning {url} (full history, read-only)"})
-    proc = subprocess.run(["git", "clone", url, str(target)],
+    # git_safety_args on EVERY invocation (WALK-L9): a clone checks out a
+    # working tree, and this directory is later read by `git diff` and
+    # `git show` below. Hook lookup is pinned at an empty directory we own
+    # so nothing the target ships can be reached by any of them.
+    proc = subprocess.run(["git", *git_safety_args(), "clone", url, str(target)],
                           capture_output=True, text=True, timeout=1800)
     if proc.returncode != 0:
         raise RuntimeError(f"clone failed: {proc.stderr[:400]}")
+    harden_repo(target)
     return target
 
 
@@ -253,7 +259,8 @@ def get_diff(job_id: str, file: str, prev: str, cur: str, context: int = 6):
         raise HTTPException(404, "no such scan")
     try:
         proc = subprocess.run(
-            ["git", "diff", f"-U{max(0, min(context, 40))}", prev, cur, "--", file],
+            ["git", *git_safety_args(), "diff",
+             f"-U{max(0, min(context, 40))}", prev, cur, "--", file],
             cwd=str(job.repo_path), capture_output=True, text=True, timeout=120,
         )
     except Exception as exc:  # noqa: BLE001
@@ -270,7 +277,7 @@ def get_source(job_id: str, file: str, rev: str, start: int = 1, end: int = 0):
     job = JOBS.get(job_id)
     if not job or not job.repo_path:
         raise HTTPException(404, "no such scan")
-    proc = subprocess.run(["git", "show", f"{rev}:{file}"],
+    proc = subprocess.run(["git", *git_safety_args(), "show", f"{rev}:{file}"],
                           cwd=str(job.repo_path), capture_output=True, text=True,
                           timeout=120)
     if proc.returncode != 0:
