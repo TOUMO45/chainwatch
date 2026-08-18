@@ -2044,6 +2044,214 @@ catch). The answer is to compute the real ordering fact, not to guess safely.
 
 ---
 
+### RC-EXTRACT1 — arithmetic extracted into a helper reads as unprotected
+
+**Type: FALSE POSITIVE, Rule 4. MEASURED on Aave v2 `20bbae88d399`,
+`UniswapLiquiditySwapAdapter.executeOperation`. DOCUMENTED, NOT FIXED.**
+
+**The case.** The commit ("Add swapAllBalance parameter for liquidity swap")
+refactors a loop body out of `executeOperation` into a new internal
+`_swapLiquidity` helper. The SafeMath call went with it:
+
+```
+N-1  UniswapLiquiditySwapAdapter.sol:82   amounts[i].add(premiums[i])   (in executeOperation)
+N    UniswapLiquiditySwapAdapter.sol:187  amount.add(premium)           (in _swapLiquidity)
+```
+
+`_swapLiquidity` also introduces `.sub()`. Nothing lost its checking; the
+arithmetic moved one call away.
+
+**Mechanism.** Rule 4 asks whether a function performed its arithmetic through a
+checked library at N-1 and performs it "in the open" at N, judged on the
+function's OWN body. After extraction, `executeOperation` still contains raw
+arithmetic — the loop counter `i++`, present at both commits — but no longer
+contains the `.add()`. The pair "checked-arithmetic disappeared, raw arithmetic
+remains" is exactly the trigger, and it is satisfied by a pure refactor.
+
+**Relation to the RC-INLINE family — this is the DE-inlining direction.**
+RC-INLINE1 fired when a parent's body was inlined INTO a function; this fires
+when a function's body is extracted OUT of it. Same root confusion — a
+body-local question asked of a function whose body has moved — reached from the
+opposite direction, and on a different rule. The fix for rules 2a/2b was
+`_cfg.after_call_writes_resolved`; Rule 4 has no equivalent and does not consult
+`reachable()`.
+
+**Scope.** Any rule judging a property of a function's own body across commits
+where a commit extracts or inlines code: Rule 4 confirmed by measurement; Rules
+5 and 6 are structurally exposed for the same reason and are NOT claimed as
+affected without their own evidence.
+
+**Fix direction (NOT implemented).** Evaluate Rule 4's arithmetic question over
+`reachable(fn)` rather than `fn.nodes`, matching what rules 2a/2b now do.
+Fixtures needed in both directions: a pure extraction that must go quiet, and a
+commit that extracts a helper AND genuinely drops SafeMath inside it, which must
+still fire — the second is the one any fix must be measured against.
+
+---
+
+### RC-NEWCALL1 — a function's FIRST external call makes every write look moved
+
+**Type: FALSE POSITIVE, Rule 2b. MEASURED on Uniswap v3-periphery
+`a796106e098c`, `NonfungiblePositionManager.permit`. DOCUMENTED, NOT FIXED.**
+
+**Mechanism.** `_cfg.state_writes_after_calls` opens with
+
+```python
+call_nodes = [node for node, _ in external_call_nodes(fn)]
+if not call_nodes:
+    return set()
+```
+
+A function with **no external call at all** therefore returns the empty set — by
+construction, not because its writes precede anything. Rule 2b then computes
+`moved = after_at_N - after_at_N-1` and every write following the newly-added
+call is classified as having moved across it.
+
+**The case.** At N-1 `permit` verifies a signature with `ecrecover` (a builtin,
+not an external call) and calls `_approve`. The commit adds EIP-1271 contract
+signature support, introducing the contract's first external call —
+`IERC1271(owner).isValidSignature(...)` — with `_approve` after it.
+
+**Why it is not a regression.** Rule 2b's premise is that a write CHANGED
+position relative to a call. At N-1 there was no call for anything to be
+positioned against. This is CHARTER's "a contract that was never safe is out of
+scope" applied to ordering: there was no ordering to regress from.
+
+**Fix direction (NOT implemented).** Rule 2b should require that `fn_b` had at
+least one external call before comparing sets — the same shape as Rule 10's T2
+precondition. A fixture pair is needed in both directions: no-call-at-N-1 gaining
+a call (quiet), and a genuine reorder where both commits already had calls
+(must still fire).
+
+---
+
+### RC-NEWVAR1 — a state variable introduced at N cannot have "moved"
+
+**Type: FALSE POSITIVE, Rule 2b. MEASURED on Uniswap v3-periphery
+`0239382f49b3`, `Quoter.quoteExactOutputSingle`. DOCUMENTED, NOT FIXED.**
+
+**Mechanism.** Rule 2b diffs the two after-call write sets by
+`canonical_name`. A variable that does not exist at N-1 cannot appear in the
+N-1 set, so any write to it at N is unconditionally "moved".
+
+**The case.** The commit introduces `uint256 private amountOutCached` as
+transient storage: it is written before `getPool(...).swap(...)` and `delete`d
+in the `catch` afterwards, and it is read by a guard in the swap callback
+(`if (amountOutCached != 0) require(amountReceived == amountOutCached)`), which
+is what routes it to the CONFIRMED branch.
+
+**Why it is not a regression.** A variable with no previous existence has no
+previous position. Separately, `Quoter` is a lens contract whose swaps always
+revert by design — but that is context, not the mechanism, and the mechanism
+alone is enough to reject the fire.
+
+**Relation to RC-NEWCALL1.** Same family, different missing baseline: there the
+CALL is new, here the VARIABLE is. Both are the vacuous-empty-set failure this
+project has now met four times (R10-M2, RC-INLINE1, RC-INLINE2, and this pair).
+**The generalised lesson, now earned rather than asserted: an empty set is a
+measurement only when you know WHY it is empty.**
+
+**Fix direction (NOT implemented).** Restrict `moved` to variables that existed
+at N-1, matched by canonical name against `contract_b.state_variables`.
+
+---
+
+### RC-RENAME2 — a parameter rename reads as a removed require (Rule 6)
+
+**Type: FALSE POSITIVE, Rule 6. MEASURED on Uniswap v3-periphery
+`f3ab2f1aa21a`, `NonfungiblePositionManager.decreaseLiquidity`. DOCUMENTED, NOT
+FIXED.**
+
+**This is the rename mechanism the project predicted and had never observed.**
+TODO.md, on retiring RC-5: *"The rename mechanism remains **empirically
+unobserved**; Rules 2b/4/5 do key by `canonical_name` across commits, so it
+stays plausible and unproven. A future real-repo hit is a NEW finding under a
+new label, not RC-5."* This is that hit, on Rule 6 rather than 2b/4/5.
+
+**The case.** The commit ("Events in the NFT Contract") renames a parameter and
+nothing else about the check:
+
+```diff
+-        uint128 amount,
++        uint128 liquidity,
+-        require(amount > 0);
++        require(liquidity > 0);
+```
+
+The validation is intact. Keyed by the guarded variable's name, the N-1 check on
+`amount` has no counterpart at N, so it reads as removed.
+
+**Scope.** Any rule keying a guard to a parameter or local by name. Rule 6 is
+confirmed by measurement; Rules 2b/4/5 remain plausible-and-unobserved for the
+same reason they were before, and must not be claimed as affected without their
+own evidence.
+
+**Fix direction (NOT implemented).** Match the guard by its POSITION in the
+signature and the shape of its comparison, not by the identifier. Requires
+fixtures in both directions: a pure rename (quiet) and a genuinely removed
+require whose parameter was also renamed in the same commit (must still fire) -
+that second case is the hard one and is what any fix must be measured against.
+
+---
+
+### RC-MUTEX1 — a reentrancy mutex is mistaken for one-shot init machinery
+
+**Type: FALSE POSITIVE, Rule 3c, via a SHARED helper. MEASURED on Uniswap
+v3-core `76a9ffa6ebc4`, `UniswapV3Pair`. DOCUMENTED, NOT FIXED. Highest-impact
+of the four, because the helper is shared and the shape is ubiquitous.**
+
+**Mechanism.** `_shared.is_oneshot_init_guard(mod)` returns True when a modifier
+gates on a storage flag, writes that same flag, and writes it to a compile-time
+CONSTANT. A set/clear reentrancy mutex satisfies all three:
+
+```solidity
+uint256 private unlocked = 1;
+modifier lock() {
+    require(unlocked == 1, 'UniswapV3Pair::lock: reentrancy prohibited');
+    unlocked = 0;
+    _;
+    unlocked = 1;
+}
+```
+
+It gates on `unlocked`, writes `unlocked`, and writes constants — `0` and `1`.
+`defines_init_machinery` therefore reports the contract as proxy-deployed,
+which **disables Rule 3c exclusion 3c.3**, and 3c fires on a contract that can
+never be upgraded. The emitted detail even asserts "on a proxy-deployed
+contract", which is false: Uniswap v3 pools are immutable, CREATE2-deployed,
+with no fallback, no delegatecall and no initializer.
+
+**Why the existing discriminator does not catch it.** The `3b-L-ratelimit`
+discriminator distinguishes an init flag from a rate limit by asking whether the
+gated variable is ever written to a constant — a rate limit is written from
+`block.timestamp` or an argument. A mutex is written to constants in BOTH
+directions, so that test passes it.
+
+**The missing property is MONOTONICITY.** A one-shot initializer closes its gate
+permanently; a mutex closes and then REOPENS it. The project already knows how
+to detect exactly that shape — `_cfg.has_setclear_mutex` exists for Rule 2a —
+and `is_oneshot_init_guard` simply does not consult it.
+
+**Scope.** Every consumer of `is_oneshot_init_guard` / `defines_init_machinery`:
+Rule 3b's exclusion 3b.4, Rule 3c's 3c.3, and Rule 10's `has_init_guard` path
+(exclusion 10.1). For Rule 10 the direction is the dangerous one — a mutex-
+carrying writer would be classified one-shot-guarded and the rule would go
+QUIET, a false negative. Not observed, and stated as unobserved.
+
+**Fix direction (NOT implemented).** Require the gated flag to be written to
+exactly one constant value on all reachable paths, or explicitly exclude
+modifiers that `has_setclear_mutex` recognises. Needs a fixture set covering a
+real initializer, a real mutex, and a contract carrying both.
+
+**Secondary observation, same finding.** The identical contract-level 3c result
+was emitted TWICE — once attributed to `contracts/UniswapV3Factory.sol` and once
+to `contracts/UniswapV3Pair.sol` — because `UniswapV3Pair` is reachable from
+both compiled units and DESIGN-L2's `accept_finding` accepts both, each file
+being genuinely in the commit's changed set. Contract-level findings need
+deduplication by (contract, variable), not by file.
+
+---
+
 ### WALK-L7 — a rule can be fully registered, fully tested, and never run
 
 **Type: PIPELINE WIRING. A shipped rule was silently absent from the product.

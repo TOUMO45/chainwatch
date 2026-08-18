@@ -457,6 +457,101 @@ frozen fixtures unaffected. Do not fix without measurement first.
       Rule 2a's `cei_correct` (already flagged as residual in RC-INLINE1's Step 1)
       needs its own fixture-first pass, separate from RC-INLINE1's fix.~~
 
+## Open after the Step 5 real-world scans (2026-08-18)
+
+Five false-positive classes found by real-repo contact on Uniswap v3-core,
+v3-periphery and Aave v2. All DOCUMENTED with mechanism/evidence/scope/fix-direction in
+LIMITATIONS.md and deliberately NOT fixed during the scan run, per the
+"log it, keep scanning, fix afterward" discipline. Each needs its own
+fixture-first pass.
+
+- [ ] **RC-MUTEX1 — a set/clear reentrancy mutex satisfies
+      `is_oneshot_init_guard`. HIGHEST PRIORITY of the four: the helper is
+      SHARED and the shape is ubiquitous.** `lock() { require(unlocked == 1);
+      unlocked = 0; _; unlocked = 1; }` gates on a flag, writes that flag, and
+      writes compile-time constants, so it passes every test the helper
+      applies. The `3b-L-ratelimit` discriminator cannot separate it because a
+      mutex writes constants in BOTH directions. Missing property is
+      MONOTONICITY - an initializer closes its gate permanently, a mutex
+      reopens it - and `_cfg.has_setclear_mutex` already detects that shape
+      without being consulted.
+
+      **TWO DIRECTIONS, AND THE ONE THAT FIRED IS THE LESS DANGEROUS ONE.
+      Both need their own fixture and their own verification; fixing only the
+      side that was observed would leave the worse half in place.**
+
+      1. *False POSITIVE, observed.* Rule 3c: `defines_init_machinery` reports
+         an immutable CREATE2 contract as proxy-deployed, disabling exclusion
+         3c.3, and 3c fires on a contract that can never be upgraded. Measured
+         on Uniswap v3-core `76a9ffa6ebc4` (`UniswapV3Pair`), whose emitted
+         detail even asserts "on a proxy-deployed contract" - which is false.
+      2. *False NEGATIVE, NOT observed, and the more dangerous.* Rule 10:
+         `has_init_guard` classifies a writer carrying a mutex as
+         one-shot-guarded, exclusion 10.1 matches, and the rule goes SILENT on
+         a gate variable whose only protection is a reentrancy mutex - which is
+         not initialization protection at all. A miss produces no artifact and
+         is indistinguishable from a clean result. Rule 3b's exclusion 3b.4 has
+         the same exposure. This direction requires a POSITIVE fixture (gate
+         variable, unguarded writer carrying only a mutex, must FIRE), not just
+         the 3c negative.
+
+- [ ] **RC-EXTRACT1 — Rule 4 fires when arithmetic is EXTRACTED into a helper.**
+      The de-inlining direction of the RC-INLINE family, on a third rule.
+      Measured on Aave v2 `20bbae88d399`
+      (`UniswapLiquiditySwapAdapter.executeOperation`): `amounts[i].add(...)`
+      moved from line 82 of the caller to line 187 of a new `_swapLiquidity`
+      helper, so the caller kept its raw loop counter and lost its visible
+      SafeMath. Fix direction: evaluate Rule 4 over `reachable(fn)`, as rules
+      2a/2b now do via `_cfg.after_call_writes_resolved`. The hard fixture is a
+      commit that extracts a helper AND genuinely drops SafeMath inside it,
+      which must still fire.
+
+- [ ] **RC-NEWCALL1 — Rule 2b fires when a function gains its FIRST external
+      call.** `state_writes_after_calls` returns the empty set by construction
+      when there are no call nodes, so every write after the newly-added call
+      reads as moved. Measured on v3-periphery `a796106e098c`
+      (`NonfungiblePositionManager.permit`, EIP-1271 support added). Fix
+      direction: require `fn_b` to have had at least one external call before
+      comparing sets - the shape of Rule 10's T2 precondition. Needs both
+      directions: no-call-at-N-1 gaining one (quiet), and a genuine reorder
+      where both commits already had calls (must still fire).
+
+- [ ] **RC-NEWVAR1 — Rule 2b fires on a state variable introduced at N.** A
+      variable absent at N-1 cannot be in the N-1 set, so any write to it is
+      unconditionally "moved". Measured on v3-periphery `0239382f49b3`
+      (`Quoter.amountOutCached`, transient storage). Fix direction: restrict
+      `moved` to variables present in `contract_b.state_variables`.
+
+- [ ] **RC-RENAME2 — a parameter rename reads as a removed require (Rule 6).**
+      THE RENAME MECHANISM THIS PROJECT PREDICTED AND HAD NEVER OBSERVED. The
+      RC-5 retirement note said it "remains empirically unobserved ... a future
+      real-repo hit is a NEW finding under a new label". This is that hit, on
+      Rule 6. Measured on v3-periphery `f3ab2f1aa21a`
+      (`decreaseLiquidity`: `amount` -> `liquidity`, `require(amount > 0)` ->
+      `require(liquidity > 0)`, check intact). Fix direction: match a guard by
+      its POSITION in the signature and the shape of its comparison, not by
+      identifier. The hard fixture is a genuinely removed require whose
+      parameter was ALSO renamed in the same commit - that must still fire, and
+      any fix must be measured against it. Rules 2b/4/5 remain
+      plausible-and-unobserved for the same reason as before and must not be
+      claimed as affected without their own evidence.
+
+- [ ] **Contract-level findings need deduplication by (contract, variable).**
+      The same 3c result was emitted twice on v3-core, attributed to
+      `UniswapV3Factory.sol` and `UniswapV3Pair.sol`, because `UniswapV3Pair`
+      is reachable from both compiled units and each file is genuinely in the
+      commit's changed set, so DESIGN-L2's `accept_finding` accepts both.
+
+- [ ] **HIST-L1 dependency reconstruction is now the BINDING coverage
+      constraint.** B3/B4 closed the compiler axis completely (auto-install
+      fetched 0.5.15, 0.5.16, 0.6.6, 0.6.11, 0.8.3, 0.8.4, 0.6.12 on demand
+      across the Step 5 targets). Measured coverage now tracks repo AGE, not
+      pinned compilers: v3-periphery 98.7%, v3-core 84.3%, Aave 6.7%, 88mph 0%,
+      Compound 0 pairs analysed. Compound v2 is environment-INFEASIBLE on this
+      box - `error:0308010C:digital envelope routines::unsupported`, the Node
+      17+/OpenSSL 3 break against its old toolchain - and needs a pinned older
+      Node in the container before it can be scanned at all.
+
 ## Open after Rule 10 (Section A, 2026-08-16)
 
 - [ ] **WALK-L7 invariant test — assert `set(RULE_ORDER) == set(RULES)`.** Rule
@@ -639,3 +734,24 @@ a reason. Nothing dropped silently.
       a weakened gate is silently harmful in the same way a weakened fixture is
       — but that is covered by adversarial tests that fail loudly if the gate
       stops rejecting, which is the better mechanism for code.
+
+### Step 5 sampling honesty — what these numbers are NOT
+
+- [ ] **Re-scan with larger samples before citing any target's fire count.**
+      Two measured facts make every Step 5 number provisional:
+      1. **The 3-pair pilots did not predict the full runs.** 88mph piloted at
+         0.0% coverage and ran at 31.7%; Aave piloted at 48.6s/comparison and
+         ran at 634.0s/comparison, a 13x miss that turned a projected ~48min
+         into 8.6 hours. Pilot-then-scale was the right discipline and a 3-pair
+         pilot is too small to size from - both are true.
+      2. **The samples are a fraction of history.** 12 evenly-spaced pairs over
+         849 Aave commits is ~1.4%; 16 completed comparisons cannot support any
+         statement about Aave's fire rate. Same for 88mph at 12/263.
+      A zero, or a one, from these runs is an ABSENCE OF EVIDENCE, not evidence
+      of absence - the HIST-L2 lesson restated for sample size instead of
+      coverage.
+- [ ] **Rule 10 was never exercised on its own known true positive.** 88mph
+      `a4c48d61` (the RC-RENAME1 case) was not in the evenly-spaced 12-pair
+      sample, so 88mph's `FINDINGS=0` says nothing about rule 10's behaviour on
+      that repo. A targeted re-run including that pair is the honest way to
+      claim anything about rule 10 on 88mph.
