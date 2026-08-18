@@ -2196,9 +2196,44 @@ that second case is the hard one and is what any fix must be measured against.
 
 ### RC-MUTEX1 — a reentrancy mutex is mistaken for one-shot init machinery
 
-**Type: FALSE POSITIVE, Rule 3c, via a SHARED helper. MEASURED on Uniswap
-v3-core `76a9ffa6ebc4`, `UniswapV3Pair`. DOCUMENTED, NOT FIXED. Highest-impact
-of the four, because the helper is shared and the shape is ubiquitous.**
+**Type: FALSE POSITIVE (Rule 3c) AND FALSE NEGATIVE (Rule 10 / 3b), via a
+SHARED helper. MEASURED on Uniswap v3-core `76a9ffa6ebc4`, `UniswapV3Pair`.
+FIXED — both directions.**
+
+> **STATUS: FIXED.** `is_oneshot_init_guard` and `has_init_guard` now require
+> TWO conditions of a gated flag, and both are load-bearing:
+>
+>   (a) some gated flag is written to a CONSTANT — finding 3b-L-ratelimit, so a
+>       rate limit writing `lastX = block.timestamp` still does not qualify;
+>   (b) some gated flag is NOT set/clear — this finding, so a mutex whose flag
+>       closes and reopens (`0` then `1`) no longer qualifies.
+>
+> **The obvious one-line version of (b) was wrong and the frozen fixtures caught
+> it.** Requiring a gated flag written to exactly ONE constant looks equivalent
+> and is not: OZ's `reinitializer(n)` writes `_initialized = version` from a
+> PARAMETER, so its only constant-written gated flag is `_initializing`, which
+> is set/clear exactly like a mutex. That form regressed `fixtures/N3b-01`
+> (3b precision 1.00 → 0.67) on the full sweep before it could ship.
+>
+> `_shared` cannot consult `_cfg.has_setclear_mutex` — `_cfg` imports `_shared`,
+> so that edge is a cycle — hence `_const_values_by_var` / `_setclear_flags`
+> live in `_shared` and deliberately duplicate a little of
+> `_cfg._gated_const_assigns`. Stated rather than worked around.
+>
+> Locked by `fixtures-rmutex/` (1.00/1.00), which covers BOTH directions plus an
+> over-suppression guard:
+>   - `N3c-mutex-01` — mutex on an immutable contract, 3c must stay quiet.
+>   - `P3c-mutex-01` — genuine one-shot initializer, same storage move, 3c must
+>     STILL fire. Without it a "fix" could pass by disabling init detection.
+>   - `P10-mutex-01` — the silent direction: a gate variable migrating to a
+>     writer guarded only by a mutex. Pre-fix Rule 10 was QUIET (measured);
+>     post-fix it FIRES.
+>
+> Live re-confirmation: the exact pair `c67ae093edd9..76a9ffa6ebc4` now produces
+> **0 findings**. 19 fixture sets PASS with every pre-existing count identical
+> to baseline.
+>
+> Original entry preserved below as provenance.
 
 **Mechanism.** `_shared.is_oneshot_init_guard(mod)` returns True when a modifier
 gates on a storage flag, writes that same flag, and writes it to a compile-time

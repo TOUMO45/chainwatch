@@ -1,0 +1,23 @@
+[
+  {
+    "id": "N3c-mutex-01",
+    "rule": 3, "sub_rule": "3c", "label": "negative", "exclusion_ref": "3c.3",
+    "path": "negative/N3c-mutex-01", "source_path": "contracts/Pool.sol",
+    "remaps": "oz4", "solc": "0.8.20",
+    "summary": "RC-MUTEX1, THE OBSERVED FALSE POSITIVE. A set/clear reentrancy mutex (`_locked = 0; _; _locked = 1;`) on an immutable contract with no initializer, no fallback and no delegatecall - the Uniswap v3 pool shape. `blockTimestampLast` moves in the storage layout. Fires before the fix because `is_oneshot_init_guard` accepts the mutex: it gates on a flag, writes that flag, and writes compile-time constants - the three tests the helper applies. `defines_init_machinery` then reports the contract proxy-deployed and disables exclusion 3c.3, so 3c fires on a contract that can never be upgraded. EXPECTED: quiet after the fix. Measured on Uniswap v3-core 76a9ffa6ebc4 (UniswapV3Pair)."
+  },
+  {
+    "id": "P3c-mutex-01",
+    "rule": 3, "sub_rule": "3c", "label": "positive", "exclusion_ref": null,
+    "path": "positive/P3c-mutex-01", "source_path": "contracts/Vault.sol",
+    "remaps": "oz4", "solc": "0.8.20",
+    "summary": "OVER-SUPPRESSION GUARD. Identical storage-layout move to N3c-mutex-01, but the contract carries a GENUINE one-shot initializer (`require(!_initialized); _initialized = true;`) - monotonic, the gate closes and never reopens. This contract really is proxy-shaped, 3c.3 must NOT exclude it, and Rule 3c must still fire. Without this case a fix could pass N3c-mutex-01 simply by disabling init-machinery detection entirely. EXPECTED: fires before AND after the fix."
+  },
+  {
+    "id": "P10-mutex-01",
+    "rule": 10, "sub_rule": null, "label": "positive", "exclusion_ref": null,
+    "path": "positive/P10-mutex-01", "source_path": "contracts/Registry.sol",
+    "remaps": "oz4", "solc": "0.8.20",
+    "summary": "RC-MUTEX1'S OTHER DIRECTION - THE SILENT FALSE NEGATIVE, never observed in the wild and the more dangerous of the two. `_owner` is established one-shot by Ownable's constructor at N-1 with only an onlyOwner run-time writer; at N the constructor is gone and an unguarded external `init` hands ownership over. That is the P10-01 shape exactly, EXCEPT the new writer carries the `lock()` reentrancy mutex. A mutex is not initialization protection - it prevents re-entry within a call, not repeat calls across transactions - so anyone can call `init` and take ownership. Pre-fix Rule 10 is SILENT: `has_init_guard` accepts the mutex, exclusion 10.1 matches, and no artifact is produced at all. EXPECTED: quiet before the fix (WRONG), fires after. A miss leaves nothing for a human to review, which is why this direction needed its own POSITIVE fixture rather than riding on the 3c negative."
+  }
+]

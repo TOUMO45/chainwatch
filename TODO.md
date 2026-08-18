@@ -465,7 +465,12 @@ LIMITATIONS.md and deliberately NOT fixed during the scan run, per the
 "log it, keep scanning, fix afterward" discipline. Each needs its own
 fixture-first pass.
 
-- [ ] **RC-MUTEX1 — a set/clear reentrancy mutex satisfies
+- [x] **RC-MUTEX1 — DONE 2026-08-18, BOTH directions. Locked by `fixtures-rmutex/`
+      (N3c-mutex-01 quiet, P3c-mutex-01 still fires, P10-mutex-01 fires where it
+      was silent). Live: v3-core c67ae093edd9..76a9ffa6ebc4 now 0 findings. The
+      naive one-constant form regressed fixtures/N3b-01 (reinitializer) and was
+      corrected to a two-condition test. Original item follows.**
+- [ ] ~~**RC-MUTEX1 — a set/clear reentrancy mutex satisfies
       `is_oneshot_init_guard`. HIGHEST PRIORITY of the four: the helper is
       SHARED and the shape is ubiquitous.** `lock() { require(unlocked == 1);
       unlocked = 0; _; unlocked = 1; }` gates on a flag, writes that flag, and

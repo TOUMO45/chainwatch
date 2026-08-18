@@ -672,6 +672,52 @@ def _namespaced_member_access(
     return reads, writes, const_writes
 
 
+def _const_values_by_var(fn: Function) -> dict:
+    """{state variable: set of DISTINCT compile-time constant values written}.
+
+    The value set, not merely the fact of a constant write, is what separates a
+    one-shot initializer from a set/clear reentrancy mutex (finding RC-MUTEX1):
+
+        initializer   _initialized = true          -> {True}      closes, stays closed
+        lock()        _locked = 0; _; _locked = 1  -> {0, 1}      closes, then REOPENS
+
+    `_state_vars_written_to_constant` cannot tell them apart because both write
+    constants; the missing property is MONOTONICITY, and monotonicity is
+    visible here as the number of distinct values.
+
+    This duplicates a little of `_cfg._gated_const_assigns` on purpose:
+    `_cfg` imports `_shared`, so `_shared` cannot import `_cfg.has_setclear_mutex`
+    without creating a cycle. Stated rather than worked around.
+    """
+    out: dict = {}
+    for f in reachable(fn):
+        for node in f.nodes:
+            for ir in node.irs:
+                if not isinstance(ir, Assignment):
+                    continue
+                rv = getattr(ir, "rvalue", None)
+                if isinstance(rv, Constant):
+                    key = ("const", rv.value)
+                elif isinstance(rv, StateVariable) and rv.is_constant:
+                    key = ("cvar", rv.canonical_name)
+                else:
+                    continue
+                lv = ir.lvalue
+                origin = (lv.points_to_origin
+                          if isinstance(lv, ReferenceVariable) else lv)
+                if isinstance(origin, StateVariable):
+                    out.setdefault(origin, set()).add(key)
+    return out
+
+
+def _setclear_flags(fn: Function) -> set:
+    """State variables written to TWO OR MORE distinct constants in fn - a gate
+    that closes and then REOPENS. That is a reentrancy mutex's signature
+    (`_locked = 0; _; _locked = 1`), and it is what a one-shot initializer
+    never does to the flag it is gated on."""
+    return {v for v, vals in _const_values_by_var(fn).items() if len(vals) >= 2}
+
+
 def _state_vars_written_to_constant(fn: Function) -> set:
     """Declared state variables assigned a compile-time Constant somewhere in
     fn's reachable body.
@@ -733,10 +779,25 @@ def is_oneshot_init_guard(mod: Function) -> bool:
     # --- OZ 4 form: declared state variables.
     written = set(mod.all_state_variables_written())
     if written:
-        const_written = _state_vars_written_to_constant(mod)
+        # TWO conditions, and BOTH are load-bearing. Dropping either one
+        # breaks a case this project has already paid for:
+        #
+        #  (a) some gated flag is written to a CONSTANT - finding
+        #      3b-L-ratelimit. A rate limit writes `lastX = block.timestamp`,
+        #      never a constant, and must not read as an init guard.
+        #  (b) some gated flag is NOT set/clear - finding RC-MUTEX1. A mutex's
+        #      flag closes and reopens (0 then 1); an initializer's does not.
+        #
+        # Requiring instead that a gated flag be written to exactly one
+        # constant looks equivalent and is not: OZ's `reinitializer(n)` writes
+        # `_initialized = version` from a PARAMETER, so its only
+        # constant-written gated flag is `_initializing`, which is set/clear
+        # just like a mutex. That stricter form regressed fixtures/N3b-01.
+        const_written = set(_const_values_by_var(mod))
+        setclear = _setclear_flags(mod)
         for node in guard_nodes(mod):
             gated = set(node.state_variables_read) & written
-            if gated & const_written:
+            if (gated & const_written) and (gated - setclear):
                 return True
 
     # --- OZ 5 form: ERC-7201 namespaced struct members.
@@ -759,10 +820,11 @@ def has_init_guard(fn: Function) -> bool:
     if any(is_oneshot_init_guard(m) for m in fn.modifiers):
         return True
     written = set(fn.all_state_variables_written())
-    const_written = _state_vars_written_to_constant(fn)
+    const_written = set(_const_values_by_var(fn))     # 3b-L-ratelimit
+    setclear = _setclear_flags(fn)                    # RC-MUTEX1
     for node in guard_nodes(fn):
         gated = set(node.state_variables_read) & written
-        if gated & const_written:
+        if (gated & const_written) and (gated - setclear):
             return True
     # Same inline check for an ERC-7201 namespaced flag. Restricted to fn's own
     # body so that a guard belonging to a callee is not credited to fn.
