@@ -303,16 +303,139 @@ def sol_commit_pairs(repo, limit: int, pathspec: str = "**/*.sol") -> list[tuple
     return pairs
 
 
-def changed_sol(repo, prev: str, cur: str, root: str = "") -> dict:
+# ---------------------------------------------------------------------------
+# scope: which directories hold THIS repository's own Solidity (SCAN-L1)
+# ---------------------------------------------------------------------------
+
+# Directory names that never hold a protocol's own deployable Solidity.
+# Matched on any path SEGMENT: `packages/x/test/y.sol` is as much a test as
+# `test/y.sol`. NEVER matched on the FILENAME - reserve-protocol ships
+# `contracts/facade/FacadeTest.sol`, a deployed facade, and dropping it because
+# of its name would lose real contracts silently.
+NON_SOURCE_SEGMENTS = frozenset({
+    "test", "tests", "testing",
+    "mock", "mocks", "mocked",
+    "spec", "specs", "certora", "echidna", "halmos", "fuzz", "invariant",
+    "script", "scripts",
+    "example", "examples", "sample", "samples", "demo",
+    "audits", "audit", "docs", "doc",
+    "node_modules", "lib", "libs", "vendor", "third_party", "external",
+    "out", "artifacts", "cache", "coverage", "build", "typechain",
+})
+
+# Directories that hold OTHER projects rather than source: the useful root is
+# one level deeper. Seen whenever a protocol ships a monorepo.
+CONTAINER_SEGMENTS = frozenset({"packages", "apps", "modules", "projects"})
+
+# Conventional source roots, preferred over a bare file count when present.
+SOURCE_ROOT_NAMES = ("contracts", "src")
+
+
+def _is_non_source(path: str) -> bool:
+    """True when any DIRECTORY segment of `path` names a non-source location."""
+    return any(seg.lower() in NON_SOURCE_SEGMENTS for seg in path.split("/")[:-1])
+
+
+def detect_source_scope(repo, ref: str = "HEAD") -> dict:
+    """Which directories hold this repository's own Solidity, decided from the
+    tree rather than from a default someone typed into a form.
+
+    The web app shipped `root_dir` pre-filled with `contracts`; morpho-blue
+    keeps its Solidity in `src/`, so every diff was empty, every pair counted as
+    analysed, and the scan reported a clean 0 findings having compiled nothing.
+
+    THE COUNTING ORDER IS THE WHOLE ALGORITHM. morpho-blue's `test/` holds 29
+    .sol files against `src/`'s 22, so any rule that ranks directories by file
+    count BEFORE removing test locations picks the tests. Non-source names are
+    therefore removed first and never compete.
+
+    Returns roots (possibly `[""]`, meaning the repository root), the exclusion
+    segments that go with them, the counts behind the decision, and a `reason`
+    string the UI shows the user - because a scope chosen for someone is a scope
+    they are entitled to see.
+    """
+    try:
+        out = _git(repo, "ls-tree", "-r", "--name-only", ref)
+    except Exception as exc:  # noqa: BLE001 - an unreadable tree is not a crash
+        return {"roots": [], "exclude_segments": sorted(NON_SOURCE_SEGMENTS),
+                "total_files": 0, "source_files": 0, "excluded_files": 0,
+                "counts": {}, "reason": f"could not read the tree at {ref}: {exc}"}
+
+    paths = [p for p in out.splitlines() if p.endswith(".sol")]
+    source = [p for p in paths if not _is_non_source(p)]
+    base = {"exclude_segments": sorted(NON_SOURCE_SEGMENTS),
+            "total_files": len(paths), "source_files": len(source),
+            "excluded_files": len(paths) - len(source)}
+
+    if not paths:
+        return {**base, "roots": [], "counts": {},
+                "reason": "no Solidity files are tracked at this revision"}
+    if not source:
+        return {**base, "roots": [], "counts": {},
+                "reason": (f"all {len(paths)} tracked Solidity files sit under "
+                           f"test, mock or vendor directories - this repository "
+                           f"has no source tree to walk")}
+
+    def root_of(path: str) -> str:
+        segs = path.split("/")
+        if len(segs) == 1:
+            return ""                                  # .sol at the repo root
+        if segs[0].lower() in CONTAINER_SEGMENTS and len(segs) > 2:
+            return "/".join(segs[:2])                  # packages/<project>
+        return segs[0]
+
+    counts: dict[str, int] = {}
+    for p in source:
+        counts[root_of(p)] = counts.get(root_of(p), 0) + 1
+
+    named = [r for r in counts if r.split("/")[-1].lower() in SOURCE_ROOT_NAMES]
+    if named:
+        roots = sorted(named, key=lambda r: (-counts[r], r))
+        picked = sum(counts[r] for r in roots)
+        reason = (f"{'/, '.join(roots)}/ is a conventional Solidity source "
+                  f"directory: {picked} contract{'' if picked == 1 else 's'} of "
+                  f"{len(paths)} tracked .sol files")
+    else:
+        roots = sorted(counts, key=lambda r: (-counts[r], r))
+        shown = ", ".join((r + "/") if r else "the repository root" for r in roots)
+        picked = sum(counts[r] for r in roots)
+        reason = (f"no contracts/ or src/ directory is present; {shown} "
+                  f"hold{'s' if len(roots) == 1 else ''} this repository's "
+                  f"{picked} non-test .sol files of {len(paths)} tracked")
+    if base["excluded_files"]:
+        reason += (f". {base['excluded_files']} file"
+                   f"{'' if base['excluded_files'] == 1 else 's'} under test, "
+                   f"mock or vendor directories are excluded")
+    return {**base, "roots": roots, "counts": counts, "reason": reason}
+
+
+def changed_sol(repo, prev: str, cur: str, root: str = "",
+                roots: list | None = None,
+                exclude_segments=None) -> dict:
     """{"modified": [...], "added": [...], "deleted": [...]} for .sol paths.
 
     Only `modified` yields a comparable pair: an added file has no N-1 side and a
     deleted one has no N side, so neither can carry a regression.
+
+    Two modes, deliberately not blended:
+
+      `root`  - an EXPLICIT instruction. Honoured exactly: the diff is limited
+                to that pathspec and nothing else is filtered out. An explicit
+                root must keep meaning what it has always meant, or every pinned
+                scan silently changes result (tests/test_realworld_reserve.py
+                pins `contracts`, and reserve keeps mocks underneath it).
+
+      `roots` + `exclude_segments` - AUTO mode, from `detect_source_scope`.
+                Test, mock and vendor directories are dropped here and only
+                here.
     """
     args = ["diff", "--name-status", prev, cur]
-    if root:
-        args += ["--", root]
+    pathspecs = [root] if root else [r for r in (roots or []) if r]
+    if pathspecs:
+        args += ["--", *pathspecs]
     out = _git(repo, *args)
+
+    drop = frozenset(s.lower() for s in exclude_segments) if exclude_segments else None
     res = {"modified": [], "added": [], "deleted": []}
     for line in out.splitlines():
         if not line.strip():
@@ -320,6 +443,9 @@ def changed_sol(repo, prev: str, cur: str, root: str = "") -> dict:
         parts = line.split("\t")
         status, path = parts[0], parts[-1]
         if not path.endswith(".sol"):
+            continue
+        if not root and drop and any(
+                seg.lower() in drop for seg in path.split("/")[:-1]):
             continue
         if status.startswith("M"):
             res["modified"].append(path)

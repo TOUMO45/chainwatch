@@ -3203,7 +3203,7 @@ give Chainwatch the local path, which the error message now says.
 **Type: WHOLE-ECOSYSTEM COVERAGE HOLE, not a repository quirk. [FN risk] of the
 worst kind: not a rule staying silent on a case it saw, but every rule never
 seeing the case at all, on every repository built with the dominant Solidity
-toolchain. Found by G2's scope fix — which made the files reach the compiler
+toolchain. Found by SCAN-L1's scope fix — which made the files reach the compiler
 for the first time — MEASURED on morpho-blue, FIXED, re-measured.**
 
 #### Mechanism
@@ -3498,3 +3498,127 @@ run. The defect is the gate's INPUT SET, not the gate.
 `4/4 (100.0%)` beside it is file comparisons *within the analysed pairs* — it
 says COMP-L1 is closed, and it says nothing about the other 54 pairs. Quoting
 the 100% alone would be exactly the substitution HIST-L1 exists to prevent.
+
+---
+
+### SCAN-L1 — the scan looked at a directory the repository does not have, and called it clean
+
+**Type: CORRECTNESS OF THE RESULT ITSELF, [FN risk], found in the same
+paste-a-link-and-press-scan audit as WALK-L9 and WALK-L10. MEASURED on
+morpho-blue, FIXED, verified live through the CLI on the exact configuration
+that produced the silent zero.**
+
+The web app shipped its Subdirectory field pre-filled:
+
+```html
+<input name="root_dir" id="root_dir" placeholder="contracts" value="contracts">
+```
+
+`contracts/` is one of the two conventions. morpho-blue uses the other one,
+`src/`. Pasting it therefore diffed a path that does not exist in that
+repository — and nothing anywhere objected:
+
+```
+commit pairs analyzed : 5/5  (100.0%)
+file comparisons ok   : 0/0  (0.0%)
+
+SUMMARY   0 finding(s): 0 CONFIRMED, 0 CANDIDATE
+```
+
+Every pair "analysed", because a pair with no modified files in scope is not a
+failure to analyse — there was genuinely nothing to do. `files_total` stayed 0.
+The report was structurally complete, every gate green, and it was a statement
+about **no code at all**.
+
+This is the HIST-L1 invariant one level below where HIST-L1 was installed.
+Coverage exists precisely so "0 findings over 3 analysed pairs" cannot read like
+"0 findings over 40" — and it worked, on the axis it was built for. It had no
+opinion about a run where every pair was analysed and each contained nothing,
+because that is 100% by every number it tracks. The percentage was right; the
+denominator was empty.
+
+#### Fix — IMPLEMENTED, in two independent parts
+
+Both are needed. Detection alone would have fixed morpho-blue and left the next
+misconfigured scan just as silent.
+
+**1. `history.detect_source_scope` decides the scope from the tree** instead of
+from a default someone typed into a form. The web app's field is now empty by
+default and documented as optional.
+
+*The counting ORDER is the whole algorithm.* At morpho-blue's HEAD, `test/`
+holds 29 `.sol` files against `src/`'s 22 (17 once `src/mocks/` comes out), so
+any rule that ranks directories by file count before removing test locations
+picks the tests and produces a confident, wrong, fully-covered scan of a test
+suite. Non-source segments are therefore removed
+first and never compete. `tests/test_scope.py` pins that shape directly
+(`test_src_layout_wins_even_when_tests_are_more_numerous`).
+
+Two exclusion decisions are load-bearing and are each pinned by their own test:
+
+- **Segments, never filenames.** reserve-protocol ships
+  `contracts/facade/FacadeTest.sol` — a deployed facade. Excluding on the name
+  `*Test.sol` would drop real contracts silently, which is the same class of
+  failure being fixed.
+- **An explicit `root_dir` is an instruction, not a hint.** Auto-mode's
+  exclusions are NOT applied on top of it. `tests/test_realworld_reserve.py`
+  pins `root_dir="contracts"` and reserve keeps mocks underneath it; filtering
+  those out would have moved a pinned real-world result as a side effect of a
+  UI change.
+
+**2. `scan._nothing_compared` refuses the silent zero, whatever the scope.**
+`files_total == 0` now produces an explicit statement, carried IN THE REPORT
+(`report["nothing_compared"]`) rather than recomputed by each front end — which
+is how the CLI and the web app start disagreeing about the same scan. The CLI
+prints it as a banner above the findings; the web app raises it as an alert at
+the same weight as a scan failure.
+
+#### Verified live, on the configuration that caused it
+
+The old default, re-run deliberately against morpho-blue after the fix:
+
+```
+SCOPE     contracts/   [explicit]
+          restricted to contracts/ as requested; nothing else is filtered out
+
+COVERAGE (read this before the findings)
+  commit pairs analyzed : 5/5  (100.0%)
+  file comparisons ok   : 0/0  (0.0%)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+NOT A RESULT ABOUT THIS CODE
+  No Solidity file was compared: no commit in this range modified a .sol
+  file under contracts/. Check the subdirectory - a scope that matches
+  nothing produces a quiet result that is UNMEASURED, not clean.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+```
+
+and with the scope detected instead of dictated:
+
+```
+SCOPE     src/   [auto]
+          src/ is a conventional Solidity source directory: 17 contracts of 58
+          tracked .sol files. 41 files under test, mock or vendor directories are
+          excluded
+
+  commit pairs analyzed : 5/5  (100.0%)
+  file comparisons ok   : 4/4  (100.0%)
+```
+
+Those four comparisons are what exposed **COMP-L1** immediately afterwards: they
+had never reached a compiler before, and when they did, none of them compiled.
+Fixing the scope did not produce findings — it produced the next honest failure,
+which is the intended shape of the thing.
+
+#### What this does NOT fix
+
+- **The scope is a heuristic and is presented as one.** It reports its `reason`
+  to the user in both front ends, because a scope chosen on someone's behalf is
+  one they are entitled to see and override. A repository with an unconventional
+  layout can still be scoped wrongly; it will say what it chose and why.
+- **A repository whose Solidity is entirely under excluded directories reports
+  an empty scope** rather than silently scanning its tests. That is deliberate,
+  and `test_a_repo_whose_solidity_is_all_tests_reports_that_honestly` holds it
+  in place.
+- **Nothing here widens what a pair means.** `changed_sol` still yields only
+  `modified` files, for the reason it always has: an added file has no N-1 side.

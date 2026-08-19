@@ -145,6 +145,10 @@ function handle(ev) {
   switch (ev.kind) {
     case "start":
       log("info", `scanning ${ev.repo}`); break;
+    case "scope":
+      log("info", `scope: ${(ev.roots || []).map((r) => r || "(repo root)").join(", ")
+        || "(nothing)"} — ${ev.reason || ""}`);
+      break;
     case "pairs":
       log("info", `${ev.total} commit pair(s) to analyse`); break;
     case "pair":
@@ -201,6 +205,17 @@ function setStatus(text, cls) {
 
 function render(rep) {
   const cov = rep.coverage, s = rep.summary;
+
+  /* A scan that compared no Solidity at all is not a result about the code,
+   * and the engine now says so in `nothing_compared`. Shown at the top, at the
+   * same weight as a failure, because "0 findings over 0 comparisons" reads
+   * exactly like "0 findings over 400" unless something stops it. */
+  if (rep.nothing_compared) {
+    showAlert("Not a result about this code", rep.nothing_compared,
+      "Chainwatch compiled nothing, so no rule ever ran.", "warn");
+  } else {
+    clearAlert();
+  }
   const partial = cov.pairs_analyzed < cov.pairs_total || cov.files_error > 0
                   || (cov.files_skipped || 0) > 0;
 
@@ -210,8 +225,19 @@ function render(rep) {
   const skipLines = Object.entries(skipCounts)
     .map(([r, n]) => `<div class="cov-note">· ${n} × ${esc(r)}</div>`).join("");
 
+  const sc = rep.scope || {};
+  const scopeLine = sc.roots
+    ? `<div class="scope-line"><b>Scope</b>
+         <span class="scope-roots">${esc((sc.roots.length
+            ? sc.roots.map((r) => (r ? r + "/" : "(repository root)")).join(", ")
+            : "nothing"))}</span>
+         <span class="muted">${esc(sc.mode === "explicit"
+            ? "as requested" : "detected automatically")}</span>
+         <div class="cov-note">${esc(sc.reason || "")}</div></div>`
+    : "";
+
   $("coverage").className = "coverage" + (partial ? " partial" : "");
-  $("coverage").innerHTML = `
+  $("coverage").innerHTML = scopeLine + `
     <div class="cov-head">Coverage — read this before the findings</div>
     <div class="cov-grid">
       <div class="cov-metric"><b>${cov.pairs_analyzed}/${cov.pairs_total}</b>

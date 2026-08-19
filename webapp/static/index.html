@@ -26,11 +26,12 @@
     <h2>New scan</h2>
     <form id="scan-form">
       <label>Repository
-        <input name="repo" id="repo" placeholder="path/to/repo or https://github.com/org/repo"
-               value="realworld-test/reserve-src" required>
+        <input name="repo" id="repo" placeholder="https://github.com/org/repo"
+               required>
       </label>
-      <label>Subdirectory <span class="hint">restricts the diff</span>
-        <input name="root_dir" id="root_dir" placeholder="contracts" value="contracts">
+      <label>Subdirectory <span class="hint">optional — detected automatically</span>
+        <input name="root_dir" id="root_dir"
+               placeholder="leave empty to detect the source directory">
       </label>
       <div class="row">
         <label>Commits

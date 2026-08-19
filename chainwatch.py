@@ -63,6 +63,12 @@ def _print_progress(ev: dict) -> None:
         print(f"  checking on-chain liveness for {ev.get('address')}")
 
 
+def _wrap(text: str, width: int = 74) -> list[str]:
+    import textwrap
+
+    return textwrap.wrap(text, width=width)
+
+
 def print_report(rep: dict) -> None:
     s, cov = rep["summary"], rep["coverage"]
     print()
@@ -70,6 +76,18 @@ def print_report(rep: dict) -> None:
     print(f"CHAINWATCH REPORT   {rep['repo']}")
     print(f"HEAD {rep.get('head')}")
     print("=" * 78)
+
+    # SCOPE, then coverage, then findings. Each answers a question the next is
+    # meaningless without: what was looked at, how much of that could be
+    # analysed, and only then what was found.
+    scope = rep.get("scope") or {}
+    if scope:
+        roots = ", ".join((r + "/") if r else "(repository root)"
+                          for r in (scope.get("roots") or [])) or "(nothing)"
+        print(f"\nSCOPE     {roots}   [{scope.get('mode', 'auto')}]")
+        if scope.get("reason"):
+            for line in _wrap(scope["reason"]):
+                print(f"          {line}")
 
     # Coverage FIRST. A finding count without it is not interpretable.
     print("\nCOVERAGE (read this before the findings)")
@@ -106,6 +124,13 @@ def print_report(rep: dict) -> None:
         for rid in RULE_ORDER:
             if rid in rep["by_rule"]:
                 print(f"    rule {rid:<3} {RULE_TITLES[rid]:<42} {rep['by_rule'][rid]}")
+
+    if rep.get("nothing_compared"):
+        print("\n" + "!" * 78)
+        print("NOT A RESULT ABOUT THIS CODE")
+        for line in _wrap(rep["nothing_compared"]):
+            print("  " + line)
+        print("!" * 78)
 
     if not rep["findings"]:
         print("\nNo regression matched any shipped rule over the analyzed pairs.")

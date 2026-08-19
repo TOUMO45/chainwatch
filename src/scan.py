@@ -152,7 +152,11 @@ class ScanOptions:
     repo: Path
     limit: int = 50
     pathspec: str = "**/*.sol"
-    root_dir: str = ""              # restrict the diff to this subdirectory
+    # An EXPLICIT subdirectory. Honoured exactly - no test/mock filtering is
+    # applied on top, because an explicit root is an instruction rather than a
+    # hint, and changing what it means would silently move every pinned result.
+    # Left empty, the scope is DETECTED from the tree (finding SCAN-L1).
+    root_dir: str = ""
     address: Optional[str] = None   # capability 11
     rpc_url: Optional[str] = None
     worktrees: Optional[Path] = None
@@ -271,6 +275,7 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
     started = time.time()
     cov = Coverage()
     findings: list[V.Finding] = []
+    scope: dict = {}
 
     emit_event("start", repo=str(repo), limit=opts.limit, rules=rule_ids)
 
@@ -283,12 +288,27 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
     origin = H.mirror_clone(repo, worktrees / "origin.git")
     emit_event("mirror", path=str(origin))
 
+    # WHAT THIS SCAN WILL LOOK AT, decided before it starts and reported to the
+    # caller (SCAN-L1). Without this the web app's `contracts` default
+    # diffed a directory morpho-blue does not have: every pair was "analysed",
+    # not one file was compared, and the result read as a clean scan.
+    if opts.root_dir:
+        scope = {"mode": "explicit", "roots": [opts.root_dir],
+                 "exclude_segments": [],
+                 "reason": f"restricted to {opts.root_dir}/ as requested; "
+                           f"nothing else is filtered out"}
+    else:
+        scope = {**H.detect_source_scope(origin), "mode": "auto"}
+    emit_event("scope", **{k: scope.get(k) for k in
+                           ("mode", "roots", "reason", "source_files",
+                            "excluded_files", "total_files")})
+
     pairs = (list(opts.explicit_pairs) if opts.explicit_pairs
              else H.sol_commit_pairs(origin, opts.limit, opts.pathspec))
     cov.pairs_total = len(pairs)
     emit_event("pairs", total=len(pairs))
     if not pairs:
-        return _report(opts, cov, findings, started, head=None)
+        return _report(opts, cov, findings, started, head=None, scope=scope)
 
     head = H._git(origin, "rev-parse", "HEAD").strip()
     # `wt/` rather than the old flat layout: worktrees created against the
@@ -364,7 +384,9 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
             _apply_build_config(head_spec)
         _apply_build_config(cur_spec)
 
-        changed = H.changed_sol(origin, prev, cur, opts.root_dir)
+        changed = H.changed_sol(origin, prev, cur, opts.root_dir,
+                                roots=scope.get("roots"),
+                                exclude_segments=scope.get("exclude_segments"))
         modified = list(changed.get("modified", []))
         if not modified:
             cov.pairs_analyzed += 1
@@ -467,7 +489,7 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
     if opts.address:
         _attach_liveness(opts, findings, head_wt, emit_event)
 
-    report = _report(opts, cov, findings, started, head=head)
+    report = _report(opts, cov, findings, started, head=head, scope=scope)
     emit_event("done", **{k: report["summary"][k] for k in report["summary"]})
     return report
 
@@ -572,8 +594,41 @@ def _runtime_bytecode(root: Path, rel: str, contract: str,
     return None
 
 
+def _nothing_compared(cov: Coverage, scope: dict) -> Optional[str]:
+    """Why this scan compared no Solidity at all, or None if it compared some.
+
+    HIST-L1 one level down. Coverage already refuses to let "0 findings over 3
+    analysed pairs" read like "0 findings over 40". It did NOT catch the case
+    where every pair was analysed and each contained nothing to analyse:
+    `pairs_analyzed` hits 100%, `files_total` stays 0, and the report looks
+    complete. That is exactly what the web app's `contracts` default produced
+    against a repository whose Solidity lives in `src/`.
+    """
+    if cov.files_total:
+        return None
+    roots = scope.get("roots")
+    if scope.get("mode") == "explicit":
+        return (f"No Solidity file was compared: no commit in this range "
+                f"modified a .sol file under {_scope_roots_text(scope)}. Check the "
+                f"subdirectory - a scope that matches nothing produces a quiet "
+                f"result that is UNMEASURED, not clean.")
+    if not roots:
+        return (f"No Solidity file was compared: {scope.get('reason', '')}. "
+                f"Nothing was measured, so nothing here is evidence about this "
+                f"repository's code.")
+    return (f"No Solidity file was compared: no commit in this range modified a "
+            f"file under {', '.join(r or 'the repository root' for r in roots)}. "
+            f"Widen the commit count, or name a subdirectory explicitly.")
+
+
+def _scope_roots_text(scope: dict) -> str:
+    roots = scope.get("roots") or [""]
+    return ", ".join((r + "/") if r else "the repository root" for r in roots)
+
+
 def _report(opts: ScanOptions, cov: Coverage, findings: list[V.Finding],
-            started: float, head: Optional[str]) -> dict:
+            started: float, head: Optional[str], scope: Optional[dict] = None) -> dict:
+    scope = scope or {}
     confirmed = [f for f in findings if f.verdict == V.CONFIRMED]
     candidates = [f for f in findings if f.verdict == V.CANDIDATE]
     by_rule: dict[str, int] = {}
@@ -583,6 +638,10 @@ def _report(opts: ScanOptions, cov: Coverage, findings: list[V.Finding],
         "repo": str(opts.repo),
         "head": head,
         "address": opts.address,
+        # WHAT WAS LOOKED AT. Shipped with the report rather than left to the
+        # caller to infer, so "0 findings" can never be read without it.
+        "scope": scope,
+        "nothing_compared": _nothing_compared(cov, scope),
         "summary": {
             "findings": len(findings),
             "confirmed": len(confirmed),
