@@ -3195,3 +3195,306 @@ A genuinely private repository the user has legitimate access to cannot be
 scanned. That is deliberate and it is the charter's position, not a gap:
 Chainwatch never authenticates. The supported route is to clone it yourself and
 give Chainwatch the local path, which the error message now says.
+
+---
+
+### COMP-L1 — the compile PLATFORM is chosen from the TREE, and a Foundry tree compiles to nothing
+
+**Type: WHOLE-ECOSYSTEM COVERAGE HOLE, not a repository quirk. [FN risk] of the
+worst kind: not a rule staying silent on a case it saw, but every rule never
+seeing the case at all, on every repository built with the dominant Solidity
+toolchain. Found by G2's scope fix — which made the files reach the compiler
+for the first time — MEASURED on morpho-blue, FIXED, re-measured.**
+
+#### Mechanism
+
+crytic-compile does not decide how to compile a `.sol` file by looking at the
+file. It looks at the directory tree above it, and `foundry.toml` anywhere in
+the ancestry wins:
+
+```python
+# crytic_compile/platform/foundry.py
+for p in target.parents:
+    if (p / "foundry.toml").is_file():
+        return p
+```
+
+Once the Foundry platform is selected, compilation IS `forge`:
+
+```python
+# Foundry.config(), called from Foundry.compile()
+subprocess.run(["forge", "config", "--json"], cwd=working_dir,
+               stdout=subprocess.PIPE, check=True)
+```
+
+There is no `shutil.which` guard on that call and no fallback behind it. With
+no `forge` on PATH it raises `FileNotFoundError` **before any compiler has read
+a single byte of Solidity** — so the failure is total (every file of the repo,
+every rule) and the error is uninformative (a missing executable, which says
+nothing about the code).
+
+CHARTER rule 3 puts installing `forge` out of reach without the human, and that
+is the right answer twice over: it is a new dependency, and it is one more
+binary running target-adjacent code in the category WALK-L9 was about.
+
+#### Evidence — morpho-blue, before
+
+`morpho-org/morpho-blue`, `--limit 5`, the four file comparisons those commits
+produce:
+
+```
+COVERAGE (read this before the findings)
+  commit pairs analyzed : 5/5  (100.0%)
+  file comparisons ok   : 0/4  (0.0%)
+  file comparisons lost : 4 (rule errors, see --json for detail)
+
+SUMMARY   0 finding(s): 0 CONFIRMED, 0 CANDIDATE in 42.9s
+```
+
+All 40 `coverage.rule_errors` entries (4 comparisons x 10 rules) are the same
+line:
+
+```
+{'pair': '1bcfbfdfa284..792a3c9c867d', 'file': 'src/Morpho.sol', 'rule': '1',
+ 'error': 'FileNotFoundError: [WinError 2] Le fichier spécifié est introuvable'}
+```
+
+Note what that string is, because the fix depends on it: an **OS message, in
+the machine's display language**. It is not a compiler diagnostic and it cannot
+be pattern-matched portably.
+
+#### Why this is stated as ecosystem-wide
+
+Nothing above is specific to morpho-blue. The trigger is the presence of
+`foundry.toml`, which is the defining marker of a Foundry project, and the
+consequence applies to every `.sol` beneath it. Any Foundry repository scanned
+on a machine without `forge` returned, and would have kept returning, a
+**structurally clean report over zero compiled files**. Chainwatch's own
+`has_foundry` flag (`history.EnvSpec`) had detected these repos all along, and
+used the detection only to read a solc pin out of `foundry.toml` and to key the
+dependency cache — the platform consequence was never followed through.
+
+This is the HIST-L1 invariant one level in. Coverage reporting did its job
+perfectly here: `0/4` was printed above the findings and the run did not claim
+to be clean. What was missing was any way to turn that honest zero into a
+number.
+
+#### Fix — IMPLEMENTED: solc as a FALLBACK, never as an override
+
+`_shared._compile` now makes one extra attempt, and only one, with the Foundry
+platform disabled (`foundry_ignore=True`, which makes `Foundry.is_supported`
+return False so detection falls through to the Solc platform):
+
+```python
+try:
+    return _compile_attempt(path)
+except Exception:
+    if not _foundry_platform_unusable(path):
+        raise
+    return _compile_attempt(path, foundry_ignore=True)
+```
+
+Three properties are deliberate, and each is a separate test in
+`tests/test_foundry_fallback.py`:
+
+**1. The gate is structural, not a string match.** `_foundry_platform_unusable`
+is true only when *both* `crytic_compile`'s own `Foundry.locate_project_root`
+finds a project root above the file *and* `shutil.which("forge")` is None. The
+predicate asks the detector that caused the failure rather than re-deriving its
+rule, and it never reads the error text — which, per the evidence above, is
+localized and would make the fix work or not work depending on the machine's
+display language.
+
+**2. It is never forced.** On a machine that HAS `forge`, a Foundry build that
+fails has told us something real about the sources, and retrying under bare
+solc would erase it. The fallback stays disarmed there even though arming it
+would raise the coverage number. That trade — coverage for truth — is the one
+this project consistently refuses, and it is the whole reason this is "solc as
+fallback" rather than "solc always".
+
+**3. A genuine error is unmasked, not masked.** The requirement going in was
+that a real syntax error must not be silently retried into a different platform
+and lost. What the fixtures showed is that the direction is the opposite of the
+worry: because the Foundry path fails *before reading the source*, the primary
+attempt cannot have learned anything, and today's behaviour is that a genuine
+syntax error inside a Foundry repo surfaces as *"forge is not installed"*. After
+the fix the caller gets the compiler's own diagnostic — byte-identical to the
+one the same file produces outside a Foundry tree, which is how
+`test_the_error_is_the_same_one_the_control_produces` states it. The
+forge-missing cause is still reachable through `__context__`:
+
+```
+slither.exceptions.SlitherError: 'Invalid compilation: ... Expected primary expression'
+ -> crytic_compile.platform.exceptions.InvalidCompilation
+ -> json.decoder.JSONDecodeError
+ -> builtins.StopIteration
+ -> builtins.FileNotFoundError: '[WinError 2] Le fichier spécifié est introuvable'
+```
+
+#### Ground truth
+
+`fixtures-foundry/`, frozen by `guard.sh` alongside the detection fixtures. It
+carries no `manifest.json` and no rule is scored against it: it is ground truth
+for a *compilation* question. `project/src/Vault.sol` is import-free on purpose,
+so a failure can only be blamed on which platform ran; `plain/Broken.sol` is
+byte-identical to `project/src/Broken.sol` so "not masked" can be asserted as an
+equality between the two errors rather than as a judgement about one.
+
+Pre-fix the new tests fail 8 of 9, on exactly the claims above:
+
+```
+AssertionError: assert <class 'FileNotFoundError'> is <class 'slither.exceptions.SlitherError'>
+```
+
+#### Verified
+
+**No fixture moved.** The 22-set sweep is byte-identical before and after —
+same SHA-256 over the concatenated per-case verdicts and per-rule tables,
+`22/22 RESULT: PASS` both times:
+
+```
+f2f9405df3bfd1f35e0b348dbf390d50bd21690cab6f40d711c140183a0d479c  sweep-before.txt
+f2f9405df3bfd1f35e0b348dbf390d50bd21690cab6f40d711c140183a0d479c  sweep-after.txt
+```
+
+Expected, and worth stating why: every case takes attempt 1. None of the 22
+scored sets lives under a `foundry.toml`, so the gate is false and the fallback
+never arms for any of them.
+
+**morpho-blue, after** — same repository, same commits, same command:
+
+```
+COVERAGE (read this before the findings)
+  commit pairs analyzed : 5/5  (100.0%)
+  file comparisons ok   : 4/4  (100.0%)
+
+SUMMARY   0 finding(s): 0 CONFIRMED, 0 CANDIDATE in 49.6s
+```
+
+`coverage.rule_errors` is empty; solc `0.8.19` compiled all four.
+
+#### What the zero findings do and do not mean
+
+**Nothing.** They are an absence of evidence, and the sampling-honesty entry in
+`TODO.md` applies unchanged. The four comparisons in the `--limit 5` window are
+a license header update, a merge of that update, and a typo fix; a security
+regression rule finding nothing in them is the expected result and is not a
+statement about morpho-blue. What changed is only that the zero is now
+**measured** rather than **unmeasured** — 4 comparisons actually performed
+instead of 4 attempted and lost. That distinction is the entire point of
+printing coverage first, and it is the only claim this entry makes.
+
+#### Residual limits, stated
+
+- **The fallback compiles without the project's build settings.** morpho-blue's
+  `foundry.toml` declares `via_ir = true`, `optimizer = true`,
+  `optimizer_runs = 999999`, `evm_version = "paris"`; bare solc under the
+  fallback applies none of them. That is irrelevant to every shipped rule —
+  they read AST/IR/data-dependency, which optimizer settings do not change —
+  and it is *not* irrelevant to capability 11, where deployed bytecode is
+  compared. Liveness does not route through this path (`_runtime_bytecode` and
+  `_storage._run_layout` invoke `solc` directly and were never affected by
+  COMP-L1), so nothing regressed; but a future liveness check on a Foundry
+  target must supply those settings itself or report UNKNOWN.
+- **The wider run moved the constraint, it did not remove it.** `--limit 60`
+  over the same repository analyses `6/60 (10.0%)` pairs; the file comparisons
+  inside those are `4/4`, and 54 pairs are lost on the dependency axis instead.
+  One of the two causes is ours and is written up as **HIST-L6** below. COMP-L1
+  is closed; morpho-blue is not covered.
+- **A `forge` that exists and fails is still unclassified.** `history.classify`
+  has no cause for it, so it lands in `CAUSE_UNKNOWN`. Unreachable on this
+  machine and left alone rather than written blind.
+- **Remappings still come from `history.derive_remaps`,** which reads `lib/` and
+  `remappings.txt`. A Foundry project whose remappings live only inside
+  `foundry.toml` under a `remappings = [...]` key is not covered — morpho-blue
+  does not use one, so this is untested rather than known-broken, and it is
+  recorded here instead of being asserted either way.
+
+---
+
+### HIST-L6 — the dependency-completeness gate counts a DEPENDENCY's own imports as the repo's
+
+**Type: COVERAGE, [FN risk]. DIAGNOSED AND NOT FIXED — deliberately. Found while
+verifying COMP-L1, on the widened morpho-blue run that COMP-L1 made possible.
+Recorded with its measurement so the next session starts from evidence rather
+than from a re-derivation.**
+
+Once COMP-L1 stopped losing the file comparisons, morpho-blue's binding
+constraint moved to the axis HIST-L1 named, and a 60-commit run says where
+exactly:
+
+```
+COVERAGE (read this before the findings)
+  commit pairs analyzed : 6/60  (10.0%)
+  file comparisons ok   : 4/4  (100.0%)
+  pairs skipped         : 54
+        54  env-reconstruction-failed (dep-missing)
+```
+
+The 54 are two causes, counted:
+
+```
+52  install completed but these imported packages are absent: ds-test
+ 2  submodule update failed: fatal: No url found for submodule path
+    'lib/halmos-cheatcodes' in .gitmodules
+```
+
+The 2 are a genuine historical inconsistency in the target — a commit whose
+gitlink and `.gitmodules` disagree — and nothing here can fix that.
+
+The 52 are ours. `history.imported_packages` documents itself as returning
+"non-relative import prefixes appearing in **the repo's own Solidity**", and
+enforces that by skipping `node_modules`:
+
+```python
+for f in search.rglob("*.sol"):
+    if "node_modules" in f.parts:
+        continue
+```
+
+`lib/` is not skipped. For a Foundry project `lib/` **is** the dependency
+directory, so the walk descends into the dependencies and reads their imports as
+the repository's requirements. Measured on morpho-blue, the only two files in
+the entire checkout that import `ds-test/` are:
+
+```
+lib/forge-std/src/Test.sol:27:       import {DSTest} from "ds-test/test.sol";
+lib/forge-std/src/StdAssertions.sol:4:import {DSTest} from "ds-test/test.sol";
+```
+
+Both are vendored forge-std. `ds-test` is then looked for at `<root>/lib/ds-test`
+and is not there — it is nested at `lib/forge-std/lib/ds-test`, which is where
+forge's own remappings resolve it. `_missing_imported_packages` therefore reports
+the environment incomplete and `install()` fails the pair.
+
+Two things compound, and both should be said:
+
+- **The repo's own `src/` imports nothing at all.** Every import under
+  morpho-blue's `src/` is relative (`../../interfaces/IMorpho.sol`). The
+  requirement that costs 52 pairs is not merely satisfiable-elsewhere, it is
+  not the repository's requirement in the first place.
+- **The scan had already decided not to compile those files.** Scope detection
+  selects `src/` and excludes 41 of 58 `.sol` files as test/mock/vendor. The
+  completeness gate then re-admits the excluded tree through the back door and
+  skips the whole pair over it. Two parts of the same run disagree about what
+  is in scope.
+
+#### Why it is not fixed here
+
+The obvious change — skip `lib` alongside `node_modules`, or compute the gate
+over the detected scope rather than the whole tree — alters SKIP behaviour for
+every repository, including the four the Step 5 numbers came from. That is a
+measurement-moving change and it needs its own fixtures and its own before/after
+sweep, exactly like every fix in this file. Bundling it into COMP-L1's commit
+would have made COMP-L1's byte-identical sweep meaningless as evidence.
+
+HIST-L4 is the reason the gate exists at all, and that reasoning is still
+correct: a cached tree that is quietly missing a package poisons every later
+run. The defect is the gate's INPUT SET, not the gate.
+
+#### What the morpho-blue numbers mean until then
+
+`6/60 (10.0%)` pairs is the honest figure and it is the one to quote. The
+`4/4 (100.0%)` beside it is file comparisons *within the analysed pairs* — it
+says COMP-L1 is closed, and it says nothing about the other 54 pairs. Quoting
+the 100% alone would be exactly the substitution HIST-L1 exists to prevent.

@@ -6,6 +6,7 @@ no modifier name-string matching (CHARTER.md rule 4, RULES.md Rule 1 note).
 
 import logging
 import os
+import shutil
 from pathlib import Path
 
 from slither import Slither
@@ -182,7 +183,7 @@ def exact_pin_installed(path) -> str | None:
         return None
 
 
-def _compile(path) -> Slither:
+def _compile_attempt(path, **extra) -> Slither:
     """Compile with the ambient compiler; if it refuses the file's pragma, retry
     with each installed solc until one accepts it.
 
@@ -217,7 +218,7 @@ def _compile(path) -> Slither:
         saved = os.environ.get("SOLC_VERSION")
         os.environ["SOLC_VERSION"] = pinned
         try:
-            return Slither(str(path), solc_remaps=remaps_for(path))
+            return Slither(str(path), solc_remaps=remaps_for(path), **extra)
         finally:
             if saved is None:
                 os.environ.pop("SOLC_VERSION", None)
@@ -225,7 +226,7 @@ def _compile(path) -> Slither:
                 os.environ["SOLC_VERSION"] = saved
 
     try:
-        return Slither(str(path), solc_remaps=remaps_for(path))
+        return Slither(str(path), solc_remaps=remaps_for(path), **extra)
     except Exception:
         pass
 
@@ -236,7 +237,7 @@ def _compile(path) -> Slither:
                 continue
             os.environ["SOLC_VERSION"] = version
             try:
-                return Slither(str(path), solc_remaps=remaps_for(path))
+                return Slither(str(path), solc_remaps=remaps_for(path), **extra)
             except Exception:
                 continue
     finally:
@@ -246,7 +247,113 @@ def _compile(path) -> Slither:
             os.environ["SOLC_VERSION"] = saved
 
     # Nothing accepted the file: re-raise the ambient compiler's own error.
-    return Slither(str(path), solc_remaps=remaps_for(path))
+    return Slither(str(path), solc_remaps=remaps_for(path), **extra)
+
+
+def foundry_project_root(path):
+    """The Foundry project root above `path`, or None - crytic-compile's OWN
+    answer, not a re-implementation of it.
+
+    The predicate that gates the fallback below has to agree EXACTLY with the
+    detection that caused the failure, so it asks the detector rather than
+    guessing at its rule. `locate_project_root` is the real installed API
+    (crytic_compile/platform/foundry.py), read before use per CHARTER rule 4;
+    `Foundry.is_supported` is a thin wrapper over it.
+
+    Fails CLOSED. If the import ever moves, this returns None, the fallback
+    never arms, and compilation behaves exactly as it did before this existed.
+    """
+    try:
+        from crytic_compile.platform.foundry import Foundry
+    except Exception:  # noqa: BLE001 - unknown crytic layout: no fallback
+        return None
+    try:
+        return Foundry.locate_project_root(str(path))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def foundry_toolchain_absent() -> bool:
+    """True when `forge` is not on PATH.
+
+    CHARTER rule 3 forbids installing one to make this False, and that is the
+    right call twice over: a new dependency needs the human, and `forge` would
+    be another binary executing target-adjacent code (WALK-L9's category).
+    """
+    return shutil.which("forge") is None
+
+
+def _foundry_platform_unusable(path) -> bool:
+    """True when crytic-compile WILL route `path` to the Foundry platform and
+    that platform CANNOT compile anything, because `forge` does not exist.
+
+    Both halves are load-bearing, and the second is what keeps this a fallback
+    instead of an override:
+
+    * A repo carrying `foundry.toml` is compiled by `forge`, not by solc, for
+      every file in it - so this is a whole-ecosystem hole, not one repo's
+      quirk. See LIMITATIONS.md COMP-L1.
+    * When `forge` IS installed, a Foundry build that fails has told us
+      something real about the sources, and retrying under bare solc would
+      mask it. So the fallback stays disarmed in that case, even though it
+      would raise the coverage number. That is the whole reason this is
+      "solc as fallback" and never "solc always".
+
+    When `forge` is absent the primary attempt fails in
+    `Foundry.config()` -> `subprocess.run(["forge", ...])`, BEFORE any compiler
+    reads the file. The error it raises is therefore `FileNotFoundError` about
+    a missing executable and carries no information about the Solidity at all.
+    Nothing can be masked by retrying, because nothing was learned.
+
+    NOT MATCHED ON THE ERROR STRING, deliberately. That message is emitted by
+    the OS and is localized - on this machine it reads
+    `[WinError 2] Le fichier spécifié est introuvable` - so any substring test
+    would pass or fail depending on the machine's display language. The
+    condition is structural instead: is it a Foundry project, and is forge
+    missing. Both are facts about the filesystem.
+    """
+    return foundry_project_root(path) is not None and foundry_toolchain_absent()
+
+
+def _compile(path) -> Slither:
+    """`_compile_attempt`, plus ONE narrowly gated retry with the Foundry
+    platform disabled (finding COMP-L1).
+
+    Order of events, and why each step is where it is:
+
+    1. The normal attempt runs FIRST and unchanged. A repo whose framework
+       build works keeps using it; every fixture set takes this path and its
+       counts are byte-identical to before this function existed.
+    2. If it raises, `_foundry_platform_unusable` decides. It is False for
+       every non-Foundry target and for every Foundry target on a machine
+       that has `forge`, and in both cases the original error propagates with
+       `raise` - same exception, same traceback, no wrapping.
+    3. Only when it is True do we retry with `foundry_ignore=True`, which
+       makes `Foundry.is_supported` return False and lets detection fall
+       through to the Solc platform for this one call. Remappings still come
+       from `remaps_for(path)` - i.e. from `history.derive_remaps`, which
+       already reads `lib/` and `remappings.txt` - so the fallback is not
+       compiling blind.
+
+    IF THE FALLBACK ALSO FAILS, ITS ERROR IS THE ONE THAT ESCAPES, and that is
+    the point rather than a side effect. A genuine syntax error inside a
+    Foundry repo currently surfaces as "forge is not installed", which sends
+    the reader after the wrong problem entirely; after this it surfaces as the
+    compiler's own diagnostic, identical to the one the same file produces
+    outside a Foundry tree. Python chains the two, so the forge-missing cause
+    is still visible in the traceback - masked in neither direction
+    (METHODOLOGY Face A: report the error from the path that actually knows).
+    """
+    try:
+        return _compile_attempt(path)
+    except Exception:
+        if not _foundry_platform_unusable(path):
+            raise
+        # INSIDE the except block on purpose. Retrying after it had exited
+        # would work identically until the retry ALSO failed, at which point
+        # the forge-missing cause would have been dropped from the traceback -
+        # the implicit `__context__` link only survives here.
+        return _compile_attempt(path, foundry_ignore=True)
 
 
 def parse(path) -> Slither:
