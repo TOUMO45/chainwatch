@@ -65,6 +65,8 @@
   <section class="content">
     <div id="alert" class="alert hidden" role="alert"></div>
 
+    <div class="sect">Instruments</div>
+
     <div id="coverage" class="coverage empty">
       <div class="cov-head">Coverage</div>
       <p class="cov-note">No scan yet. Coverage is shown before findings on purpose:
@@ -74,18 +76,20 @@
 
     <div id="summary" class="summary"></div>
 
+    <div id="sizing" class="sizing hidden"></div>
+
+    <div class="sect">Findings</div>
+
     <div class="findings-wrap">
-      <table id="findings" class="findings">
-        <thead>
-          <tr>
-            <th>Verdict</th><th>Rule</th><th>Where</th>
-            <th>Regression commit</th><th>At HEAD</th><th>On-chain</th>
-          </tr>
-        </thead>
-        <tbody id="findings-body">
-          <tr class="placeholder"><td colspan="6">No findings yet.</td></tr>
-        </tbody>
-      </table>
+      <div class="well">
+        <div class="fhead">
+          <span>Verdict</span><span>Rule</span><span>Where</span>
+          <span>Regression commit</span><span>At HEAD</span><span>On-chain</span>
+        </div>
+        <div id="findings-body">
+          <div class="placeholder">No findings yet.</div>
+        </div>
+      </div>
     </div>
   </section>
 </main>

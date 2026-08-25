@@ -13,6 +13,50 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+/* Motion helpers. Every animation here communicates a STATE CHANGE and every
+ * one degrades to an instant set when the OS asks for reduced motion — the
+ * essential value (the number, the colour, the badge) is never motion-gated. */
+const prefersReduced = () =>
+  window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* Tween one element's number toward data-count-to. A count that ticks upward
+ * says "coverage advanced" far better than a value that snaps into place. */
+function countUp(el) {
+  const to = parseFloat(el.dataset.countTo);
+  const dec = parseInt(el.dataset.decimals || "0", 10);
+  if (!isFinite(to)) return;
+  if (prefersReduced()) { el.textContent = to.toFixed(dec); return; }
+  const dur = 520, t0 = performance.now();
+  const step = (t) => {
+    const p = Math.min((t - t0) / dur, 1);
+    const eased = 1 - Math.pow(1 - p, 3);              // ease-out cubic
+    el.textContent = (to * eased).toFixed(dec);
+    if (p < 1) requestAnimationFrame(step);
+    else el.textContent = to.toFixed(dec);
+  };
+  requestAnimationFrame(step);
+}
+function animateCounts(root) {
+  root.querySelectorAll("[data-count-to]").forEach(countUp);
+}
+/* Progress bar: born at width 0, driven to its target on the next frame so the
+ * CSS width-transition actually fires (a width set at creation would not). */
+function animateBar(root, pct) {
+  const i = root.querySelector(".bar > i");
+  if (!i) return;
+  if (prefersReduced()) { i.style.width = pct + "%"; return; }
+  requestAnimationFrame(() => { i.style.width = pct + "%"; });
+}
+/* One-shot attention pulse: add the class, strip it when the animation ends so
+ * it can be re-triggered on the next arrival and never loops. */
+function pulseOnce(el) {
+  if (!el || prefersReduced()) return;
+  el.classList.remove("pulse");
+  void el.offsetWidth;                                  // restart the animation
+  el.classList.add("pulse");
+  el.addEventListener("animationend", () => el.classList.remove("pulse"), { once: true });
+}
+
 let JOB = null;
 let SOURCE = null;
 let REPORT = null;
@@ -31,6 +75,47 @@ function showAlert(head, body, note, kind) {
 }
 
 function clearAlert() { $("alert").className = "alert hidden"; $("alert").innerHTML = ""; }
+
+/* Time measured, and what it supports. The refusal is rendered at ALERT weight,
+ * the same standard the SCAN-L1 banner set: a withheld range reads as a bug
+ * unless the report itself says the withholding is deliberate and why. The
+ * `refusal` string already carries the age->bias->13x argument (SIZE-L1); this
+ * function only has to make sure it reaches the screen and not just the JSON. */
+function renderSizing(sz) {
+  const el = $("sizing");
+  const obs = sz.observed;
+  if (!obs) { el.className = "sizing hidden"; el.innerHTML = ""; return; }
+
+  const sp = sz.per_comparison_seconds, cvg = sz.coverage_pct;
+  const rows = `
+    <div class="cov-metric"><b>${obs.pairs}</b><span>pair(s) measured</span></div>
+    <div class="cov-metric"><b>${obs.comparisons}</b>
+      <span>comparison(s), ${obs.comparisons_ok} ok</span></div>
+    <div class="cov-metric"><b>${obs.seconds}s</b><span>elapsed, measured</span></div>
+    ${sp ? `<div class="cov-metric"><b>${sp.low}-${sp.high}s</b>
+      <span>per comparison (${sp.basis_n} pairs)</span></div>` : ""}
+    ${cvg ? `<div class="cov-metric"><b>${cvg.low}-${cvg.high}%</b>
+      <span>coverage spread (${cvg.basis_n} pairs)</span></div>` : ""}`;
+
+  let tail;
+  if (sz.projection) {
+    const p = sz.projection;
+    tail = `<p class="cov-note"><b>Remaining:</b> ${p.low}-${p.high}s
+      <span class="muted">— a range of what this run has done, not a prediction.</span></p>
+      <p class="cov-note muted">${esc(sz.caveat || "")}</p>`;
+  } else if (sz.refusal) {
+    /* Banner weight: a deliberate refusal, not a missing number. */
+    tail = `<div class="sizing-refusal">
+      <div class="alert-head">No time estimate — and this is why</div>
+      <div class="alert-body">${esc(sz.refusal)}</div></div>`;
+  } else {
+    tail = "";
+  }
+
+  el.className = "sizing" + (sz.refusal ? " refused" : "");
+  el.innerHTML = `<div class="cov-head">Sizing — measured, not predicted</div>
+    <div class="cov-grid">${rows}</div>${tail}`;
+}
 
 // ---------------------------------------------------------------- bootstrap
 
@@ -78,7 +163,7 @@ async function restoreLast() {
         `${last.repo} — nothing was analysed, so this is not a result about the code.`,
         last.status === "error" ? "" : "warn");
       $("findings-body").innerHTML =
-        `<tr class="placeholder"><td colspan="6">Not analysed — see the message above.</td></tr>`;
+        `<div class="placeholder">Not analysed — see the message above.</div>`;
     }
   } catch (e) { /* nothing to restore */ }
 }
@@ -100,7 +185,7 @@ $("scan-form").addEventListener("submit", async (e) => {
   setStatus("starting…", "running");
   clearAlert();
   $("log").innerHTML = "";
-  $("findings-body").innerHTML = `<tr class="placeholder"><td colspan="6">Scanning…</td></tr>`;
+  $("findings-body").innerHTML = `<div class="placeholder">Scanning…</div>`;
   REPORT = null;
 
   const res = await fetch("/api/scan", {
@@ -157,9 +242,15 @@ function handle(ev) {
       break;
     case "skip":
       log("skip", `    SKIPPED ${ev.prev}..${ev.cur} — ${ev.reason}`); break;
-    case "finding":
-      log("find", `    ${ev.verdict} rule ${ev.rule}  ${ev.file}::${ev.contract}.${ev.function}`);
+    case "finding": {
+      /* Class the log line by VERDICT so red stays reserved for CONFIRMED and
+       * amber for CANDIDATE — the same controlled-vocabulary rule the table
+       * follows. A skip (below) is infra, not a verdict, and takes its own tone. */
+      const cls = ev.verdict === "CONFIRMED" ? "find-confirmed"
+                : ev.verdict === "CANDIDATE" ? "find-candidate" : "find";
+      log(cls, `    ${ev.verdict} rule ${ev.rule}  ${ev.file}::${ev.contract}.${ev.function}`);
       break;
+    }
     case "liveness":
       log("info", `checking on-chain liveness for ${ev.address}`); break;
     case "warn": case "info":
@@ -184,7 +275,7 @@ async function finish(id, status) {
       "Nothing was analysed. This is an environment or input failure, not a "
       + "result about the repository's code.");
     $("findings-body").innerHTML =
-      `<tr class="placeholder"><td colspan="6">Not analysed — see the message above.</td></tr>`;
+      `<div class="placeholder">Not analysed — see the message above.</div>`;
   }
 }
 
@@ -240,33 +331,43 @@ function render(rep) {
   $("coverage").innerHTML = scopeLine + `
     <div class="cov-head">Coverage — read this before the findings</div>
     <div class="cov-grid">
-      <div class="cov-metric"><b>${cov.pairs_analyzed}/${cov.pairs_total}</b>
+      <div class="cov-metric"><b><span data-count-to="${cov.pairs_analyzed}">0</span>/${cov.pairs_total}</b>
         <span>commit pairs analysed (${cov.pairs_analyzed_pct}%)</span></div>
-      <div class="cov-metric"><b>${cov.files_ok}/${cov.files_total}</b>
+      <div class="cov-metric"><b><span data-count-to="${cov.files_ok}">0</span>/${cov.files_total}</b>
         <span>file comparisons completed (${cov.files_ok_pct}%)</span></div>
-      <div class="cov-metric"><b>${cov.files_error}</b>
+      <div class="cov-metric"><b><span data-count-to="${cov.files_error}">0</span></b>
         <span>comparisons lost to errors</span></div>
-      <div class="cov-metric"><b>${cov.files_skipped || 0}</b>
+      <div class="cov-metric"><b><span data-count-to="${cov.files_skipped || 0}">0</span></b>
         <span>never attempted (toolchain missing)</span></div>
     </div>
-    <div class="bar"><i style="width:${cov.pairs_analyzed_pct}%"></i></div>
+    <div class="bar"><i></i></div>
     ${skipLines}
     ${partial ? `<p class="cov-note cov-warn">This scan did not see the whole
        history. Over the unanalysed commits a quiet result means
        <strong>unmeasured</strong>, not safe.</p>` : ""}`;
+  animateCounts($("coverage"));
+  animateBar($("coverage"), cov.pairs_analyzed_pct);
 
   $("summary").innerHTML = `
-    <div class="chip"><b>${s.findings}</b><span>findings</span></div>
-    <div class="chip confirmed"><b>${s.confirmed}</b><span>CONFIRMED</span></div>
-    <div class="chip candidate"><b>${s.candidates}</b><span>CANDIDATE</span></div>
+    <div class="chip"><b><span data-count-to="${s.findings}">0</span></b><span>findings</span></div>
+    <div class="chip confirmed"><b><span data-count-to="${s.confirmed}">0</span></b><span>CONFIRMED</span></div>
+    <div class="chip candidate"><b><span data-count-to="${s.candidates}">0</span></b><span>CANDIDATE</span></div>
     <div class="chip"><b>${s.seconds}s</b><span>elapsed</span></div>
     ${!rep.address ? `<div class="chip"><b>—</b><span>no address: liveness UNKNOWN,
        so nothing can reach CONFIRMED</span></div>` : ""}`;
+  animateCounts($("summary"));
+  /* Draw the eye to what actually landed: any finding pulses its chip; a
+   * CONFIRMED finding pulses harder (a stronger, redder ring). */
+  if (s.findings > 0) pulseOnce($("summary").children[0]);
+  if (s.confirmed > 0) pulseOnce($("summary").querySelector(".chip.confirmed"));
+  else if (s.candidates > 0) pulseOnce($("summary").querySelector(".chip.candidate"));
+
+  renderSizing(rep.sizing || {});
 
   const body = $("findings-body");
   if (!rep.findings.length) {
-    body.innerHTML = `<tr class="placeholder"><td colspan="6">
-      No regression matched any selected rule over the analysed pairs.</td></tr>`;
+    body.innerHTML = `<div class="placeholder">
+      No regression matched any selected rule over the analysed pairs.</div>`;
     return;
   }
   const order = { CONFIRMED: 0, CANDIDATE: 1, DISCARDED: 2 };
@@ -274,29 +375,53 @@ function render(rep) {
     (a, b) => (order[a.verdict] - order[b.verdict]) || a.rule_id.localeCompare(b.rule_id));
 
   body.innerHTML = rows.map((f, i) => `
-    <tr data-i="${i}">
-      <td><span class="v ${f.verdict}">${f.verdict}</span></td>
-      <td><span class="rule-tag">${esc(f.rule_id)}</span><br>
-          <small class="muted">${esc(f.owasp || "")}</small></td>
-      <td class="where">${esc(f.contract)}${f.function ? "." + esc(f.function) : ""}
-          <small>${esc(f.file)}:${f.line ?? "?"}</small></td>
-      <td><span class="sha">${esc((f.commit || "").slice(0, 10))}</span><br>
-          <small class="muted">${esc((f.date || "").slice(0, 10))} ${esc(f.author || "")}</small></td>
-      <td>${headCell(f)}</td>
-      <td>${f.liveness
-            ? `<span title="${esc((REPORT && REPORT.live_caveat) || "")}">${esc(f.liveness)}${
-                f.liveness === "LIVE" ? ' <span class="muted">(code, not risk)</span>' : ""}</span>`
-            : '<span class="muted">not checked</span>'}</td>
-    </tr>`).join("");
+    <div data-i="${i}" class="frow row-${esc(f.verdict)}">
+      <div>${verdictPill(f.verdict)}</div>
+      <div><span class="rule-tag">${esc(f.rule_id)}</span>${f.owasp
+          ? `<br><span class="owasp-tag">${esc(f.owasp)}</span>` : ""}</div>
+      <div class="where">${esc(f.contract)}${f.function ? "." + esc(f.function) : ""}
+          <small>${esc(f.file)}:${f.line ?? "?"}</small></div>
+      <div><span class="sha">${esc((f.commit || "").slice(0, 10))}</span>
+          <span class="meta">${esc((f.date || "").slice(0, 10))} ${esc(f.author || "")}</span></div>
+      <div>${headCell(f)}</div>
+      <div>${onChainCell(f)}</div>
+    </div>`).join("");
 
-  [...body.querySelectorAll("tr[data-i]")].forEach((tr) =>
-    tr.addEventListener("click", () => openDrawer(rows[+tr.dataset.i])));
+  [...body.querySelectorAll("[data-i]")].forEach((el) =>
+    el.addEventListener("click", () => openDrawer(rows[+el.dataset.i])));
 }
 
 function headCell(f) {
-  if (f.survives_to_head === true) return `<span style="color:var(--confirmed)">still present</span>`;
-  if (f.survives_to_head === false) return `<span style="color:var(--ok)">repaired later</span>`;
+  if (f.survives_to_head === true) return `<span class="head-live">still present</span>`;
+  if (f.survives_to_head === false) return `<span class="head-ok">repaired later</span>`;
   return `<span class="muted">undetermined</span>`;
+}
+
+/* Verdict badge with a redundant ICON channel: a SOLID shield for CONFIRMED, a
+ * HOLLOW warning-triangle for CANDIDATE. The icon means the badge survives a
+ * grayscale print or a colour-blind reader even before the fill/weight do. */
+const VERDICT_ICON = {
+  CONFIRMED: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
+  CANDIDATE: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>',
+  DISCARDED: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>',
+};
+function verdictPill(verdict) {
+  const v = esc(verdict);
+  return `<span class="v ${v}">${VERDICT_ICON[verdict] || ""}${v}</span>`;
+}
+
+/* On-chain cell. LIVE is an ESCALATION, not reassurance (locked decision:
+ * escalated red): the vulnerable code is what is deployed. It renders as a
+ * glowing filled red pill with a broadcast dot, and the caveat that LIVE
+ * compares code, not exploitability. */
+function onChainCell(f) {
+  if (!f.liveness) return `<span class="muted">not checked</span>`;
+  const caveat = esc((REPORT && REPORT.live_caveat) || "");
+  if (f.liveness === "LIVE") {
+    return `<span class="live-pill" title="${caveat}"><span class="dot"></span>LIVE</span>
+            <span class="live-note">code, not risk</span>`;
+  }
+  return `<span class="muted" title="${caveat}">${esc(f.liveness)}</span>`;
 }
 
 // -------------------------------------------------------------------- drawer
@@ -326,7 +451,7 @@ function openDrawer(f) {
 
   $("drawer-body").innerHTML = `
     <h2 class="d-title">${esc(f.contract)}${f.function ? "." + esc(f.function) : ""}
-      <span class="v ${f.verdict}">${f.verdict}</span></h2>
+      ${verdictPill(f.verdict)}</h2>
     <div class="d-sub">rule ${esc(f.rule_id)} — ${esc(RULE_TITLES[f.rule_id] || "")}
       · ${esc(f.file)}:${f.line ?? "?"}</div>
     <div class="d-detail">${esc(f.detail)}</div>
