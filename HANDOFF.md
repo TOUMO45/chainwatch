@@ -1,7 +1,7 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `81511bf`** · `./guard.sh check` → **INTEGRITY OK** · tree clean
-· 22 fixture sets, 339 guard-protected files · full suite **87 passed**.
+**Last commit: `c3fb4e8`** · `./guard.sh check` → **INTEGRITY OK** · full suite
+**150 passed** · `fixtures-sizing/` now frozen into the guard baseline.
 
 Read `CHARTER.md` first (it is the contract), then this file.
 
@@ -12,16 +12,56 @@ Read `CHARTER.md` first (it is the contract), then this file.
 Every number below is from a command whose raw output was read, not a summary.
 
 ```
-./guard.sh check                     INTEGRITY OK
-python -m pytest tests/ -q           87 passed    (FULL suite, no subset)
-22 fixture sets                      all PASS, counts identical to baseline
+./guard.sh check                     INTEGRITY OK  (346 files hashed)
+python -m pytest tests/ -q           150 passed    (FULL suite, no subset)
 ```
 
-**Run the FULL suite, never a subset.** This project has now been bitten twice
-by skipping part of it: Section A missed Rule 10's null evidence because
-`test_verdict.py` was skipped, and Step 4 caught a real-world failure the
-22-set fixture sweep could not see. `tests/test_realworld_reserve.py` takes
-~4 minutes and is the one that matters most.
+**Run the FULL suite, never a subset** (`tests/test_realworld_reserve.py` is
+~4 min and matters most). The suite takes ~8–10 min end to end.
+
+---
+
+## Shipped this arc (newest first)
+
+| Commit | What |
+|---|---|
+| `c3fb4e8` | Submission packaging: README architecture diagram + spin-up + live URL; `SUBMISSION-DRAFT.md` (description, third-party/license disclosure, answers) |
+| `e84a512` / `a46967e` | **COMP-L2**: Foundry env reconstruction — `lib/` auto-remapping + remapping-aware, dep-scoped skip gate (`src/history.py`, `tests/test_foundry_remap.py`) |
+| `ed5e2d3` | Deployment to Cloud Run; `yarn`/`pnpm@9` added to image; `GEMINI_API_KEY` via Secret Manager |
+| `0c72626` | Frontend redesign (forensic-terminal; four-channel verdict clarity; reduced-motion) — `webapp/static/*` |
+| `0270fff` | Sizing (G5/G6): measured ranges, refusal-to-fudge, checkout-failed emit fix |
+
+## Live deployment (kept up through judging, per the owner)
+
+- **URL:** <https://chainwatch-898260334135.us-central1.run.app> · project
+  `chainwatch-ee1d1` / `us-central1` · `2 vCPU / 4 GiB`, timeout `3600s`,
+  min/max `0/2`, `GEMINI_API_KEY` via `chainwatch-gemini-key:latest`.
+- **Teardown when done:** `gcloud run services delete chainwatch --region us-central1`.
+- Known Cloud Run trait: in-memory job store + scale-to-zero means a scan longer
+  than one held-open connection can be lost when the instance recycles. Bounded
+  depth (≈`limit 10`) completes and persists; deep scans would need
+  `--no-cpu-throttling --min-instances 1` (ends scale-to-zero → real cost).
+
+## The Foundry ceiling (COMP-L2 — read before "improving" coverage)
+
+The env fix took 1inch/cross-chain-swap from **0/10 pairs (false `dep-missing`
+skips) → 10/10 reconstructed**, but its files still fail to **compile**: deeply
+nested submodules (`limit-order-settlement` → its own `lib/` for `@1inch/st1inch`,
+`@1inch/delegating`) each resolve imports in **their own** remapping context, and
+bare solc holds **one flat** remapping set — flattening is fundamentally lossy
+(the doubled-`contracts/` path). The tool that resolves this correctly is
+`forge`, which **CHARTER rule 3 forbids installing** (WALK-L9 RCE class). So full
+Foundry compile success for deeply-nested repos is a **charter-bounded ceiling**,
+not a patchable bug. Do not chase it by loosening rules; installing `forge` is a
+human decision with a real security tradeoff.
+
+## Open (submission-readiness — needs the human)
+
+- **Repo has NO git remote** — not on GitHub yet. Push, then make public or grant
+  `testing@devpost.com` / `cloudhackathons@google.com` access. See `SUBMISSION-DRAFT.md §3`.
+- Demo video not recorded (`DEMO-SCRIPT.md` drafted); Devpost form not submitted.
+- `SUBMISSION-DRAFT.md` is a DRAFT for the owner to review/trim before pasting.
+- Deadline: **2026-08-31 17:00 PT**.
 
 ---
 
