@@ -4,7 +4,7 @@
 > Chainwatch reports **which commit made it vulnerable, and whether that commit
 > is live on-chain.**
 
-Chainwatch walks a Solidity repository's git history, runs nine deterministic
+Chainwatch walks a Solidity repository's git history, runs ten deterministic
 regression rules over every (parent, commit) pair, and reports the exact commit
 where a security control was weakened or removed — with the contract, the
 function, the line range, the author, whether the regression is still present at
@@ -13,6 +13,38 @@ HEAD, and (given an address) whether that code is what is deployed.
 It detects **regressions**, not novel bugs: a control that existed and no longer
 does. A contract that was never safe is out of scope by design — see
 [CHARTER.md](CHARTER.md).
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A["Public git repo URL<br/><i>(or on-disk path)</i>"] -->|"bare mirror clone,<br/>read-only on the target"| B["Trajectory walker<br/>src/history.py"]
+    B -->|"(parent, commit) pairs<br/>that touched .sol"| C["Per-commit env reconstruction<br/>solc-select · npm / yarn / pnpm<br/><i>lifecycle scripts disabled</i>"]
+    C --> D["10 detection rules<br/>Slither AST / IR + data-dependency<br/>SC01 · SC05 · SC06 · SC08 · SC09 · SC10"]
+    RPC["On-chain bytecode<br/>eth_getCode via RPC<br/><i>(read-only)</i>"] --> E
+    D --> E["Verdict model — src/verdict.py<br/>six required evidence fields"]
+    E --> F{"all six present<br/><b>AND</b> liveness == LIVE?"}
+    F -->|"no"| G["CANDIDATE<br/><b>hard cap — cannot be raised</b>"]
+    F -->|"yes"| H["CONFIRMED"]
+    G --> J["Report dict<br/>coverage first, then findings"]
+    H --> J
+    J --> K["Gemini agent layer<br/>google-adk · READ-ONLY<br/>explains a finding, re-verified<br/><b>cannot change a verdict</b>"]
+    J --> CLI["CLI — chainwatch.py"]
+    J --> WEB["Web app — webapp/server.py"]
+    K --> CLI
+    K --> WEB
+    CLI --> RUN["Cloud Run<br/>(containerised, scale-to-zero)"]
+    WEB --> RUN
+```
+
+**The `CANDIDATE → CONFIRMED` boundary is the one hard constraint in the system.**
+A verdict reaches CONFIRMED only when all six evidence fields are present *and*
+on-chain liveness is `LIVE`; missing any of them caps it at CANDIDATE, and
+**nothing downstream can lift that cap** — not complete evidence, and above all
+not the Gemini agent, which may only read a finished finding record and is
+re-verified mechanically against it. The agent explains; it never decides.
 
 ---
 
@@ -56,30 +88,63 @@ requests per minute and one dossier costs several, so the runner paces itself
 and reports when it is waiting. Moving to a paid tier is a config change
 (`--rpm`), not an architecture change.
 
-### Container
+### Environment variables
+
+| Variable | Needed by | Notes |
+|---|---|---|
+| `GEMINI_API_KEY` | the agent layer only (capability 12) | The deterministic engine never reads it; a scan is complete without it. Injected at run time — never baked into the image. `GOOGLE_API_KEY` is accepted as an alias. |
+| `PORT` | the container | Cloud Run sets this; defaults to `8080`. |
+| `RPC_URL` (or `--rpc-url`) | on-chain liveness (capability 11) | A read-only Ethereum RPC endpoint. Optional; without it liveness is UNKNOWN. |
+
+### Container (local)
 
 ```bash
 docker build -t chainwatch .
-docker run -p 8080:8080 -e GEMINI_API_KEY=... -v /path/to/repo:/repos/target chainwatch
+
+# Web UI. Paste a public repo URL in the form; no mount needed.
+docker run -p 8080:8080 -e GEMINI_API_KEY=... chainwatch
+#   -> http://localhost:8080
+
+# To scan a repository on your own disk instead of a URL, mount it read-only:
+docker run -p 8080:8080 -e GEMINI_API_KEY=... -v /path/to/repo:/repos/target:ro chainwatch
 ```
 
-**Status: containerized and locally verified; Cloud Run deployment pending.**
-The image carries the whole product — engine, scan pipeline, web app and agent —
-and has been built and smoke-tested locally end to end: `scorer.py` passes a
-frozen fixture set *inside* the container, a mounted repository scans to two
-attributed CANDIDATE findings, and the agent drafts a verified dossier. What has
-**not** happened is a deploy to Google Cloud Run; that needs a project and
-credentials this machine does not have.
+The image carries the **whole product** — engine, scan pipeline, web app and
+agent. Verified end to end inside the container: `scorer.py` passes a frozen
+fixture set, a repository scans to attributed CANDIDATE findings, and the agent
+drafts a verified dossier. The API key is never baked in — no `ARG`, no `ENV`,
+`.env` is in `.dockerignore` — and this is checked: `docker history` contains no
+key material and the image's `Config.Env` carries only `PATH`, `LANG`,
+`PYTHON_*` and `PORT`.
 
-The API key is never baked into the image — no `ARG`, no `ENV`, and `.env` is in
-`.dockerignore`. It is injected at run time (`-e` locally, Secret Manager on
-Cloud Run). Verified: `docker history` contains no key material and the image's
-`Config.Env` carries only `PATH`, `LANG`, `PYTHON_*` and `PORT`.
+### Live instance (Google Cloud Run)
 
-**Setup**
+**Deployed and serving:** <https://chainwatch-898260334135.us-central1.run.app>
+
+`2 vCPU / 4 GiB`, request timeout `3600s`, `min/max` instances `0/2`
+(scale-to-zero). `GEMINI_API_KEY` is supplied through **Secret Manager**
+(`--set-secrets=GEMINI_API_KEY=chainwatch-gemini-key:latest`), never as a
+plaintext value or an image layer. Deploy is reproducible from a clone:
 
 ```bash
-pip install -r requirements.txt && solc-select install 0.8.20 && solc-select use 0.8.20
+gcloud run deploy chainwatch --source . --region us-central1 \
+    --memory 4Gi --cpu 2 --timeout 3600 --concurrency 4 \
+    --min-instances 0 --max-instances 2 --allow-unauthenticated \
+    --set-secrets=GEMINI_API_KEY=chainwatch-gemini-key:latest
+```
+
+A live smoke test scanned `reserve-protocol/protocol` at pair `f43202a3..e27227b2`
+to one CANDIDATE finding (Rule 5, `ActFacet.revenueOverview`) and generated a
+verified "NOT CONFIRMED" dossier through the agent pipeline end to end.
+
+### From source (no container)
+
+```bash
+pip install -r requirements.txt
+solc-select install 0.8.20 && solc-select use 0.8.20
+python webapp/server.py                                   # UI on http://127.0.0.1:8000
+# or the CLI:
+python chainwatch.py --repo <path-or-url> --root contracts --limit 30
 ```
 
 ---
@@ -97,6 +162,7 @@ pip install -r requirements.txt && solc-select install 0.8.20 && solc-select use
 | 4 | SC09 | overflow protection removed (`unchecked`, SafeMath, pragma lowered) |
 | 5 | SC06 | external-call return value no longer checked |
 | 6 | SC05 | input-validation `require` removed |
+| 10 | SC01 | control migrated to a new unguarded entry point (a renamed or replacement function that re-exposes what a guarded one protected) |
 
 Every rule is semantic — Slither AST/IR and data-dependency analysis. No regex
 on source, no modifier **name** matching (name matching is the single largest
