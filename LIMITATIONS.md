@@ -3501,6 +3501,76 @@ the 100% alone would be exactly the substitution HIST-L1 exists to prevent.
 
 ---
 
+### COMP-L2 — a Foundry repo's dependencies are present but the reconstruction cannot see them, and the deepest case cannot be flattened at all
+
+**Type: COVERAGE HOLE (env axis, not detection). Two bugs FIXED and one
+fundamental CEILING documented. MEASURED on `1inch/cross-chain-swap`, which
+scanned to 0% coverage — every pair skipped `dep-missing` — though its
+dependencies were present on disk as git submodules. FIXED the two that are
+ours; the third is a property of the charter, not a defect.**
+
+#### Mechanism — two fixable bugs
+
+A Foundry project declares no npm dependencies (`package.json` `dependencies` is
+`{}`); its contract dependencies are **git submodules under `lib/`**, and imports
+resolve through `remappings.txt` and forge's own auto-remapping. Two pieces of
+the reconstruction did not agree with how the compiler actually resolves:
+
+1. **The pre-flight skip gate was remapping-blind and over-collecting.**
+   `_missing_imported_packages` checked `lib/<pkg>` literally, so
+   `@1inch/solidity-utils` (mapped by `remappings.txt` to `lib/solidity-utils/`,
+   which EXISTS) read as missing. It also scanned INTO `lib/`, collecting the
+   submodules' own transitive imports, and skipped the whole pair if any one was
+   unresolvable. Measured: 8 packages reported missing on cross-chain-swap, all
+   present; every pair skipped.
+
+2. **`derive_remaps` did not replicate forge's lib auto-remapping.** Imports that
+   rely on it (`@openzeppelin/contracts/...`, `forge-std/...`) had no remapping
+   and could not compile even once the gate let them through.
+
+Both are fixed: the gate is now remapping-aware and dependency-scoped (it reads
+only the repo's OWN sources and honours `remappings.txt` + the lib auto-remaps),
+and `derive_remaps` emits a Foundry remap for each `lib/<sub>` (its package.json
+`name` and its bare directory name → its `src/`/`contracts/` dir). A wrong
+auto-remap can only make solc report "file not found" — honest under-coverage —
+never a mis-compiled AST, so this cannot manufacture a finding. Pinned by
+`tests/test_foundry_remap.py`.
+
+**Measured effect:** cross-chain-swap went from **0/10 pairs (all skipped)** to
+**10/10 pairs reconstructed and attempting compilation**. Simpler Foundry repos
+now compile.
+
+#### The ceiling — deeply-nested transitive remapping cannot be flattened
+
+cross-chain-swap still compiles to zero findings, now for an honest reason:
+`files_error`, not a false `dep-missing` skip. `lib/limit-order-settlement`
+imports `@1inch/st1inch` and `@1inch/delegating`, which are **not top-level
+submodules at all** — they live in *its own* nested `lib/`, resolved against
+*its own* remapping context. A submodule resolves imports against its own
+remappings; bare solc takes **one global, flat** remapping set. Flattening
+independent per-package contexts into one set is **fundamentally lossy** — two
+submodules may map the same prefix to different targets and solc can hold only
+one. That is the observed doubled-path error
+(`lib/openzeppelin-contracts/contracts/contracts/...`).
+
+The tool that resolves this correctly is `forge` (it builds each package in its
+own context). **CHARTER rule 3 forbids installing it** (a new dependency, and a
+target-adjacent binary in WALK-L9's RCE category — see COMP-L1). So for a
+deeply-nested Foundry repo, full compilation is not reachable under the
+charter's bare-solc-only constraint. This is the same shape as criterion #6 in
+`SUBMISSION-NOTES.md`: a limit stated plainly, not a bug to be patched.
+
+#### Fix direction
+
+The bounded gains are shipped. The remaining gap needs one of: (a) the human
+authorising `forge` in the image, accepting the security tradeoff explicitly; or
+(b) recursively reading each nested submodule's own remappings and resolving
+per-package context in bare solc — a substantial reimplementation of what forge
+already does, with conflict cases that may have no flat solution. Neither is done,
+and neither should be rushed onto the shared compile path.
+
+---
+
 ### SCAN-L1 — the scan looked at a directory the repository does not have, and called it clean
 
 **Type: CORRECTNESS OF THE RESULT ITSELF, [FN risk], found in the same
