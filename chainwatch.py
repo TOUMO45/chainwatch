@@ -69,6 +69,46 @@ def _wrap(text: str, width: int = 74) -> list[str]:
     return textwrap.wrap(text, width=width)
 
 
+def _print_sizing(sz: dict) -> None:
+    """Time measured, and what it does or does NOT support projecting.
+
+    The refusal text is rendered at the SAME weight as the SCAN-L1 banner, and
+    for the same reason: a range that is withheld reads as a bug unless the user
+    is told, in the report itself, that the withholding is deliberate and why.
+    The `refusal` string already carries the age->bias->13x argument (SIZE-L1);
+    this function's whole job is to make sure it reaches a user's eyes rather
+    than living only in LIMITATIONS.md and the JSON.
+    """
+    obs = sz.get("observed")
+    if not obs:
+        return
+    print("\nSIZING (measured, not predicted)")
+    print(f"  observed          : {obs['pairs']} pair(s), {obs['comparisons']} "
+          f"comparison(s) ({obs['comparisons_ok']} ok) in {obs['seconds']}s")
+    spread = sz.get("per_comparison_seconds")
+    if spread:
+        print(f"  per comparison    : {spread['low']}-{spread['high']}s "
+              f"(spread across {spread['basis_n']} pair(s))")
+    coverage = sz.get("coverage_pct")
+    if coverage:
+        print(f"  coverage spread   : {coverage['low']}-{coverage['high']}% "
+              f"(across {coverage['basis_n']} pair(s))")
+
+    proj = sz.get("projection")
+    if proj:
+        print(f"  remaining ({proj['basis_n']} obs) : {proj['low']}-{proj['high']}s "
+              f"for the rest of the run")
+        for line in _wrap(sz.get("caveat", "")):
+            print(f"      {line}")
+    elif sz.get("refusal"):
+        # Banner-weight: this is a deliberate refusal, not a missing number.
+        print("\n" + "!" * 78)
+        print("NO TIME ESTIMATE - AND THIS IS WHY (not a bug, not missing data)")
+        for line in _wrap(sz["refusal"]):
+            print("  " + line)
+        print("!" * 78)
+
+
 def print_report(rep: dict) -> None:
     s, cov = rep["summary"], rep["coverage"]
     print()
@@ -116,6 +156,8 @@ def print_report(rep: dict) -> None:
     if cov["pairs_analyzed"] < cov["pairs_total"]:
         print("  NOTE: this scan did not see the whole history. A quiet result "
               "over unanalyzed\n        commits means UNMEASURED, not SAFE.")
+
+    _print_sizing(rep.get("sizing") or {})
 
     print(f"\nSUMMARY   {s['findings']} finding(s): "
           f"{s['confirmed']} CONFIRMED, {s['candidates']} CANDIDATE "

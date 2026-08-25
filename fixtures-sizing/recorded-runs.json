@@ -1,0 +1,101 @@
+[
+  {
+    "repo": "88mph",
+    "kind": "pilot",
+    "source_report": ".e2-pilot-88mph.json",
+    "pairs_total": 3,
+    "pairs_analyzed": 3,
+    "files_total": 5,
+    "files_ok": 0,
+    "files_error": 5,
+    "seconds": 228.9
+  },
+  {
+    "repo": "88mph",
+    "kind": "full",
+    "source_report": ".e2-full-88mph.json",
+    "pairs_total": 12,
+    "pairs_analyzed": 12,
+    "files_total": 101,
+    "files_ok": 32,
+    "files_error": 69,
+    "seconds": 2879.1
+  },
+  {
+    "repo": "aave-v2",
+    "kind": "pilot",
+    "source_report": ".e2-pilot-aave.json",
+    "pairs_total": 3,
+    "pairs_analyzed": 3,
+    "files_total": 15,
+    "files_ok": 1,
+    "files_error": 14,
+    "seconds": 729.1
+  },
+  {
+    "repo": "aave-v2",
+    "kind": "full",
+    "source_report": ".e2-full-aave.json",
+    "pairs_total": 12,
+    "pairs_analyzed": 11,
+    "files_total": 49,
+    "files_ok": 16,
+    "files_error": 33,
+    "seconds": 31064.2
+  },
+  {
+    "repo": "v3-core",
+    "kind": "pilot",
+    "source_report": ".e2-pilot-v3core.json",
+    "pairs_total": 3,
+    "pairs_analyzed": 2,
+    "files_total": 11,
+    "files_ok": 10,
+    "files_error": 1,
+    "seconds": 281.5
+  },
+  {
+    "repo": "v3-core",
+    "kind": "full",
+    "source_report": ".e2-full-v3core.json",
+    "pairs_total": 25,
+    "pairs_analyzed": 21,
+    "files_total": 51,
+    "files_ok": 43,
+    "files_error": 8,
+    "seconds": 1105.3
+  },
+  {
+    "repo": "v3-periphery",
+    "kind": "pilot",
+    "source_report": ".e2-pilot-v3per.json",
+    "pairs_total": 3,
+    "pairs_analyzed": 3,
+    "files_total": 6,
+    "files_ok": 6,
+    "files_error": 0,
+    "seconds": 222.1
+  },
+  {
+    "repo": "v3-periphery",
+    "kind": "full",
+    "source_report": ".e2-full-v3per.json",
+    "pairs_total": 25,
+    "pairs_analyzed": 25,
+    "files_total": 78,
+    "files_ok": 77,
+    "files_error": 1,
+    "seconds": 1136.3
+  },
+  {
+    "repo": "compound-v2",
+    "kind": "pilot",
+    "source_report": ".e2-pilot-compound.json",
+    "pairs_total": 3,
+    "pairs_analyzed": 0,
+    "files_total": 0,
+    "files_ok": 0,
+    "files_error": 0,
+    "seconds": 762.8
+  }
+]

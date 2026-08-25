@@ -54,6 +54,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import history as H
+from . import sizing as SZ
 from . import verdict as V
 from .rules import register_all
 from .rules import _shared, _storage
@@ -189,11 +190,19 @@ class Coverage:
     # skip reasons already meet.
     solc_installs: list[dict] = field(default_factory=list)
     rule_errors: list[dict] = field(default_factory=list)
+    # ONE RECORD PER PAIR, whatever happened to it (SIZE-L1). Wall clock and
+    # comparison counts are the only inputs a size estimate may legitimately
+    # use, and nothing recorded them before: `summary.seconds` was a single
+    # aggregate, so a pilot had no observed VARIANCE to build a range from and
+    # every projection was forced to be a point. A skipped pair is recorded
+    # too - it cost real time, and dropping it would under-state what remains.
+    pair_records: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         pct = (self.pairs_analyzed / self.pairs_total * 100) if self.pairs_total else 0.0
         fpct = (self.files_ok / self.files_total * 100) if self.files_total else 0.0
         return {
+            "pair_records": list(self.pair_records),
             "pairs_total": self.pairs_total,
             "pairs_analyzed": self.pairs_analyzed,
             "pairs_skipped": self.pairs_skipped,
@@ -345,6 +354,23 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
         emit_event("pair", index=idx, total=len(pairs), prev=prev[:12], cur=cur[:12],
                    subject=meta_cur.get("subject", ""))
 
+        # SIZE-L1. Every exit from this iteration records one pair, so the
+        # observed set is the whole run and not just its successful part.
+        # Baselines rather than local counters: the per-file bookkeeping below
+        # already maintains these, and a second copy is a second thing to keep
+        # in step.
+        pair_started = time.time()
+        files_seen_at_start = cov.files_total
+        files_ok_at_start = cov.files_ok
+
+        def record_pair() -> None:
+            cov.pair_records.append({
+                "pair": f"{prev[:12]}..{cur[:12]}",
+                "seconds": round(time.time() - pair_started, 2),
+                "comparisons": cov.files_total - files_seen_at_start,
+                "comparisons_ok": cov.files_ok - files_ok_at_start,
+            })
+
         try:
             prev_wt.checkout(prev)
             cur_wt.checkout(cur)
@@ -352,6 +378,15 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
             cov.pairs_skipped += 1
             cov.skips.append({"pair": f"{prev[:12]}..{cur[:12]}", "reason": "checkout-failed",
                               "detail": str(exc)[:200]})
+            # THIS EMIT WAS MISSING. The sibling skip below always announced
+            # itself; this branch updated coverage and said nothing, so a pair
+            # could emit `pair` and then never resolve on the event stream.
+            # The final report showed the skip, the live view hung on it
+            # forever, and any progress indicator built on these events would
+            # have been wrong for exactly the pairs that went worst.
+            emit_event("skip", index=idx, total=len(pairs),
+                       prev=prev[:12], cur=cur[:12], reason="checkout-failed")
+            record_pair()
             continue
 
         # MANDATORY after every checkout (finding WALK-L1): the parse and
@@ -373,8 +408,10 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
                 "reason": f"env-reconstruction-failed ({p_cause if not p_ok else c_cause})",
                 "detail": (p_detail if not p_ok else c_detail)[:200],
             })
-            emit_event("skip", prev=prev[:12], cur=cur[:12],
+            emit_event("skip", index=idx, total=len(pairs),
+                       prev=prev[:12], cur=cur[:12],
                        reason=(p_cause if not p_ok else c_cause))
+            record_pair()
             continue
 
         # Register every checkout this pair can touch, N last so the global
@@ -390,6 +427,10 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
         modified = list(changed.get("modified", []))
         if not modified:
             cov.pairs_analyzed += 1
+            record_pair()
+            emit_event("pair-done", index=idx, total=len(pairs), findings=0,
+                       sizing=SZ.from_pair_records(cov.pair_records)
+                              .as_dict(len(pairs) - idx))
             continue
 
         pair_findings = 0
@@ -484,7 +525,12 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
                 cov.files_error += 1
 
         cov.pairs_analyzed += 1
-        emit_event("pair-done", index=idx, total=len(pairs), findings=pair_findings)
+        record_pair()
+        # Sizing rides the EXISTING event rather than a new type: the web app
+        # needs no new stream to show a converging range.
+        emit_event("pair-done", index=idx, total=len(pairs), findings=pair_findings,
+                   sizing=SZ.from_pair_records(cov.pair_records)
+                          .as_dict(len(pairs) - idx))
 
     if opts.address:
         _attach_liveness(opts, findings, head_wt, emit_event)
@@ -642,6 +688,13 @@ def _report(opts: ScanOptions, cov: Coverage, findings: list[V.Finding],
         # caller to infer, so "0 findings" can never be read without it.
         "scope": scope,
         "nothing_compared": _nothing_compared(cov, scope),
+        # HOW LONG IT TOOK AND WHAT THAT SUPPORTS (SIZE-L1). Carried in the
+        # report for the same reason `scope` is: so the CLI and the web app
+        # quote one set of numbers. `remaining` is normally 0 on a finished
+        # run and non-zero only when it was cancelled - which is exactly when
+        # someone wants to know what the rest would have cost.
+        "sizing": SZ.from_pair_records(cov.pair_records).as_dict(
+            max(cov.pairs_total - cov.pairs_analyzed - cov.pairs_skipped, 0)),
         "summary": {
             "findings": len(findings),
             "confirmed": len(confirmed),
