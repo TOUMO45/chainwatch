@@ -903,15 +903,64 @@ def _write_marker(entry: Path, spec: "EnvSpec") -> None:
         pass  # an unmarked entry is merely re-verified next time; never wrong
 
 
-def _missing_imported_packages(root) -> set:
-    """Imported package prefixes that are not present on disk after an install."""
+def _remappings_txt_lines(root) -> list[str]:
+    """Explicit remapping lines from remappings.txt, comments/blanks dropped."""
+    rf = Path(root) / "remappings.txt"
+    if not rf.is_file():
+        return []
+    out = []
+    for line in rf.read_text(encoding="utf-8", errors="ignore").splitlines():
+        s = line.strip()
+        if s and not s.startswith("#") and "=" in s:
+            out.append(s)
+    return out
+
+
+def _remap_resolves(root, pkg: str, remap_lines) -> bool:
+    """Does some remapping route this import prefix to a directory that EXISTS?
+
+    A Foundry project maps `@1inch/solidity-utils/` -> `lib/solidity-utils/` in
+    remappings.txt (or via forge's lib auto-remapping). The literal
+    `lib/@1inch/solidity-utils` check is blind to that and reported a present
+    dependency as missing, skipping the whole pair the compiler could have built
+    (measured on 1inch/cross-chain-swap). This follows the remapping the way solc
+    does: longest matching LHS, target directory must exist.
+    """
     root = Path(root)
+    key = pkg.rstrip("/") + "/"
+    for line in remap_lines:
+        lhs, _, rhs = line.partition("=")
+        lhs, rhs = lhs.strip(), rhs.strip()
+        if not lhs or not rhs or not key.startswith(lhs):
+            continue
+        remainder = key[len(lhs):]
+        base = Path(rhs) if os.path.isabs(rhs) else (root / rhs)
+        cand = (base / remainder) if remainder else base
+        if Path(str(cand).rstrip("/")).is_dir():
+            return True
+    return False
+
+
+def _missing_imported_packages(root) -> set:
+    """Imported package prefixes that are not present on disk after an install.
+
+    Scoped to the repo's OWN Solidity (lib/ submodule internals excluded): the
+    pre-flight gate decides whether the analysed sources can build, and a
+    transitive import buried inside a dependency is the compiler's business, not
+    a reason to skip every file in the pair. Remapping-aware, because a present
+    dependency reached through a remap is present (finding COMP-L2).
+    """
+    root = Path(root)
+    remap_lines = _remappings_txt_lines(root) + _foundry_lib_remaps(root)
     missing = set()
-    for pkg in imported_packages(root):
+    for pkg in imported_packages(root, exclude_deps=True):
         if (root / pkg).is_dir():
             continue  # repo-root-relative import, not a package
-        if not any((root / base / Path(pkg)).is_dir() for base in ("node_modules", "lib")):
-            missing.add(pkg)
+        if any((root / base / Path(pkg)).is_dir() for base in ("node_modules", "lib")):
+            continue
+        if _remap_resolves(root, pkg, remap_lines):
+            continue
+        missing.add(pkg)
     return missing
 
 
@@ -922,18 +971,24 @@ def _missing_imported_packages(root) -> set:
 _IMPORT = re.compile(r'import\s+(?:[^"\';]*?from\s*)?["\']([^"\']+)["\']')
 
 
-def imported_packages(root, contracts_dir: str = "") -> set:
+def imported_packages(root, contracts_dir: str = "", exclude_deps: bool = False) -> set:
     """Non-relative import prefixes appearing in the repo's own Solidity.
 
     Remapping every directory under node_modules is not viable - reserve's tree
     yields 971 entries and overflows the Windows command line (WinError 206).
     Only packages the Solidity actually imports are needed: 8, in that repo.
+
+    `exclude_deps` also drops `lib/` (Foundry submodule) trees, so the caller
+    sees only what the REPO'S OWN sources import - used by the pre-flight skip
+    gate, which must not require a dependency's own transitive imports.
     """
     root = Path(root)
     search = root / contracts_dir if contracts_dir else root
     pkgs = set()
     for f in search.rglob("*.sol"):
         if "node_modules" in f.parts:
+            continue
+        if exclude_deps and "lib" in f.parts:
             continue
         try:
             text = f.read_text(encoding="utf-8", errors="ignore")
@@ -994,10 +1049,52 @@ def derive_remaps(root, contracts_dir: str = "", absolute: bool = False) -> list
             if src_dir.is_dir():
                 target = f"{src_dir.as_posix()}/" if absolute else f"{pkg}/"
                 out.append(f"{pkg}/={target}")
+    # Foundry lib/ auto-remapping, BEFORE remappings.txt so an explicit entry
+    # still wins. A submodule-based (Foundry) dependency graph resolves the way
+    # `forge remappings` would; a wrong target can only make solc report "file
+    # not found" (honest under-coverage), never a mis-compiled AST.
+    out.extend(_foundry_lib_remaps(root, absolute))
     if (root / "remappings.txt").is_file():
         for line in (root / "remappings.txt").read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.strip().startswith("#"):
                 out.append(line.strip())
+    return out
+
+
+def _foundry_lib_remaps(root, absolute: bool = False) -> list[str]:
+    """Foundry-style auto-remappings for each `lib/<sub>` submodule.
+
+    For every submodule, map BOTH its package.json `name` and its bare directory
+    name to the submodule's source directory (`src/`, then `contracts/`, else the
+    submodule root) - which is what `forge remappings` generates and how a
+    Foundry project's imports (`@openzeppelin/contracts/...`, `forge-std/...`)
+    resolve without an explicit remappings.txt entry. Additive: emits nothing
+    when `lib/` is absent, so npm/Hardhat repos are unaffected (finding COMP-L2).
+    """
+    root = Path(root)
+    libdir = root / "lib"
+    if not libdir.is_dir():
+        return []
+    out: list[str] = []
+    for sub in sorted(p for p in libdir.iterdir() if p.is_dir()):
+        srcdir = sub
+        for cand in ("src", "contracts"):
+            if (sub / cand).is_dir():
+                srcdir = sub / cand
+                break
+        target = (f"{srcdir.resolve().as_posix()}/" if absolute
+                  else f"{srcdir.relative_to(root).as_posix()}/")
+        names = {sub.name}
+        pj = sub / "package.json"
+        if pj.is_file():
+            try:
+                nm = json.loads(pj.read_text(encoding="utf-8", errors="ignore")).get("name")
+                if nm:
+                    names.add(nm)
+            except (ValueError, OSError):
+                pass
+        for nm in names:
+            out.append(f"{nm}/={target}")
     return out
 
 
