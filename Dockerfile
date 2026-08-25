@@ -30,6 +30,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl ca-certificates nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
+# yarn + pnpm — the OTHER two package managers per-commit env reconstruction
+# invokes (history.py picks one from the lockfile it finds). npm alone is not
+# enough: a yarn.lock project calls `yarn`, and a missing `yarn` binary raised
+# a hard FileNotFoundError that failed the whole scan rather than a per-pair
+# skip. Caught by the LIVE Cloud Run smoke test against reserve-protocol
+# (yarn.lock), which the local run masked because the dev machine already had
+# yarn on PATH. pnpm is PINNED to its node-20 line: pnpm@latest (11.x) requires
+# node>=22 and would neither install-check nor run on this image's node 20.
+RUN npm install -g yarn pnpm@9 \
+    && yarn --version && pnpm --version
+
 WORKDIR /app
 
 COPY requirements.txt ./

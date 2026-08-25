@@ -1,0 +1,59 @@
+# .gcloudignore — controls what `gcloud run deploy --source` UPLOADS to Cloud
+# Build. Its mere presence DISABLES the .gitignore fallback, which is the whole
+# point: .gitignore excludes node_modules/, but the Dockerfile COPYs
+# node_modules/ (the OpenZeppelin trees the fixtures compile against), so a
+# .gitignore-driven upload would break the cloud build at `COPY node_modules/`.
+# node_modules and the COPYed fixtures are therefore NOT excluded here.
+#
+# This mirrors .dockerignore (already proven correct by the local build) so the
+# uploaded context contains exactly what the image build needs and nothing more.
+
+# Secrets — never in an upload.
+.env
+.env.bak
+*.key
+*.pem
+
+# VCS / metadata
+.git/
+.github/
+.gitignore
+.gcloudignore
+
+# Scratch state — reproducible, some of it gigabytes.
+.walker-worktrees/
+.walker-cache/
+.walker-out*.json
+.webapp-clones/
+.git-hooks-denied/
+realworld-test/
+reports/
+reports-input/
+
+# Local run reports (not needed in the image).
+.b4-stress.json
+.scan-*.json
+.b2-*.json
+.e2-*.json
+.guard-hashes
+
+# Python / tooling caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.claude/
+
+# Fixture sets and tests the Dockerfile does NOT copy (keep the upload lean).
+tests/
+fixtures-sizing/
+fixtures-oz5/
+fixtures-r1-oz5/
+fixtures-r6-oz5/
+fixtures-ext/
+fixtures-multi/
+fixtures-r2b-role/
+fixtures-r3c-ast1/
