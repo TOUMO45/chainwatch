@@ -281,6 +281,11 @@ function handle(ev) {
       log(ev.status === "OPEN" ? "find-confirmed" : "info",
         `    exploitability proof: ${ev.status} ${ev.contract}.${ev.function}`);
       break;
+    case "env":
+      /* The longest silent phase of a scan: a large monorepo dependency
+       * install runs for minutes with nothing else to show. Without this the
+       * live log simply stops and the scan looks hung. */
+      log("info", `... ${ev.message}`); break;
     case "warn": case "info":
       log("info", ev.message); break;
     case "error":

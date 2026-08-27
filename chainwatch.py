@@ -60,6 +60,11 @@ def _print_progress(ev: dict) -> None:
         where = (f"{ev.get('contract')}.{ev['function']}" if ev.get("function")
                  else str(ev.get("contract")))
         print(f"      {ev['verdict']:<9} rule {ev['rule']:<3} {ev['file']}::{where}")
+    elif kind == "env":
+        # The longest silent phase of a scan. Without this a large monorepo
+        # install looks like a hang for minutes (measured on balancer-v3, a
+        # Yarn Berry workspace: zero output until it finished).
+        print(f"  ... {ev.get('message')}", flush=True)
     elif kind == "warn":
         print(f"  ! {ev.get('message')}")
     elif kind == "liveness":

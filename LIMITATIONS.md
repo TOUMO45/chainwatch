@@ -4544,6 +4544,55 @@ Fixtures before code, per CHARTER rule 1 — not attempted here.
 
 ---
 
+### MONO-L1 — a monorepo's dependency install outruns any practical timeout, silently
+
+**Type: COVERAGE LOSS on a whole repository class, plus a real usability defect.
+MEASURED on `balancer/balancer-v3-monorepo` 2026-08-27. Progress reporting
+FIXED; the install cost itself is NOT fixed.**
+
+A four-repository sweep (Uniswap v4-core, Balancer v3, Sky/MakerDAO dss,
+Compound) completed two of four. Balancer produced **zero bytes of output** in
+280 seconds and was killed; Compound was cut off mid-report by the same cap.
+
+**Each candidate cause was eliminated by measurement, not reasoning:**
+
+| suspected | measured |
+|---|---|
+| mirror clone of a 48 MB repo is slow | **0.37s** — not it |
+| `detect_env` walks a big tree | **0.0s** — not it |
+| `sol_commit_pairs` over 568 `.sol` files | **0.0s** — not it |
+| dependency install | **the phase it never leaves** |
+
+Balancer v3 is a **Yarn Berry workspace monorepo**: Solidity lives under
+`pkg/*/contracts/`, and one install resolves every package in the workspace.
+That is inherent to the target, not a defect in Chainwatch — a human running
+`yarn install` there waits just as long.
+
+**The real defect was that it looked like a hang.** Chainwatch emitted NOTHING
+for the entire install: the CLI printed no line, the web log stopped, and there
+was no way to distinguish "working" from "wedged". That is the longest silent
+phase of any scan, and on a large repo it is minutes.
+
+**Fixed:** an `env` progress event is emitted BEFORE each install (HEAD and
+per-pair), rendered by both front ends. The same run now immediately prints
+`... installing HEAD dependencies (yarn); first run on a large repo can take
+minutes`. This matters beyond ergonomics — a demo or a judge watching a silent
+terminal reasonably concludes the tool is broken.
+
+**NOT fixed, and honestly out of scope for a rules engine:** making a monorepo
+install fast. Directions if picked up: scope the install to the workspace
+package that actually contains the changed `.sol` (Balancer would then install
+one package, not twenty); or accept a longer per-repo budget and rely on the
+manifest-hash cache, which already amortises the cost across a walk once the
+first install lands.
+
+**Consequence for the record:** any claim about Balancer v3 or Compound from
+that sweep is **unmeasured**, not quiet. Only Uniswap v4-core (12/12 pairs,
+88.3% rule coverage) and Sky dss (9/12 pairs, 100% rule coverage) produced
+results, both with 0 findings.
+
+---
+
 ## Rule 1 — RULES.md's own Slither-detector cross-check requirement is unimplementable as written
 
 **Direction: neither FN nor FP as things stand (Rule 1 itself is unaffected
