@@ -1,0 +1,30 @@
+[
+  {
+    "id": "P3a-widen-01", "rule": 3, "sub_rule": "3a", "label": "positive",
+    "exclusion_ref": null, "path": "positive/P3a-widen-01",
+    "summary": "CLOSES 3a-L2. onlyOwner on _authorizeUpgrade is replaced by an inline require(msg.sender == admin) - a real msg.sender constraint survives, so the pre-3a-L2-fix trigger (constrains_msg_sender goes True->False) stays quiet. But `admin` has an unguarded setAdmin(address) anyone can call: the constraint is illusory, the caller set is unrestricted in practice. EXPECTED: quiet under the OLD trigger alone, fires once the caller-set-widened extension is added."
+  },
+  {
+    "id": "P3a-widen-02", "rule": 3, "sub_rule": "3a", "label": "positive",
+    "exclusion_ref": null, "path": "positive/P3a-widen-02",
+    "summary": "Same caller-set-widened shape as P3a-widen-01, but on a directly EXTERNAL, state-changing target function (changeAdmin) rather than UUPS's always-internal _authorizeUpgrade - proves the trigger can reach CONFIRMED (reachability satisfied), not just fire. upgradeTo in the same file is unchanged (still require(msg.sender == admin)) and must stay quiet: single-hop analysis correctly does not chase admin's own writer (changeAdmin) transitively through pendingController."
+  },
+  {
+    "id": "N3a-widen-01", "rule": 3, "sub_rule": "3a", "label": "negative",
+    "exclusion_ref": "3a.1",
+    "path": "negative/N3a-widen-01",
+    "summary": "Same onlyOwner -> require(msg.sender == admin) replacement shape as P3a-widen-01, but setAdmin(address) is itself require(msg.sender == admin)-gated - a legitimate self-transferring admin role, not OpenZeppelin's Ownable but not weaker than it either. `admin` has no UNGUARDED writer. EXPECTED: quiet."
+  },
+  {
+    "id": "N3a-widen-02", "rule": 3, "sub_rule": "3a", "label": "negative",
+    "exclusion_ref": null,
+    "path": "negative/N3a-widen-02",
+    "summary": "Same replacement shape, but `admin` is written exactly once, inside the initializer - a one-shot writer, the same shape OpenZeppelin's own Ownable constructor uses for _owner. No runtime setter exists at all. EXPECTED: quiet."
+  },
+  {
+    "id": "N3a-widen-03", "rule": 3, "sub_rule": "3a", "label": "negative",
+    "exclusion_ref": null,
+    "path": "negative/N3a-widen-03",
+    "summary": "Baseline sanity: _authorizeUpgrade keeps plain onlyOwner unchanged across the commit; an unrelated owner-gated fee setter is added elsewhere in the file. Proves the new caller-set-widened check does not fire on a file that merely changed, when the upgrade authorization itself did not. EXPECTED: quiet."
+  }
+]

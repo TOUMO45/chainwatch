@@ -1,0 +1,10 @@
+{
+  "id": "P4x-01",
+  "sub_rule": null,
+  "label": "positive",
+  "exclusion_ref": null,
+  "solc_before": "0.7.6",
+  "solc_after": "0.7.6",
+  "description": "RC-EXTRACT1, measured on Aave v2 UniswapLiquiditySwapAdapter.executeOperation. At N-1, executeOperation performs its own arithmetic through SafeMath.add(). At N, executeOperation's own body is UNCHANGED except that the call site now targets a new internal helper, _swapLiquidity, which performs the same update with a plain `+` and no SafeMath. Pragma stays ^0.7.6 in both commits.",
+  "why_labeled": "The checked-arithmetic call was not removed, it was EXTRACTED: executeOperation itself has no diff in its own arithmetic (it never touched `amounts` directly at N-1 either, by the time this shape is reached in the real Aave commit) and a same-function comparison finds nothing. Rule 4 must therefore evaluate reachability: executeOperation reached a checked call at N-1 (directly) and reaches NONE at N (only _swapLiquidity's plain addition), so the arithmetic that used to be guarded is now unprotected under a pragma that gives no compiler checks. CONFIRMED. Pair-mate of N4x-01, which is diff-identical except the helper KEEPS the SafeMath call - the only fixture that proves the fix does not fire on every extraction, only on the ones that drop protection."
+}

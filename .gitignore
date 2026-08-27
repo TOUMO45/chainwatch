@@ -58,3 +58,23 @@ realworld-test/aave-v2/
 # WALK-L9: the guaranteed-empty directory git is pointed at for hook lookup.
 # Kept out of history precisely so it stays EMPTY - see history.hooks_deny_dir.
 .git-hooks-denied/
+
+# --- secrets: never commit any env file (a .env.bak leaked a live API key) ---
+.env*
+!.env.example
+
+# --- scratch clones used for real-world verification (not deliverables) ------
+realworld-test/1inch-aqua/
+realworld-test/1inch-solidity-utils/
+realworld-test/1inch-swap-vm/
+realworld-test/88mph-vuln-worktree/
+realworld-test/kinto-core-src/
+realworld-test/uniswap-v4-core/
+realworld-test/balancer-v3/
+realworld-test/sky-dss/
+realworld-test/compound-v2/
+realworld-test/aave-v2/
+realworld-test/v3-core/
+realworld-test/v3-periphery/
+realworld-test/.anchor-scratch/
+.claude/

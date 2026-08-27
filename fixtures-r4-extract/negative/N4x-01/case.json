@@ -1,0 +1,10 @@
+{
+  "id": "N4x-01",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": null,
+  "solc_before": "0.7.6",
+  "solc_after": "0.7.6",
+  "description": "Diff-identical extraction shape to P4x-01 - executeOperation's own body changes to call a new helper, _swapLiquidity - except the helper KEEPS the SafeMath.add() call. The checked arithmetic moved location; it did not disappear.",
+  "why_labeled": "THE CASE THAT SEPARATES A REAL FIX FROM A BLANKET 'any extraction fires' HACK. If RC-EXTRACT1's fix fired on every extraction regardless of what the new helper does, this case would false-positive on the single most common safe refactor (moving guarded arithmetic into a named helper for readability). Rule 4 must still find a checked-arithmetic library call reachable from executeOperation at N (now one level deeper, inside _swapLiquidity), so the reachable-checked-call count never drops to zero and the rule stays quiet."
+}

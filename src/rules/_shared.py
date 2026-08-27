@@ -25,6 +25,24 @@ from slither.slithir.operations import (
 from slither.slithir.variables import Constant, ReferenceVariable
 from slither.analyses.data_dependency.data_dependency import is_dependent
 
+class RuleUnsupported(Exception):
+    """This rule cannot be evaluated on this compiler generation AT ALL.
+
+    Distinct from "the rule ran and failed" (finding COV-ACCT2). Rule 3c needs
+    `solc --combined-json storage-layout`, an option that simply does not exist
+    below ~0.6.x - the compiler rejects the FLAG, so there is no version of the
+    question to answer and nothing about the source code was learned either way.
+
+    Counting that as an error is what made 88mph report 0/43 file comparisons
+    while nine of ten rules had in fact run cleanly across every file and
+    produced a real finding. An out-of-range rule must reduce the DENOMINATOR
+    (it was never applicable) rather than the numerator (it broke). Callers
+    that treat every exception alike will still degrade safely: this is an
+    ordinary Exception subclass, so an un-taught caller sees a failure, exactly
+    as before.
+    """
+
+
 REMAPS = [
     "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
     "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/",
@@ -227,18 +245,22 @@ def _compile_attempt(path, **extra) -> Slither:
 
     try:
         return Slither(str(path), solc_remaps=remaps_for(path), **extra)
-    except Exception:
-        pass
+    except Exception as exc:
+        ambient_err = exc
 
     saved = os.environ.get("SOLC_VERSION")
+    tried = 0
+    last_version, last_err = (saved or "<ambient>"), ambient_err
     try:
         for version in solc_candidates(path):
             if version == saved:
                 continue
+            tried += 1
             os.environ["SOLC_VERSION"] = version
             try:
                 return Slither(str(path), solc_remaps=remaps_for(path), **extra)
-            except Exception:
+            except Exception as exc:
+                last_version, last_err = version, exc
                 continue
     finally:
         if saved is None:
@@ -246,8 +268,20 @@ def _compile_attempt(path, **extra) -> Slither:
         else:
             os.environ["SOLC_VERSION"] = saved
 
-    # Nothing accepted the file: re-raise the ambient compiler's own error.
-    return Slither(str(path), solc_remaps=remaps_for(path), **extra)
+    # Nothing accepted the file. METHODOLOGY Face A: a message that names only
+    # the last thing tried describes the fallback, not the file's actual
+    # problem (measured: 88mph's Rule 3c reported "current compiler is 0.7.6"
+    # when the real cause was the FIRST attempt hitting an unsupported CLI
+    # option, unrelated to any version). Report both ends of the chain.
+    raise RuntimeError(
+        f"no installed solc compiled {path.name if hasattr(path, 'name') else path}: "
+        f"first attempt ({saved or '<ambient>'}): {_short_err(ambient_err)} | "
+        f"after {tried} fallback(s), last attempt ({last_version}): {_short_err(last_err)}"
+    ) from last_err
+
+
+def _short_err(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {exc}".replace("\n", " ").replace("\r", "")[:120]
 
 
 def foundry_project_root(path):
@@ -315,6 +349,65 @@ def _foundry_platform_unusable(path) -> bool:
     return foundry_project_root(path) is not None and foundry_toolchain_absent()
 
 
+# `--optimize` is NOT optional here, and this is measured, not stylistic: solc's
+# own stack-too-deep message says to use `--via-ir` "while enabling the
+# optimizer", and running --via-ir WITHOUT it does not merely fail - solc aborts
+# with an uncaught C++ exception out of libyul and exits 2. Verified on 0.8.20
+# against a real stack-too-deep contract: `--via-ir` alone -> exit 2,
+# `--via-ir --optimize` -> exit 0.
+VIA_IR_ARGS = "--via-ir --optimize"
+
+
+EXTERNAL_VIS = ("public", "external")
+
+
+def external_entry_points(contract, fn) -> list[str]:
+    """Public/external functions from which `fn` is reachable (finding 3a-L4).
+
+    UUPS's `_authorizeUpgrade` is `internal` BY DESIGN - the pattern requires it -
+    yet it is the actual authorization gate for an upgrade, and an attacker
+    reaches it by calling the inherited, public `upgradeTo` / `upgradeToAndCall`.
+    A reachability model that reads only the target's own visibility therefore
+    reports "not externally reachable" for the single most security-relevant
+    function in the whole proxy pattern, and every such finding capped at
+    CANDIDATE no matter what evidence surrounded it.
+
+    Returns qualified names (`UUPSUpgradeable.upgradeToAndCall`), which are FACTS
+    a report can cite, not a boolean the reader has to take on trust.
+
+    Two implementation notes, both measured rather than assumed:
+
+    * Slither exposes several `Function` objects for one inherited name (the
+      declaration and the resolved override). Measured on this project's own
+      P3a-widen-01 fixture, one of them returns an EMPTY reachable set while
+      another returns the real answer, so this takes the UNION over every
+      matching object rather than trusting whichever comes first.
+    * `all_reachable_from_functions` is transitive, which is what the question
+      needs: an entry point three internal hops away is still an entry point.
+    """
+    names: set[str] = set()
+    for cand in contract.functions:
+        if cand.name != fn.name or cand.visibility not in ("internal", "private"):
+            continue
+        for src in getattr(cand, "all_reachable_from_functions", ()) or ():
+            if getattr(src, "visibility", None) not in EXTERNAL_VIS:
+                continue
+            owner = getattr(src, "contract_declarer", None)
+            names.add(f"{owner.name}.{src.name}" if owner else src.name)
+    return sorted(names)
+
+
+def _stack_too_deep(exc: BaseException) -> bool:
+    """Is this solc's stack-slot exhaustion, i.e. the one error `--via-ir` fixes?
+
+    Matched on solc's own wording. Deliberately narrow: a broader match ("stack"
+    alone, say) would send genuinely broken files down a slow retry that cannot
+    help them, and COMP-L3's whole point is that the retry is worth paying for
+    only where it actually resolves something.
+    """
+    return "stack too deep" in str(exc).lower()
+
+
 def _compile(path) -> Slither:
     """`_compile_attempt`, plus ONE narrowly gated retry with the Foundry
     platform disabled (finding COMP-L1).
@@ -346,7 +439,21 @@ def _compile(path) -> Slither:
     """
     try:
         return _compile_attempt(path)
-    except Exception:
+    except Exception as exc:
+        # COMP-L3. "Stack too deep" is not a broken file and not a wrong
+        # compiler version - it is the legacy codegen running out of EVM stack
+        # slots on a function the IR pipeline compiles without complaint. The
+        # retry is gated on solc's own diagnostic rather than enabled globally
+        # because --via-ir is materially slower (measured in minutes on large
+        # protocol code), so paying for it on every file would trade a real
+        # amount of throughput for a case most repositories never hit.
+        #
+        # Precision is unaffected either way: --via-ir changes CODEGEN, not the
+        # AST or the IR that every rule reads, so a file that compiles both ways
+        # produces the same analysis. If this retry also fails, its error is the
+        # one that escapes, chained to the original (METHODOLOGY Face A).
+        if _stack_too_deep(exc):
+            return _compile_attempt(path, solc_args=VIA_IR_ARGS)
         if not _foundry_platform_unusable(path):
             raise
         # INSIDE the except block on purpose. Retrying after it had exited
@@ -621,6 +728,16 @@ def node_depends_on_msg_sender(node, contract) -> bool:
 
 # Raw ERC20 methods whose bool return is the Rule 5 (SC06) checkable value.
 ERC20_RETURN_FNS = ("transfer", "transferFrom")
+
+# Destination-argument position for OpenZeppelin's SafeERC20 wrapper methods,
+# called via `using SafeERC20 for IERC20`. Measured (not assumed): Slither
+# represents the `using` receiver as the LibraryCall's own arguments[0] -
+# `token.safeTransfer(to, amount)` carries arguments == [token, to, amount] -
+# which shifts every position by one relative to ERC20_RETURN_FNS' raw calls.
+# Rule 10's value-vars widening (§RC-RENAME1 10.7 residual) is the only
+# consumer; Rule 5 does not need this, because SafeERC20's own body already
+# checks the wrapped call's return value with a require().
+SAFE_ERC20_DEST_POS = {"safeTransfer": 1, "safeTransferFrom": 2}
 
 
 def is_return_checkable_call(ir) -> bool:

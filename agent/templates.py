@@ -161,6 +161,10 @@ def _fact_block(facts: dict) -> str:
         lines.append(f"- on-chain        : {facts.get('liveness')} - {facts.get('liveness_reason')}")
         if facts.get("liveness") == "LIVE" and facts.get("live_caveat"):
             lines.append(f"- IMPORTANT       : {facts['live_caveat']}")
+    xp = facts.get("exploit_proof")
+    if xp and xp.get("status") not in (None, "NOT_APPLICABLE"):
+        lines.append(f"- exploitability  : {xp.get('status')} (capability 14, read-only "
+                     f"eth_call, never a transaction) - {xp.get('reason')}")
     ev = facts.get("evidence") or {}
     lines.append("- required evidence:")
     for k, v in ev.items():

@@ -13,9 +13,20 @@ import re
 import subprocess
 from pathlib import Path
 
-from ._shared import _is_namespace_pointer_function, solc_candidates
+from ._shared import RuleUnsupported, _is_namespace_pointer_function, solc_candidates
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# solc's exact wording when the binary predates the option entirely (verified
+# directly against solc 0.5.17: `solc --combined-json storage-layout X.sol`
+# prints this and nothing else). Matched as a substring because solc appends
+# nothing useful around it. See COV-ACCT2 / RuleUnsupported.
+_OPTION_REJECTED = "Invalid option to --combined-json: storage-layout"
+
+# solc's wording when the binary is simply the wrong version for this file's
+# pragma. Neither a defect nor evidence about flag support - it means only that
+# this particular candidate was the wrong one to ask.
+_VERSION_MISMATCH = "requires different compiler version"
 
 # The directory solc runs in and resolves relative paths against. Defaults to
 # Chainwatch's own root, which is correct for the fixture scorer (fixtures live
@@ -83,7 +94,7 @@ def _run_layout(rel: str, root: Path, remaps: list[str],
     return subprocess.run(
         ["solc", *remaps, "--allow-paths", ",".join(allowed), "--combined-json",
          "storage-layout", rel],
-        cwd=str(root), capture_output=True, text=True, env=env,
+        cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
     )
 
 
@@ -112,17 +123,65 @@ def storage_layouts(path) -> dict:
 
     root, remaps = _root_and_remaps(src)
     rel = src.relative_to(root).as_posix() if src.is_relative_to(root) else str(src)
-    proc = _run_layout(rel, root, remaps)
+    ambient_proc = proc = _run_layout(rel, root, remaps)
+    tried = 0
+    # COV-ACCT2. Classify WHY each attempt failed, because "this compiler has no
+    # such option" and "this file does not compile" are different facts and only
+    # the second is a defect. `solc_candidates` deliberately returns EVERY
+    # installed version, merely ranked - it does not filter by pragma - so the
+    # presence of a flag rejection somewhere in the list proves nothing on its
+    # own: a 0.5.x candidate rejects the flag for every file, including one that
+    # is simply broken. Two counters, therefore:
+    #
+    #   flag_rejected  some compiler cannot answer this QUESTION at all
+    #   real_error     some compiler got far enough to reject the SOURCE
+    #
+    # A version mismatch is neither - it says only that this candidate was the
+    # wrong one to ask. Unsupported requires a flag rejection with NO real error
+    # anywhere: if any compiler actually read the source and refused it, that is
+    # a genuine failure and must keep costing coverage.
+    flag_rejected = real_error = False
+
+    def _classify(p) -> None:
+        nonlocal flag_rejected, real_error
+        err = p.stderr or ""
+        if _OPTION_REJECTED in err:
+            flag_rejected = True
+        elif _VERSION_MISMATCH not in err:
+            real_error = True
+
     if proc.returncode != 0:
+        _classify(ambient_proc)
         # Build config only: the ambient compiler refused this file's pragma
         # (a pre-0.8 commit in a mixed-version fixture set). Same fallback as
         # _shared._compile - try each installed solc, keep the first that works.
         for version in solc_candidates(src):
+            tried += 1
             proc = _run_layout(rel, root, remaps, version)
             if proc.returncode == 0:
                 break
+            _classify(proc)
+    if proc.returncode != 0 and flag_rejected and not real_error:
+        raise RuleUnsupported(
+            f"solc --storage-layout is unavailable for {rel}: no installed "
+            f"compiler that accepts this file's pragma supports the option "
+            f"({_OPTION_REJECTED!r}), and no compiler rejected the source "
+            f"itself; storage layout cannot be compared on this compiler "
+            f"generation"
+        )
     if proc.returncode != 0:
-        raise RuntimeError(f"solc --storage-layout failed for {rel}:\n{proc.stderr}")
+        # METHODOLOGY Face A (measured live on 88mph AND on 1inch/farming,
+        # 2026-08-25): reporting only the LAST candidate's stderr here is what
+        # produced "current compiler is 0.7.6" when the real, first-attempt
+        # cause was `Invalid option to --combined-json: storage-layout` - an
+        # unsupported CLI flag, unrelated to any version. Report both ends.
+        def _short(p) -> str:
+            return (p.stderr or "").strip().replace("\n", " ").replace("\r", "")[:150]
+        raise RuntimeError(
+            f"solc --storage-layout failed for {rel}: "
+            f"first attempt (ambient): {_short(ambient_proc)} | "
+            f"after {tried} fallback(s), last attempt: {_short(proc)}"
+        )
 
     combined = json.loads(proc.stdout)
     out: dict = {}

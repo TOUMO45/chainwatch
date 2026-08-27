@@ -1,0 +1,10 @@
+{
+  "id": "N4x-02",
+  "sub_rule": null,
+  "label": "negative",
+  "exclusion_ref": null,
+  "solc_before": "0.7.6",
+  "solc_after": "0.7.6",
+  "description": "deposit() keeps calling balances[to].add(amount) UNCHANGED at N, and gains an unrelated brand-new internal helper, _touch(), whose own plain arithmetic (callCount + 1) has no history to regress against.",
+  "why_labeled": "Guards against the false-positive shape the reachable-set widening could introduce: firing merely because SOME plain arithmetic is now reachable from an entry point, without checking whether the entry point's OWN previously-guarded call actually disappeared. deposit() still reaches its original SafeMath.add() call (now alongside _touch, but not through it), so the reachable-checked-call count stays above zero and the rule must stay quiet. _touch() itself is new-at-N and out of scope for a diff rule, exactly like any other rule 4 trigger."
+}

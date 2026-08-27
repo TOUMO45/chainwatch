@@ -156,10 +156,40 @@ Highest-value rule: SC10 is new in the 2026 list and ranked critical. Three sub-
 **Trigger:** the access constraint on `_authorizeUpgrade`, `upgradeTo`,
 `upgradeToAndCall`, or the proxy admin setter changed such that the caller set widened.
 
+Two structurally distinct ways a commit satisfies this trigger, implemented
+as two independent checks (`src/rules/rule3a.py`), reported via a `"trigger"`
+evidence discriminator:
+
+- **`constraint-removed`** (original). Every msg.sender-dependent guard on the
+  target function disappears outright.
+- **`caller-set-widened`** (3a-L2, closed 2026-08-26). A msg.sender check
+  *survives*, but what it compares against does not: `onlyOwner` replaced by
+  an inline `require(msg.sender == admin)` looks like a lateral refactor, but
+  if `admin` has no protection of its own — any unguarded function can set it
+  — the caller set is unrestricted in practice, identically to deleting the
+  modifier. Detected by reusing Rule 10's own gate-variable classification
+  (`_classify`): the comparison target is "illusory" iff it has a genuinely
+  unguarded run-time writer, checked at both commits (must be absent at N-1,
+  present at N — an already-illusory target is not a regression introduced
+  by this commit). Single-hop only, matching Rule 10's own scope boundary:
+  a target's writer that is ITSELF msg.sender-gated is never chased
+  transitively for whether THAT gate is in turn illusory. See LIMITATIONS.md
+  §3a-L2 for the fixture set and §3a-L4 for a real, pre-existing reachability
+  gap this trigger surfaced (not caused): `_authorizeUpgrade` is `internal`
+  by UUPS's own design, so a finding on it — from EITHER trigger — currently
+  cannot reach CONFIRMED; `upgradeTo`/`changeAdmin`/`changeProxyAdmin` are
+  unaffected.
+
 **Exclusions:**
-- 3a.1 Authority moved to a timelock or multisig contract (widened in name, narrowed in practice) — CANDIDATE, needs human read
+- 3a.1 Authority moved to a timelock or multisig contract (widened in name, narrowed in practice) — CANDIDATE, needs human read. Also covers `caller-set-widened`: a comparison target whose only writer is itself msg.sender-constrained, or written exactly once (constructor / `initializer`-guarded, the same shape OpenZeppelin's own `_owner` uses), is never illusory.
 - 3a.2 Contract changed from upgradeable to immutable (upgrade path removed entirely)
 - 3a.3 Test/mock path
+
+**Known residual (honestly not closed):** `caller-set-widened` only examines
+guards that compare msg.sender against a STATE VARIABLE. A near-tautological
+guard like `require(msg.sender != address(0))` — msg.sender-dependent, but
+reads no state variable at all — is invisible to this trigger exactly as it
+was before 3a-L2. No fixture exercises it. Tracked in TODO.md.
 
 ### 3b — Initializer re-callable
 **Trigger:** a function that sets ownership/admin/critical config lost its
@@ -372,11 +402,18 @@ by its own negative:
 | `transferFrom` argument 0 | that is the SOURCE — value moves AWAY from it | `N10e-02` |
 | every other ERC20 method | `balanceOf`, `allowance` and friends are reads | `N10e-03` |
 
-**RESIDUAL GAP, STATED.** A transfer through a wrapper library — SafeERC20's
-`safeTransfer` — compiles to a `LibraryCall`, not a `HighLevelCall`, and is
-**not** matched. Reserve uses exactly that pattern throughout, so Rule 10 still
-does not see its treasury moves. Widening to library calls needs its own
-fixtures and is not done here.
+**SafeERC20 wrapper transfers now count too** — `safeTransfer`/`safeTransferFrom`
+via `using SafeERC20 for IERC20`, the pattern Reserve uses throughout. These
+compile to a `LibraryCall`, not a `HighLevelCall`, so the branch above never
+sees them; matched separately via `_shared.SAFE_ERC20_DEST_POS`. Measured (not
+assumed) against a real Slither parse: the `using` receiver rides as the
+LibraryCall's own `arguments[0]`, so every destination position shifts by one
+relative to the raw calls above — `safeTransfer(token, to, amt)` → argument
+**1**, `safeTransferFrom(token, from, to, amt)` → argument **2**. Two more
+negatives lock the SafeERC20-side risks: `safeApprove` is not in the position
+table at all (`N10se-01`, the SafeERC20 counterpart of `N10e-01`), and
+`safeTransferFrom`'s SOURCE is argument 1 in the shifted scheme, not argument 0
+(`N10se-02`, the shift-aware counterpart of `N10e-02`).
 
 ### Additional CONFIRMED requirements
 
@@ -384,6 +421,192 @@ Unchanged from every other rule: the six evidence fields, and liveness = LIVE.
 The rule concludes `severity_hint = CONFIRMED`; `src/verdict.py` still caps the
 verdict at CANDIDATE when liveness is absent. On the 88mph re-run with no
 address supplied, the finding is correctly a CANDIDATE.
+
+---
+
+# CAPABILITY 13 — Live one-shot-exposure probe
+
+Added 2026-08-26. Implemented in `src/exposure.py`, wired into `scan.py`'s
+`_check_exposure`, locked by `tests/test_exposure.py`. **Not a rule** — it
+produces no finding, carries no verdict, and never touches the six-field
+CONFIRMED/CANDIDATE evidence model above. It is a second, independent,
+present-tense question, answered separately and reported in its own section
+(`report["exposure"]`, never `report["findings"]`).
+
+### The question this answers, and why it's a different one
+
+Rule 3b asks a HISTORICAL, source-diff question: *was a one-shot init guard
+ever removed across two commits.* This capability asks a LIVE, deployed-state
+question: *for a one-shot init guard that Rule 3b would recognise as real and
+intact right now, has anyone actually consumed the one-shot window yet?* A
+contract can be exposed here with a perfectly clean Rule 3b history — the
+guard was never removed, it simply was never called. This is the mechanism
+behind a real, currently active 2026 attack class: automated scanners hunt
+continuously for freshly-deployed-but-not-yet-initialized proxies (and
+EIP-2535 Diamond facets, which carry the same shape) and race the legitimate
+deployer to call the initializer first, planting a dormant backdoor. Kinto
+Protocol ($1.55M) is the named 2025 case still cited in 2026 write-ups; a
+broader "Uninitialized Proxy Campaign" put losses at $10M+ across protocols.
+Chainwatch had zero coverage for this class before this capability existed.
+
+### Method
+
+Exactly the technique this project used, by hand, to verify the real 88mph
+`NFT.init()` regression is still callable on real mainnet contracts
+(2026-08-26, see TODO.md and LIMITATIONS.md §11-L1): a real, read-only
+`eth_call` simulating the call, from an arbitrary address, with safe non-zero
+dummy arguments matching the function's own ABI signature. Never a guess at
+exploitability — a direct, verified answer from the chain itself. Never a
+real transaction (CHARTER rule 5): `eth_call` cannot mutate state, cost gas,
+or be mined.
+
+1. **Candidate identification** (`exposure.find_candidates`) — reuses Rule
+   3b's own `_contract_initializer` unchanged: `has_init_guard(fn) and
+   _sets_critical_config(fn, contract)`. Same criteria, same trust level,
+   deliberately not reimplemented.
+2. **Calldata construction** (`exposure.build_probe_calldata`) — ABI-encodes
+   safe, non-zero dummy arguments for the function's real parameter types.
+   Supports `address`, `bool`, `string`, `bytesN` (1–32), and `uintN`/`intN`.
+   Refuses (returns `None`, reported as `UNKNOWN`, never a guess) on arrays,
+   tuples/structs, and dynamic `bytes` — a narrower type set than a rule's
+   evidence model needs, because a wrong guess here would misreport
+   exploitability, not just miss a regression.
+3. **Non-zero dummy values are deliberate**, not incidental: an all-zero
+   `address` argument could trip an unrelated `require(x != address(0))` and
+   be misread as the one-shot guard itself firing — exactly the failure mode
+   a naive probe would hit. Locked by
+   `test_probe_sends_nonzero_address_argument`.
+4. **The probe** (`exposure.probe`) — one `eth_call`. Does not revert → OPEN
+   (verified exploitable right now). Reverts → CLOSED (consistent with
+   already-consumed, though not general proof of safety — an unrelated
+   `require` could also revert). Calldata could not be built, or the RPC call
+   itself failed → UNKNOWN, never silently reported as CLOSED.
+
+### Scope, stated plainly
+
+- **CLI**: `--check-exposure`, requires `--address`. Off by default.
+- **Files checked**: only files this scan already produced a finding on
+  (`_check_exposure` iterates `{f.file for f in findings}`), not a whole-repo
+  compile — a file with no finding was never established as in-scope the way
+  a changed-file set establishes it elsewhere in this project.
+- **Single-address assumption, inherited, not new**: every candidate found
+  across every finding file is probed against the one `--address` given.
+  Correct for a single-contract investigation (every real scan this project
+  has run so far); silently wrong for a multi-contract repo where a
+  different finding file belongs to an unrelated contract with its own
+  address. `_attach_liveness` (capability 11) has had the identical
+  assumption since it was written; this capability doesn't introduce it.
+- **Not yet verified against a live OPEN or CLOSED result through the CLI
+  flag itself** — the mechanism, candidate-identification, and calldata
+  construction are each independently verified (against the real 88mph
+  signature, a real compiled OZ `Initializable` fixture, and the exact
+  `eth_call` idiom already proven live this session), and the full pipeline
+  is verified not to crash against a real repo+address (88mph, correctly
+  returns empty — no OZ-guarded candidate exists there, Rule 10 owns that
+  contract's exposure instead). A live positive/negative example through
+  `--check-exposure` specifically is the natural next verification step, not
+  yet done. Tracked in TODO.md.
+
+---
+
+# CAPABILITY 14 — Read-only exploitability proof (access-control class)
+
+Added 2026-08-26, the same session as a direct user request for a genuine
+proof-of-concept capability, weighed explicitly against the CHARTER anti-goal
+"generate exploit code, calldata, or working proof-of-concept transactions...
+This holds even in the LLM report layer" (see the anti-goals section). The
+user chose the narrowest of three offered scopes: a read-only exploitability
+proof, never a working exploit handed to anyone, never touching the LLM
+report layer's own exploit-material gate. Implemented in
+`src/exploit_proof.py`, wired into `scan.py`'s `_attach_exploit_proof`,
+locked by `tests/test_exploit_proof.py`. **Not a rule and not a seventh
+evidence field** — it never touches `verdict.classify()` and is stored on
+each `Finding.exploit_proof`, deliberately parallel to `liveness_reason`.
+
+### The question this answers
+
+For a CONFIRMED, LIVE finding, does the SPECIFIC regression this finding
+reports still hold, checked against real chain state rather than inferred
+from the diff? Answered only for the rule classes where "an unprivileged
+call succeeds" IS the vulnerability — rules 1, 3a, 3b and 10 (10's
+"unguarded run-time writer" is structurally the same one-shot-established-
+then-unguarded shape as 3b, one level more general — and is the exact rule
+the real 88mph `NFT.init()` regression fires under, RC-VERDICT2) — because
+those are the only shapes a single read-only `eth_call` can honestly settle.
+Every other shipped rule (2a/2b reentrancy, 4 overflow, 5 external-call-
+check, 6 input-validation, 3c storage collision) reports `NOT_APPLICABLE`,
+never a generic reachability guess — see
+`src/exploit_proof.py`'s module docstring for the per-rule reasoning. A
+finding outside CONFIRMED (i.e. any CANDIDATE) is always `NOT_APPLICABLE`
+too: probing a CANDIDATE's missing evidence would paper over the gap rather
+than settle it.
+
+### Method
+
+Reuses capability 13's `exposure.probe`/`build_probe_calldata` unchanged —
+one real, read-only `eth_call` to the exact function this finding names, from
+a dummy sender (`0x2222...2222`, deliberately distinct from capability 13's
+own `0x1111...1111` so a report running both shows two independent senders
+agreeing) with no relationship to the contract. Does not revert → **OPEN**:
+this exact regression is proven callable right now, observed directly
+against real deployed bytecode, not inferred. Reverts → **CLOSED**:
+inconclusive, NOT a safety claim — the CONFIRMED verdict already rests on
+byte-exact liveness comparison (capability 11), stronger evidence than one
+dummy-argument call, so a revert here may simply be an unrelated `require`
+rather than the removed control being intact. Calldata unbuildable, or no
+signature/address on the finding → **UNKNOWN**, same "never a guess"
+discipline exposure.py already applies.
+
+### Why this stays inside the CHARTER, stated explicitly
+
+The banned things are exploit CODE, CALLDATA, or working PoC TRANSACTIONS —
+artifacts a reader could take and run against a live contract to move funds.
+This capability produces none of those: the "calldata" it builds is consumed
+internally by one `eth_call` and never rendered to a user as a usable
+payload; no transaction is ever signed, broadcast, or capable of mutating
+state; and the LLM report layer's own exploit-material gate
+(`agent/verify.py`'s `_EXPLOIT` regex) is untouched — this module's evidence
+strings ("simulated call... did NOT revert") do not match it, and were
+checked not to. What is produced is a FACT about the deployed contract,
+gathered the same way capability 11's liveness and capability 13's exposure
+probe already gather facts: read-only chain state, never a script handed to
+a reader.
+
+### Scope, stated plainly
+
+- **CLI**: `--check-exploit-proof`, requires `--address`. Off by default —
+  spends one real RPC call per CONFIRMED access-control finding.
+- **Web UI**: a checkbox next to capability 13's, off by default; the result
+  shows as a badge on the finding row and its own drawer section.
+- **Agent layer**: `agent/store.facts()` and `agent/templates._fact_block`
+  expose it as a CODE-rendered fact (never model-authored), so a generated
+  dossier can cite the proof without inventing exploit language of its own.
+- **Not yet verified against a real live OPEN result** — `prove()` is fully
+  unit-tested against a stub RPC (9 tests: scope gating for every rule id,
+  both non-eligible rules and the CONFIRMED-only gate, missing signature/
+  address, OPEN/CLOSED/UNKNOWN outcomes, the distinct-sender guarantee), and
+  it calls capability 13's own already-live-proven `probe()` unchanged. A
+  real end-to-end run against a real CONFIRMED+LIVE finding (the natural
+  next check is the 88mph regression this project has anchored on all
+  session, once a matching access-control-class finding is confirmed there)
+  is the natural next verification step, not yet done. Tracked in TODO.md.
+
+---
+
+# CAPABILITY 12 addendum — ranking wired to the web UI (2026-08-26)
+
+`agent/tools.rank_findings`/`verify_ranking` existed from capability 12's
+original build but had no caller: `generate_report`'s entry point only ever
+sent ONE finding id, so the ranking tools were reachable in principle and
+exercised by nothing. Closed by adding `agent/tools.save_ranking` (same
+mechanical-gate-then-persist discipline as `save_report`), a dedicated
+`RANKING_INSTRUCTION` and `agent/runner.generate_ranking`, and
+`POST /api/scan/{id}/rank` / `GET /api/scan/{id}/rank` in `webapp/server.py`.
+Same hard limits as every other agent-layer capability: the model orders,
+it never re-grades a verdict, and every rationale is checked against the
+same fact-citation gate a dossier's prose is checked against
+(`agent/verify.py`, unmodified). Available in the web UI once at least two
+CONFIRMED findings exist in a scan.
 
 ---
 

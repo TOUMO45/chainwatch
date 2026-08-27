@@ -12,6 +12,13 @@ slither-analyzer==0.11.5
 web3
 python-dotenv
 
+# --- capability 16: the findings corpus (CORPUS-1) ---------------------------
+# OPTIONAL at runtime. src/corpus.py degrades to "not recorded" when this is
+# absent or unauthenticated, so the analysis engine still runs on a machine
+# with no Google Cloud project at all. Pinned because a storage schema is a
+# contract, not a convenience.
+google-cloud-firestore==2.21.0
+
 # --- web app (webapp/server.py) ---------------------------------------------
 # Thin HTTP shell over src/scan.py; no analysis logic depends on these.
 fastapi

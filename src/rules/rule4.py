@@ -80,7 +80,7 @@ from slither.slithir.operations import (
 )
 from slither.slithir.variables import Constant, ReferenceVariable, TemporaryVariable
 
-from ._shared import emit, is_test_path_segments, parse, version_tuple
+from ._shared import emit, is_test_path_segments, parse, reachable, version_tuple
 
 RULE_ID = "4"
 
@@ -433,19 +433,6 @@ def _is_checked_arith_wrapper(fn) -> bool:
     return has_arith and has_guard
 
 
-def _wrapper_calls(sl, path) -> dict:
-    """{caller canonical name: number of checked-arith library calls}."""
-    counts: dict = {}
-    for fn in _own_functions(sl, path):
-        total = 0
-        for node in fn.nodes:
-            for ir in node.irs:
-                if isinstance(ir, LibraryCall) and _is_checked_arith_wrapper(ir.function):
-                    total += 1
-        counts[fn.canonical_name] = total
-    return counts
-
-
 # --------------------------------------------------------------------------
 # triggers
 # --------------------------------------------------------------------------
@@ -476,40 +463,82 @@ def _site_for_key(sl, path, keys):
     return None, None, None
 
 
-def _site_for_function(sl, path, canonical_name):
-    """First (fn, node, ir) belonging to `canonical_name`. Attribution only."""
-    for fn, node, ir in _arith_sites(sl, path):
-        if fn.canonical_name == canonical_name:
-            return fn, node, ir
+def _reachable_checked_calls(fn) -> int:
+    """Checked-arith library calls anywhere reachable from `fn` - itself, its
+    modifiers, and every internal helper it transitively calls.
+
+    RC-EXTRACT1's fix (measured on Aave v2 `UniswapLiquiditySwapAdapter.
+    executeOperation`): the checked call is not removed, it is EXTRACTED into
+    a NEW helper (`_swapLiquidity`). `fn`'s own body never changes, so a
+    same-function check (the pre-fix version of this rule) finds nothing to
+    compare and stays silent - the caller "kept its raw loop counter and lost
+    its visible SafeMath" with no diff inside the caller at all. Counting
+    reachable calls, the way rules 2a/2b already resolve delegated bodies via
+    `after_call_writes_resolved`, is what makes the extraction visible.
+    """
+    total = 0
+    for f in reachable(fn):
+        for node in f.nodes:
+            for ir in node.irs:
+                if isinstance(ir, LibraryCall) and _is_checked_arith_wrapper(ir.function):
+                    total += 1
+    return total
+
+
+def _reachable_plain_site(fn):
+    """First (containing fn, node, ir) with plain arithmetic anywhere
+    reachable from `fn`. Existence check only - proves there is something for
+    the lost checked call to have exposed, not which specific site it was."""
+    for f in reachable(fn):
+        for node in f.nodes:
+            for ir in node.irs:
+                if isinstance(ir, Binary) and ir.type in ARITH_OPS:
+                    return f, node, ir
     return None, None, None
 
 
 def _safemath_removed(before, before_path, after, after_path, case_meta=None) -> bool:
-    """True iff a function that reached its arithmetic through a checked-arith
-    library at N-1 does it in the open at N."""
-    calls_before = _wrapper_calls(before, before_path)
-    calls_after = _wrapper_calls(after, after_path)
-    plain_after = {fn.canonical_name for fn, _n, _ir in _arith_sites(after, after_path)}
-    for name, count in calls_before.items():
-        if count and calls_after.get(name, 0) == 0 and name in plain_after:
-            fn_a, node, _ir = _site_for_function(after, after_path, name)
-            emit(
-                case_meta, RULE_ID, decl=fn_a, node=node,
-                detail=(
-                    f"{name} performed its arithmetic through a checked-arithmetic "
-                    f"library at commit N-1 and performs it in the open at commit N, "
-                    f"with the pragma still below 0.8.0 (no compiler checks)"
-                ),
-                evidence={
-                    "owasp": "SC09", "trigger": "safemath-removed",
-                    "visibility_after": getattr(fn_a, "visibility", None),
-                    "writes_state_after": bool(
-                        fn_a.all_state_variables_written()) if fn_a else None,
-                    "wrapper_calls_before": count, "wrapper_calls_after": 0,
-                    "compiler_checked": False,
-                },
-            )
-            return True
+    """True iff an entry point declared in this file reached at least one
+    checked-arithmetic library call at N-1 - directly, through a modifier, or
+    through an internal helper - and reaches none at N, while still reaching
+    plain arithmetic somewhere.
+
+    Attribution stays on the ENTRY function (`fn_after`), never on the
+    resolved helper: same convention as rule2b's RC-INLINE2 fix, so file/line
+    always come from the one object `emit()` was told about and a delegated
+    body in a different file can never produce a mismatched (file, line).
+    """
+    entries_before = {fn.canonical_name: fn for fn in _own_functions(before, before_path)}
+    for fn_after in _own_functions(after, after_path):
+        name = fn_after.canonical_name
+        fn_before = entries_before.get(name)
+        if fn_before is None:
+            continue  # new-at-N entry point: out of scope for a diff rule
+        checked_before = _reachable_checked_calls(fn_before)
+        if not checked_before:
+            continue
+        if _reachable_checked_calls(fn_after):
+            continue  # still reaches a checked call somewhere: not a regression
+        site_fn, _node, _ir = _reachable_plain_site(fn_after)
+        if site_fn is None:
+            continue  # lost the wrapper but reaches no arithmetic at all now
+        via = "directly" if site_fn is fn_after else f"through {site_fn.canonical_name}"
+        emit(
+            case_meta, RULE_ID, decl=fn_after,
+            detail=(
+                f"{name} reached a checked-arithmetic library call at commit N-1 "
+                f"and reaches none at commit N ({via} exposes plain arithmetic now), "
+                f"with the pragma still below 0.8.0 (no compiler checks)"
+            ),
+            evidence={
+                "owasp": "SC09", "trigger": "safemath-removed",
+                "visibility_after": getattr(fn_after, "visibility", None),
+                "writes_state_after": bool(fn_after.all_state_variables_written()),
+                "wrapper_calls_before": checked_before, "wrapper_calls_after": 0,
+                "compiler_checked": False,
+            },
+        )
+        return True
     return False
 
 
@@ -547,6 +576,7 @@ def _unchecked_added(before, before_path, after, after_path, case_meta=None) -> 
                 "visibility_after": getattr(fn, "visibility", None),
                 "writes_state_after": bool(fn.all_state_variables_written()),
                 "operation": str(ir.type), "compiler_checked": True,
+                "checked_before": True, "checked_after": False,
             },
         )
         return True

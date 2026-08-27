@@ -25,6 +25,8 @@ framing are all produced by code before the model sees them.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
 import re
 import time
@@ -65,17 +67,38 @@ For the finding id you are given, in this order:
      create a finding, promote a CANDIDATE, or change any verdict field; if the
      evidence looks thin to you, say so in the slots - the verdict is not
      yours to move.
-  8. If you were given MORE THAN ONE finding id: rank_findings(finding_ids_json)
-     returns the priority-relevant fields of each, and
-     verify_ranking(finding_ids_json, ranking_json) checks your ordering.
-     Return every finding you were given, exactly once, with ranks 1..N. Cite
-     only fields the tool returned - never TVL, funds at risk, or real-world
-     stakes, which are not in the record. Ordering is not re-grading.
 
 Report only what the tools told you. Never assert that a CANDIDATE finding is
 confirmed, exploitable, or a vulnerability - explain instead which evidence is
 missing and what would settle it. Never produce exploit code or a
 proof-of-concept."""
+
+RANKING_INSTRUCTION = """You order Chainwatch findings by priority for a
+security researcher who has to triage several at once.
+
+For the finding ids you are given, in this order:
+  1. rank_findings(finding_ids_json) - the priority-relevant facts for every
+     one of them (verdict, liveness, survives_to_head, whether the function
+     changes state, whether a read-only exploitability proof observed the
+     regression to be callable right now). It does NOT rank for you.
+  2. Decide an ordering. Typical signals, strongest first: an exploitability
+     proof status of OPEN over anything else - it means this exact regression
+     was observed callable, right now, against real chain state; liveness
+     LIVE over UNKNOWN; survives_to_head true over false; a CONFIRMED verdict
+     over a CANDIDATE; a state-changing declaration over a view. Cite ONLY
+     fields the tool returned - never TVL, funds at risk, real-world stakes,
+     or any exploit mechanics, none of which are in the record.
+  3. verify_ranking(finding_ids_json, ranking_json) with your ordering as a
+     JSON array of {finding_id, rank, rationale}. Fix anything it reports and
+     verify again.
+  4. save_ranking(finding_ids_json, ranking_json) with the same array, once
+     verify_ranking reports no violations.
+
+Return every finding you were given, exactly once, with ranks 1..N - dropping
+one or inventing one that was not given to you both fail verification.
+Ordering is not re-grading: the verdict was decided by the deterministic
+engine and is not yours to move. Never produce exploit code, calldata, or a
+proof-of-concept - describe priority, not mechanism."""
 
 
 class RateLimiter:
@@ -268,6 +291,128 @@ def _saved_path(out_dir: Path, facts: dict, finding_id: str) -> Optional[Path]:
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", f"{facts.get('contract')}_{finding_id}")
     p = Path(out_dir) / f"{safe}.md"
     return p if p.is_file() else None
+
+
+def _saved_ranking_path(out_dir: Path, finding_ids: list[str]) -> Optional[Path]:
+    """Same derivation as agent.tools.save_ranking - kept in lock-step there,
+    not re-derived independently, so a saved file is always findable by the
+    exact ids that produced it."""
+    key = re.sub(r"[^A-Za-z0-9_]", "_", "_".join(sorted(finding_ids)))[:80]
+    safe = hashlib.sha256(key.encode()).hexdigest()[:16]
+    p = Path(out_dir) / f"ranking_{safe}.json"
+    return p if p.is_file() else None
+
+
+async def generate_ranking(
+    store: FindingStore,
+    finding_ids: list[str],
+    out_dir: Path,
+    model: str = DEFAULT_MODEL,
+    limiter: Optional[RateLimiter] = None,
+    on_event: Optional[Callable[[dict], None]] = None,
+    max_attempts: int = 3,
+) -> dict:
+    """Rank several existing findings by priority, verified against the record.
+
+    Mirrors generate_report's whole discipline one level up: the AGENT never
+    decides the ordering is correct, the file `save_ranking` actually wrote
+    (re-checked by the same mechanical gate, never the model's own say-so) is
+    read back as the result. Never raises for an API condition - a rate
+    limit, an overloaded model or a missing key come back as a status the
+    caller can render.
+    """
+    _load_env()
+    if not api_key_present():
+        return {"status": "error", "finding_ids": finding_ids,
+                "error_message": "no GEMINI_API_KEY configured; the deterministic "
+                                 "engine does not need one, this report layer does"}
+    if len(finding_ids) < 2:
+        return {"status": "error", "finding_ids": finding_ids,
+                "error_message": "ranking needs at least two finding ids"}
+    missing = [fid for fid in finding_ids if not store.facts(fid).get("verdict")]
+    if missing:
+        return {"status": "error", "finding_ids": finding_ids,
+                "error_message": f"no finding with id(s): {', '.join(missing)}"}
+
+    limiter = limiter or RateLimiter()
+    waited_total = 0.0
+
+    def emit(kind: str, **kw):
+        if on_event:
+            try:
+                on_event({"kind": kind, "finding_ids": finding_ids, **kw})
+            except Exception:  # noqa: BLE001
+                pass
+
+    from google.adk.agents import LlmAgent
+    from google.adk.runners import InMemoryRunner
+    from google.genai import types
+
+    async def pace(callback_context=None, llm_request=None, **_kw):
+        nonlocal waited_total
+        w = await limiter.acquire(
+            on_wait=lambda s: emit("throttle", seconds=round(s, 1)))
+        waited_total += w
+        return None
+
+    T.bind(store, out_dir=out_dir)
+    agent = LlmAgent(name="chainwatch_ranker", model=model, tools=T.ALL_TOOLS,
+                     instruction=RANKING_INSTRUCTION, before_model_callback=pace)
+    runner = InMemoryRunner(agent=agent, app_name="chainwatch")
+
+    calls: list[str] = []
+    last_error = ""
+    for attempt in range(1, max_attempts + 1):
+        calls = []
+        try:
+            session = await runner.session_service.create_session(
+                app_name="chainwatch", user_id="cw")
+            msg = types.Content(role="user", parts=[types.Part(
+                text=f"Rank these findings by priority: {json.dumps(finding_ids)}")])
+            async for ev in runner.run_async(user_id="cw", session_id=session.id,
+                                             new_message=msg):
+                if getattr(ev, "content", None) and ev.content.parts:
+                    for p in ev.content.parts:
+                        fc = getattr(p, "function_call", None)
+                        if fc is not None:
+                            calls.append(fc.name)
+                            emit("tool", tool=fc.name)
+                err = getattr(ev, "error_code", None)
+                if err:
+                    raise RuntimeError(f"{err}: {getattr(ev, 'error_message', '')}")
+            break
+        except Exception as exc:  # noqa: BLE001
+            last_error = f"{type(exc).__name__}: {exc}"[:400]
+            if attempt < max_attempts and (_is_rate_limited(exc) or _is_overloaded(exc)):
+                delay = _retry_delay_from(exc)
+                emit("retry", attempt=attempt, seconds=round(delay, 1),
+                     reason="rate-limited" if _is_rate_limited(exc) else "overloaded")
+                waited_total += delay
+                await asyncio.sleep(delay)
+                continue
+            emit("error", message=last_error)
+            return {"status": "error", "finding_ids": finding_ids,
+                    "error_message": last_error, "tool_calls": calls,
+                    "waited": round(waited_total, 1)}
+
+    path = _saved_ranking_path(out_dir, finding_ids)
+    if not path:
+        emit("error", message="the agent did not save a ranking")
+        return {"status": "error", "finding_ids": finding_ids,
+                "error_message": "the agent completed without saving a ranking "
+                                 f"(tools called: {', '.join(calls) or 'none'})",
+                "tool_calls": calls, "waited": round(waited_total, 1)}
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    emit("done", path=str(path))
+    return {"status": "success", "finding_ids": finding_ids, "path": str(path),
+            "ranking": payload.get("ranking", []), "tool_calls": calls,
+            "waited": round(waited_total, 1)}
+
+
+def generate_ranking_sync(store: FindingStore, finding_ids: list[str], out_dir: Path,
+                          **kw) -> dict:
+    return asyncio.run(generate_ranking(store, finding_ids, out_dir, **kw))
 
 
 async def generate_all(store: FindingStore, out_dir: Path,

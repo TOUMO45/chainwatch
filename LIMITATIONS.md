@@ -326,8 +326,56 @@ direct-reentrancy verdict; the read-only (2.10) path was never gated on this.
 | # | Limitation | Direction |
 |---|---|---|
 | 3a-L1 | **Fixed target-function set.** The rule inspects `_authorizeUpgrade`, `upgradeTo`, `upgradeToAndCall`, `changeAdmin`, `changeProxyAdmin`. A protocol with a custom-named upgrade entry point is not examined at all. | **[FN risk]** |
-| 3a-L2 | **Detects constraint → *no* constraint, not narrow → wide.** The trigger in RULES.md is that the caller set *widened*. The implementation tests whether any msg.sender-dependent guard survives. A genuine weakening that keeps some msg.sender check — `onlyOwner` replaced by a check against a mutable, publicly-settable address, or by `require(msg.sender != address(0))` — keeps the rule quiet. This is the widest gap in Rule 3a. | **[FN risk]** |
 | 3a-L3 | **3a.1 is discarded silently rather than raised as CANDIDATE.** RULES.md specifies that a move to a timelock/multisig should reach a human as a CANDIDATE. The current harness has no CANDIDATE state (see cross-cutting below), so N3a-01-shaped changes vanish. The fixture's own review note — that a timelock set in an initializer stays `address(0)` on an already-deployed proxy and *locks* the upgrade path — is exactly the kind of nuance a human is supposed to see and currently would not. | **[FN risk]** |
+| 3a-L4 (NEW) | **`_authorizeUpgrade` findings structurally cannot reach CONFIRMED.** Found while closing 3a-L2 (below), NOT caused by that fix: UUPS's `_authorizeUpgrade` is `internal` by design (called from the inherited, external `upgradeToAndCall`), but `_reachability()` (verdict.py) only checks the FIRED function's own `visibility_after` against `EXTERNAL_VISIBILITIES` — it has no notion of "internal but reachable through an inherited external entry point," the way Rule 1's exclusion 1.3 reasons about internal-with-a-guarded-caller. Measured directly: the ORIGINAL "constraint-removed" trigger, replayed against the existing `fixtures/positive/P3a-01`, produces the identical `visibility_after: "internal"` and caps at CANDIDATE the same way `caller-set-widened` does on the analogous case (`fixtures-r3a-widen/positive/P3a-widen-01`) — so this has been true since Rule 3a first shipped, for every `_authorizeUpgrade` finding either trigger has ever produced. `upgradeTo`/`changeAdmin`/`changeProxyAdmin` targets are typically declared directly external and are unaffected (verified: `fixtures-r3a-widen/positive/P3a-widen-02`'s `changeAdmin` reaches CONFIRMED cleanly). Locked as a known characteristic, not silently accepted, by `tests/test_verdict.py::test_rule3a_caller_set_widened_on_internal_authorizeupgrade_caps_at_candidate`. Fix direction (not implemented): teach `_reachability()` or Rule 3a's own emit to resolve reachability through the UUPS `upgradeToAndCall`/`upgradeTo` entry point when the fired function is `_authorizeUpgrade` specifically, mirroring Rule 1's 1.3 caller-resolution logic. | **[FN risk]**, real but bounded to one specific target function |
+
+### 3a-L2 — CLOSED 2026-08-26 (partially — see the residual below)
+
+**Type: FALSE NEGATIVE. Rule 3a. Was: "detects constraint → *no* constraint,
+not narrow → wide."** RULES.md's own trigger text is broader than the
+original implementation: *"the caller set widened,"* not merely *"the
+constraint disappeared."* `onlyOwner` replaced by an inline
+`require(msg.sender == admin)` kept `constrains_msg_sender` True on both
+sides, so the rule stayed quiet even when `admin` was freely settable by
+anyone — functionally identical to deleting the modifier outright.
+
+**Fixed** by adding a second trigger, `caller-set-widened`, alongside the
+original (now `constraint-removed`) in `src/rules/rule3a.py`. Detection reuses
+Rule 10's own `_classify(contract, var_name)` unchanged — the same
+(one-shot writers, unguarded writers) split Rule 10 already trusts — applied
+to what a surviving msg.sender guard compares against, rather than to what an
+access-control check itself guards: a comparison target is "illusory" iff it
+has a genuinely unguarded run-time writer, checked at both N-1 (must be
+absent — otherwise this was already illusory before this commit, not a
+regression introduced by it) and N (must be present). Registered in
+`verdict.PRE_POST_BY_TRIGGER["3a"]` under its own key from the day it
+shipped — unlike Rule 4/3b/3c's history, where a second trigger shipped once,
+its evidence keys unregistered, and every finding from it silently capped at
+CANDIDATE forever until RC-VERDICT1 caught it. That failure class is now a
+known, named risk in this project rather than one to rediscover per rule.
+
+Locked by `fixtures-r3a-widen/` (2 positives, 3 negatives, 1.00/1.00):
+`P3a-widen-01` (UUPS `_authorizeUpgrade`, surfaces 3a-L4 above), `P3a-widen-02`
+(a directly external `changeAdmin`, reaches CONFIRMED cleanly — proves
+reachability is satisfiable, not just the trigger), `N3a-widen-01` (the
+comparison target's setter is itself protected — a legitimate self-transferring
+role, not illusory), `N3a-widen-02` (the target is written exactly once, in the
+initializer — a one-shot writer, same shape as OpenZeppelin's own `_owner`),
+`N3a-widen-03` (baseline sanity: an unrelated change elsewhere in the file,
+upgrade authorization itself untouched). All ten pre-existing frozen sets
+(`fixtures`, `fixtures-r3a-widen`'s own siblings, etc.) re-verified 0 FP.
+Locked at the verdict layer by `tests/test_verdict.py::test_rule3a_caller_set_widened_trigger_reaches_confirmed`
+and `::test_rule3a_caller_set_widened_without_registration_would_have_capped`
+(the RC-VERDICT1-shaped regression guard).
+
+**Residual, honestly not closed**: the `require(msg.sender != address(0))`
+half of the original 3a-L2 wording — a guard that is a near-tautology rather
+than a comparison against an attacker-controllable variable. `_illusory_
+constraint_targets` only examines STATE VARIABLES a guard reads
+(`node.state_variables_read`); a comparison against the literal
+`address(0)` reads no state variable at all, so this shape is invisible to
+the fix exactly as it was before. No fixture exercises it. Tracked in
+TODO.md as a distinct, smaller residual — not conflated with the closed half.
 
 ---
 
@@ -454,9 +502,14 @@ did not.
 
 ### 3x-L1 — test/mock path exclusion is a substring match
 
-**Type: FALSE NEGATIVE (silent).**
+**Type: FALSE NEGATIVE (silent). RESOLVED for all ten shipped rules as of
+2026-08-26 — Rules 3a/3b/3c were the last three, fixed this session; the
+other seven had already migrated at some earlier, unrecorded point in this
+project's history. This entry is retained, unedited above this note, as the
+mechanism record — it is the reason the fix exists, not a currently-true
+description of the shipped rules' behaviour.**
 
-Every rule begins by discarding test/mock/script paths. The check is a plain
+Every rule begins by discarding test/mock/script paths. The check WAS a plain
 substring match of `test/`, `tests/`, `mock/`, `mocks/`, `script/`, `scripts/`
 against the whole path. Any real project directory whose name merely *ends* in
 one of those words is therefore skipped: the rule returns `False` having
@@ -475,23 +528,49 @@ Verified against the shipped matcher:
 | `attestations/Vault.sol` | no | markers require a trailing `/`, so this yields `testa`, not `test/` |
 | `test-helpers/Vault.sol` | no | |
 
-**How it was caught.** Phase 5's first run reported a clean "0 detections across
-20 files" — with every rule returning in **0.0 seconds**, which is impossible
-for a Slither parse plus a `solc --storage-layout` invocation. Our own harness
-directory `realworld-test/` contains the substring `test/`, so all three rules
-bailed out before examining a single contract. The run was a false PASS. Timing
-was the only signal that anything was wrong; the verdicts themselves looked
-correct.
+**How it was caught, the first time.** Phase 5's first run reported a clean
+"0 detections across 20 files" — with every rule returning in **0.0 seconds**,
+which is impossible for a Slither parse plus a `solc --storage-layout`
+invocation. Our own harness directory `realworld-test/` contains the
+substring `test/`, so all three rules (Rule 3's sub-rules, the only ones that
+existed at the time) bailed out before examining a single contract. The run
+was a false PASS. Timing was the only signal that anything was wrong; the
+verdicts themselves looked correct.
 
 A second exposure: when a caller does not supply `source_path`, the rules fall
 back to the *filesystem* path. Any component of the absolute path — a user
 directory named `latest`, a CI workspace named `contest` — can then silently
 disable analysis for an entire run.
 
-**Fix direction (deliberately not implemented yet):** match on path *segments*,
-not substrings — a directory named exactly `test`, `tests`, `mock`, `mocks` or
-`script`, or a filename matching `*.t.sol` / `*Mock*` / `*Harness*`. Tracked in
-TODO.md.
+**How it was caught, the second time (2026-08-26).** Fixed for Rules 1, 2a,
+2b, 4, 5, 6 and 10 at some point this project's history didn't separately
+record — this file's own wording ("deliberately not implemented yet") was
+stale and said otherwise for months. Rules 3a, 3b and 3c were never migrated.
+Rediscovered live, independently, chasing an unrelated question on a real
+2026 target: compiling Kinto's `BridgedToken.sol` (Arbitrum) and running the
+new capability-13 exposure probe (which reuses Rule 3b's own candidate
+identification) against it returned zero candidates, even though its
+`initialize(...)` was directly confirmed, by calling `has_init_guard` and
+`_sets_critical_config` on it in isolation, to satisfy every one of Rule 3b's
+own criteria. Traced to the cause: `realworld-test/` (this project's
+real-world-testing convention, unrelated to Kinto itself) contains the
+substring `test/`, and `exposure.find_candidates` had no way to prefer a
+repo-relative path over the absolute filesystem fallback 3x-L1 already named
+as a risk.
+
+**Fix (implemented).** Match on path *segments*, not substrings — a directory
+named exactly `test`, `tests`, `mock`, `mocks` or `script`, or a filename
+matching `*.t.sol` / `*Mock*` / `*Harness*` — via `is_test_path_segments`
+(`src/rules/_shared.py`), already proven safe by seven rules using it
+successfully; `rule3a.py`/`rule3b.py`/`rule3c.py` now use it too, the same
+one-line swap. `src/exposure.py`'s `find_candidates` gained a `source_path`
+parameter, threaded from `scan.py`'s already-available repo-relative `rel`,
+matching the convention every rule uses — defense in depth alongside the
+segment fix itself, which alone already resolves the `realworld-test/` case.
+Verified: `find_candidates` on the real compiled `BridgedToken.sol` now
+correctly returns the `initialize` candidate; all affected fixture sets
+(`fixtures`, `fixtures-r3a-widen`, `fixtures-r3c-ast1`, and every other set
+touching 3a/3b/3c) re-run clean, 0 FP.
 
 ### 3x-L2 — OZ major-version pre-screen was wrong
 
@@ -780,6 +859,293 @@ control returns PATCHED against the superseded original implementation of the
 same proxy. Charter success criterion 5 is met for this contract. It has **not**
 been exercised across a broad set of proxy styles — one EIP-1967 proxy, one
 legacy-slot resolution, and no beacon or clone tested against live data.
+
+### 11-L1 — "reachable at HEAD" assumed source-tracking deployment; false for immutable EIP-1167 clones
+
+**Type: FALSE NEGATIVE (silent, and specifically the kind that looks like
+"unmeasurable" rather than "quiet"). Capability 11 + `_head_survival`.
+MEASURED on a real repository (88mph, `a4c48d61661a`). FIXED 2026-08-26.**
+
+Both halves of evidence field 4 — `_head_survival`'s source-diff re-run and
+`_attach_liveness`'s bytecode compile — assumed the deployed contract keeps
+tracking the target repository's *current git HEAD source*. True for an
+ordinary contract (an admin can redeploy, an upgradeable proxy can be
+pointed at new logic, so "what HEAD compiles to" is a reasonable stand-in for
+"what's really running"). **False for an EIP-1167 minimal-proxy clone**: a
+clone's implementation is immutable at deploy time. Fixing the *source*
+protects only clones deployed *after* the fix; anything already deployed
+keeps running the exact pre-fix bytecode forever, regardless of what HEAD
+says. "Does the regression survive to HEAD" and "does the regression survive
+in the deployed contract" are different questions for a clone, and only the
+tool asked the first one.
+
+**Evidence, measured.** 88mph's real, publicly-disclosed `NFT.init()`
+ownership-hijack (`a4c48d61661a`, 2021-02-18 — the case
+[RC-RENAME1](#rc-rename1-rule----done-f8c8a24) and RC-VERDICT2 (below) both
+already use as the motivating real-world instance for Rule 10). The source
+fix (`29be743`, 2021-04-06 — confirmed the ONLY commit between `a4c48d6` and
+that date touching the file) landed six weeks after the regression; the file
+was later moved and rewritten again. Real current HEAD has no trace of the
+vulnerable shape left to compile, no matter how far a trajectory walk goes —
+so `_head_survival` returns `(None, None)`, UNDETERMINED, forever, for this
+finding. Yet the real deployed implementation (`0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634`,
+shared by three real EIP-1167 clones — the yaLINK, CRV:STETH and
+CRV:RENWBTC pool deposit-NFT contracts) is, verified against real mainnet RPC
+2026-08-26, still byte-for-byte the `a4c48d6` build: normalized-keccak
+identical to a fresh solc 0.5.17 compile of that exact commit's source. A
+real, read-only `eth_call` simulating `init()` from an arbitrary address
+against all three returned success, zero revert — the exact unguarded
+ownership-hijack is, empirically, still callable today, five years later.
+(Current value at risk: **zero** — 88mph's team raced the June 2021
+disclosure and extracted everything to treasury within 24 hours. The
+regression's continued liveness and its current lack of funds are two
+separate, both-honestly-reported facts; see TODO.md's write-up for the full
+evidence chain and sources.)
+
+**Why this one is more dangerous than an ordinary false negative.** It does
+not read as a miss — it reads as a *responsible* refusal to guess (`UNKNOWN`,
+the module's own documented, deliberate posture per 11-R3 just above). The
+tool's honesty about not overclaiming from a stale reference is exactly what
+made a genuinely still-live finding indistinguishable from "can't tell." A
+false CONFIRMED costs credibility; this cost a true CONFIRMED its own
+verdict, silently, in a way that looked like caution rather than a gap.
+
+**Fix (implemented).** `src/verdict.py` gained `update_survival(f,
+survives_to_head, fixed_at=None)`, a public function that overwrites a
+finding's survival fact and recomputes the `reachability` evidence it drives
+— for use only when a caller has independent proof stronger than the
+source-diff heuristic, never a guess. `src/scan.py`'s `_attach_liveness` uses
+it: when `opts.address` resolves to a structurally-confirmed (read from the
+proxy's own bytecode via `resolve_implementation`, never assumed)
+`eip1167-clone`, and the HEAD-based liveness check did not already prove
+LIVE, it additionally recompiles from the finding's own regression commit
+(`f.commit`, reusing the existing `cur_wt` worktree slot) and rechecks. A
+match calls `update_survival` and is labelled explicitly as matching the
+*regression commit*, never silently reported as "matches HEAD" — the two are
+different claims and the report must not conflate them. Scoped tightly:
+never fires for an ordinary (non-clone) address, so a contract that was
+legitimately redeployed with fixed code is unaffected.
+
+**A second, independent fix found while reading this code path.**
+`_runtime_bytecode()` has always accepted an `optimize_runs` parameter, but
+neither call site ever passed one — every liveness compile silently defaulted
+to *unoptimized*, wrong for nearly every real deployment (Truffle, Hardhat
+and Foundry all default to `--optimize --optimize-runs 200`). Now passed at
+both sites. Not a precision-trading guess: `check_against_artifact` still
+requires an exact byte match, so a project built with a different
+optimizer-runs value still, correctly, falls through to `UNKNOWN` (11-R3) —
+this only turns a spurious unoptimized-vs-optimized mismatch into a real
+`LIVE` answer, never the reverse.
+
+Locked by `tests/test_verdict.py::test_update_survival_unlocks_confirmed_for_immutable_clone`
+(the real 88mph evidence shape, starting from the honest
+`survives_to_head=None` real-HEAD state, must reach CONFIRMED once liveness
+independently proves LIVE) and
+`::test_update_survival_does_not_confirm_without_liveness` (regression guard:
+survival alone must never be sufficient by itself). Full suite: 175 passed
+(was 171 at session start). Every scorer-compatible fixture set re-run
+individually, 0 FP.
+
+**Verified three ways, the third being the one that matters most: the real,
+unmodified CLI.** Unit tests exercise `verdict.py` in isolation. A direct call
+to the real, unmodified `scan._attach_liveness()` reaches `VERDICT:
+CONFIRMED` with a working compile environment supplied by hand. And, after
+11-L2 and 11-L3 below were found and fixed, **the unmodified scan pipeline
+itself** — `scan()` with `explicit_pairs=[('5f52a2ead702...',
+'a4c48d61661a...')]` and the real mainnet `--address`, no stubbing, no code
+changes at call time — reaches it on its own:
+`[done] findings=1 confirmed=1 candidates=0`, finding JSON:
+`"verdict": "CONFIRMED"`, `"downgrade_reasons": []`, `"liveness": "LIVE"`.
+CHARTER success criterion 6 is met by the shipped tool, not merely by manual
+reconstruction of its logic.
+
+### 11-L2 — dependency-cache "hit" did not verify the WORKTREE's own link, only the cache's marker
+
+**Type: SILENT ENVIRONMENT-RECONSTRUCTION FAILURE. `H.install`/`_link_dir`.
+Blocked the unmodified CLI from reaching the 88mph finding above (11-L1). NOT
+caused by, and not fixed by, 11-L1's own change. FIXED 2026-08-26, same
+session, once root-caused past the point 11-L1's write-up had left it.**
+
+Running `chainwatch.py`'s real pair loop against `5f52a2ead702..a4c48d61661a`
+(no code changes, no stubbing) failed Rule 10's compile — not just the
+liveness fallback, the RULE ITSELF — with `Source
+"@openzeppelin/contracts/token/ERC721/ERC721Metadata.sol" not found`, even
+after confirming, separately and directly:
+
+- `npm ci` (`H.install`'s first attempt) fails outright on this npm version
+  for this repo (flag-combination rejected) — expected, `install_commands`
+  already falls through to `npm install --ignore-scripts --no-audit
+  --no-fund`, which correctly resolves OpenZeppelin 2.5.1 for this exact
+  commit's `package-lock.json` when run directly, twice, in two different
+  fresh worktrees.
+- The walker's OWN cache, at its OWN computed `EnvSpec.key`
+  (`b0200cf6ff650c6f`), holds a correct, complete OZ 2.5.1 install including
+  the file solc claims is missing — `H.install()` called directly against it
+  returns `(True, "", "cache hit ...")`.
+- Yet after that exact "cache hit", inside the actual walker run, the real
+  worktree's `node_modules` **does not exist at all**
+  (`os.path.exists` False, not merely an empty directory), and
+  `H.derive_remaps()` run against that worktree returns an **empty list** — so
+  nothing gets remapped for solc and the compile fails exactly as observed.
+
+**Root cause, reproduced deterministically, not just observed live.** A
+dangling NTFS junction: sometime earlier this session, `.walker-cache` was
+wiped while a worktree still held a working link into it, leaving a directory
+ENTRY at `<worktree>/node_modules` whose target no longer existed. Measured
+directly (`os.path.lexists` vs `.exists()` on a deliberately-dangled
+junction): `Path.exists()` **False** (it FOLLOWS the link; the target's gone)
+and `Path.is_symlink()` **False** (an NTFS junction is not a Python symlink at
+all) — so BOTH `_link_dir`'s skip-guard and `_unlink_node_modules`'s
+early-return guard, which used exactly those two checks, saw "nothing here"
+and did nothing. The stale entry stayed on disk; `mklink` then refused to
+create a fresh junction over it (`Cannot create a file when that file already
+exists`, returncode 1 — never checked, so a silently failed junction and a
+successful one looked identical to the caller); `H.install`'s cache-hit branch
+verified only the CACHE's marker file, never the WORKTREE's own link, and
+reported success regardless.
+
+**Not the same defect as WALK-L4 or WALK-L5, though clearly the same family**
+(NTFS-junction-vs-Windows-vs-old-solc fragility). WALK-L4 is solc being
+unable to *traverse* a junction that exists; WALK-L5 is a *stale, working*
+link from an earlier run blocking a new one before an install even starts.
+This is a link that is stale AND BROKEN blocking a new one silently inside
+the *cache-hit* fast path specifically, which never had WALK-L5's
+`_unlink_node_modules` call at all until this fix.
+
+**Fix (implemented), `src/history.py`.** `_unlink_node_modules`'s early guard
+now reads `os.path.lexists(link)` — which does NOT follow the link, so it
+correctly sees a dangling entry — instead of `link.exists()`. `install()`'s
+cache-hit branch now calls `_unlink_node_modules(link)` before `_link_dir`,
+matching the discipline the cache-MISS branch already had. `_link_dir` now
+returns whether the link actually resolves afterward (`bool`, was `None`),
+checked at both its call sites in `install()`, so a genuine failure is
+reported as one instead of assumed away — the same "verify before trusting"
+principle HIST-L4 already applies to the cache's own install completeness,
+applied one layer further out, to the link itself.
+
+Locked by `tests/test_install_link.py`
+(`test_dangling_junction_from_an_earlier_run_is_cleared_and_relinked` —
+reproduces the exact real sequence deterministically with `tmp_path`: a cache
+entry exists and is linked, the entry is later cleared, the link is left
+dangling, a subsequent `install()` against a (possibly re-populated) same-key
+cache must clear the stale entry and correctly relink — and
+`test_working_link_already_present_is_left_alone`, the regression guard: an
+already-correct link must not be torn down and relinked on every call).
+Windows-only (junctions are a Windows mechanism); skipped elsewhere.
+
+**Scope, honestly.** Reproduced deterministically (not merely observed once
+live), so this is a real code defect, not a one-off filesystem glitch — but
+the ORIGINAL live trigger (a cache wipe mid-session while a link was live) is
+specific to how this investigation happened to proceed, not a claim about how
+often it occurs on an ordinary trajectory walk. Any long-running walk whose
+`.walker-cache` is cleared or partially evicted between runs — by a human, a
+disk-cleanup process, or anything else — while a worktree still holds a link
+into it is exposed the same way. Windows-specific in this exact form
+(junctions); the equivalent for a POSIX symlink would need its own check
+(`os.path.lexists` behaves the same there, so the guard fix generalises, but
+this was not separately exercised on POSIX this session).
+
+### 11-L3 — the liveness compile never pinned a compiler version at all
+
+**Type: SILENT WRONG-COMPILER FAILURE. `scan._runtime_bytecode`. Blocked the
+unmodified CLI from reaching the 88mph finding above even after 11-L2 was
+fixed. FIXED 2026-08-26, same session.**
+
+With 11-L2 fixed, Rule 10 itself started compiling and firing correctly on
+the real 88mph pair — but the liveness fallback's OWN `_runtime_bytecode`
+call still silently returned `None`. Captured directly from solc's own
+stderr (temporarily instrumented, then removed once diagnosed): `Error:
+Source file requires different compiler version (current compiler is 0.8.4
+...) ... pragma solidity 0.5.17;`.
+
+**Mechanism.** `_runtime_bytecode` has always invoked plain `solc` on PATH
+with no version pin of any kind — unlike `_shared._compile_attempt`, which
+explicitly sets the `SOLC_VERSION` environment variable to the file's exact
+pragma pin before every Slither compile. `_runtime_bytecode` instead trusted
+whatever solc-select's AMBIENT GLOBAL version happened to be at the exact
+moment it ran — which, by the time the liveness fallback executes (after the
+entire rule-compile pass for the pair), is whatever `_compile_attempt` last
+switched it to for a COMPLETELY UNRELATED file, since `_compile_attempt`'s
+`SOLC_VERSION` env-var mutation is scoped to its own `try/finally` and does
+not persist — but nothing in `_runtime_bytecode` ever set it in the first
+place, so it fell through to the shim's own last-configured default, which
+this session's own manual `solc-select use 0.8.4` (part of an earlier,
+unrelated debugging step) had left at 0.8.4.
+
+Confirmed directly, not assumed: the solc-select shim on PATH DOES honour
+`SOLC_VERSION` as an override (`SOLC_VERSION=0.5.17 solc --version` reports
+0.5.17 even with the global default set to 0.8.4) — the exact mechanism
+`_compile_attempt` already relies on, that this function simply never used.
+
+**Fix (implemented).** `_runtime_bytecode` now resolves the file's own exact
+pragma pin — `H.exact_pin(_shared.source_pragma_expr(Path(root) / rel))`, the
+same helper the rest of the walker already uses for this — and sets
+`SOLC_VERSION` in the subprocess's own `env` dict (not the process-wide
+environment) before invoking solc. A caret/range pragma falls through to the
+still-ambient compiler unchanged, identical to this function's prior
+behaviour for that case — untested by any fixture or live run as broken,
+because this function is only ever called with a single already-resolved
+file, not a diff spanning a version boundary.
+
+**Scope, honestly.** This bug has been present since `_runtime_bytecode` was
+first written — every prior liveness check this project has ever run
+(Reserve, the earlier 88mph attempts) was exposed to it, silently, and it is
+plausible it contributed UNKNOWN inflation on those runs too, though neither
+was re-verified against this fix specifically (Reserve's own documented
+UNKNOWN cause, a genuine solc *version* mismatch between deployed 0.8.19 and
+local reference 0.8.28, is a different claim from THIS bug — this bug is
+about which of the INSTALLED, correct versions actually got invoked, not
+about which version is installed at all).
+
+### 11-L4 — `_shared.REMAPS`'s "default" is permanently overwritten by whichever scan ran last (open)
+
+**Type: TEST-ISOLATION / LATENT CROSS-RUN HAZARD. `scan._apply_build_config`.
+Found while adding `tests/test_exposure.py` this session (2026-08-26). Worked
+around in that one test file; NOT fixed at the source.**
+
+`_apply_build_config(spec)` does `_shared.REMAPS = list(remaps)` — not merely
+`_shared.register_root(spec.root, remaps)`, which is the mechanism
+`remaps_for()` is actually supposed to consult per-checkout. The GLOBAL
+"default" list (`_shared.py`'s own `REMAPS = ["@openzeppelin/contracts/=...",
+...]`, the one every frozen fixture and the scorer rely on when nothing is
+registered) gets permanently reassigned to whatever the MOST RECENTLY
+scanned commit's dependency tree resolved to. In a single long-lived Python
+process — exactly what one `pytest` invocation is — any earlier test that
+drives a real `scan()` leaves this global mutated for every later test in the
+same process, including ones that have nothing to do with trajectory
+walking.
+
+**Reproduced directly.** `tests/test_exposure.py`'s two fixture-compiling
+tests (parsing the real, frozen `fixtures/positive/P3b-01/before.sol`) passed
+in isolation but failed when run after `tests/test_dedupe.py` /
+`tests/test_events.py` / etc. in the same process, with a bare `Source
+"@openzeppelin/contracts-upgradeable/...": File not found. Searched the
+following locations: "".` — an empty search path is exactly what
+`_shared.REMAPS` looks like after being overwritten by a scan of a
+repository with no matching dependency. `_shared.clear_roots()` alone did NOT
+fix it (confirming the corruption is in the global default, not a registered
+root); explicitly restoring `_shared.REMAPS` to a value captured before any
+test function had run did.
+
+**Why the existing suite never caught this.** Apparently no pre-existing test
+file happens to both (a) run after another test that drives a real scan and
+(b) parse a fixture relying on the untouched global default in the same
+process — a matter of incidental ordering and file-selection, not a proof the
+hazard is narrow. Any future test with that same shape is exposed the same
+way, silently, with an error message that names the fixture rather than the
+real cause.
+
+**Fix direction (not implemented).** `_apply_build_config` should call only
+`register_root`, never reassign `_shared.REMAPS` itself; `remaps_for()`
+already falls back to the global default correctly when no root matches, so
+nothing needs the global mutated in the first place — this looks like a
+leftover from before `register_root`/`_ROOT_REMAPS` existed (see WALK-L3,
+which introduced per-checkout roots specifically to stop one global list from
+describing two checkouts at once — this appears to be the one call site that
+change didn't fully migrate). Needs its own reproduction against the
+trajectory walker itself (not just this session's test-isolation symptom)
+before changing production code, per this project's own measure-first
+discipline. Tracked in TODO.md.
 
 ---
 
@@ -2320,12 +2686,18 @@ exactly one constant value on all reachable paths, or explicitly exclude
 modifiers that `has_setclear_mutex` recognises. Needs a fixture set covering a
 real initializer, a real mutex, and a contract carrying both.
 
-**Secondary observation, same finding.** The identical contract-level 3c result
-was emitted TWICE — once attributed to `contracts/UniswapV3Factory.sol` and once
-to `contracts/UniswapV3Pair.sol` — because `UniswapV3Pair` is reachable from
-both compiled units and DESIGN-L2's `accept_finding` accepts both, each file
-being genuinely in the commit's changed set. Contract-level findings need
-deduplication by (contract, variable), not by file.
+**Secondary observation, same finding — FIXED as RC-DEDUP1 (see TODO.md).** The
+identical contract-level 3c result was emitted TWICE — once attributed to
+`contracts/UniswapV3Factory.sol` and once to `contracts/UniswapV3Pair.sol` —
+because `UniswapV3Pair` is reachable from both compiled units and DESIGN-L2's
+`accept_finding` accepts both, each file being genuinely in the commit's
+changed set. Two bugs, not one: `src/scan.py` was also stamping `f.file` with
+whichever file the walker happened to be compiling rather than the file the
+fired declaration actually lives in, which is *why* the same fact showed up
+under two different filenames instead of twice under the correct one. Fixed by
+`_repo_relative()` (correct attribution) and `_dedupe()` (collapse the
+resulting duplicate), keyed on (rule, commit, contract, function, variable,
+line, detail) rather than by file. Locked by `tests/test_dedupe.py`.
 
 ---
 
@@ -3198,6 +3570,82 @@ give Chainwatch the local path, which the error message now says.
 
 ---
 
+### WALK-L11 — a subprocess's stdout was decoded with the OS locale, not UTF-8; real commit content crashed the pipeline
+
+**Type: CRASH, not a wrong answer - the whole scan dies instead of producing
+one. FOUND live (2026-08-26) on the first meaningful LOCAL scan of a real,
+fresh 2026 target (`1inch/swap-vm`, 42 contracts). MEASURED both directions
+(reproduces on the unfixed code, resolved on the fixed code), FIXED.**
+
+The crash, verbatim, from a real run:
+
+```
+Exception in thread Thread-377 (_readerthread):
+  ...
+  UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 7625
+Traceback (most recent call last):
+  File "src\scan.py", line 123, in changed_line_ranges
+    for line in out.splitlines():
+AttributeError: 'NoneType' object has no attribute 'splitlines'
+```
+
+**Mechanism.** Every `subprocess.run(..., text=True, ...)` call in this
+codebase - 12 sites, across `src/history.py`, `src/rules/_storage.py`,
+`src/scan.py` and `webapp/server.py` - omitted an explicit `encoding=`.
+Python then decodes the subprocess's stdout/stderr using
+`locale.getpreferredencoding(False)` - measured directly on this machine:
+`'cp1252'`, not UTF-8. Git always writes UTF-8. `cp1252` has NO character
+defined for five specific byte values (`0x81`, `0x8d`, `0x8f`, `0x90`,
+`0x9d`); any UTF-8 multi-byte sequence containing one of them - common:
+many emoji, some accented names, ordinary international commit content -
+makes the subprocess module's INTERNAL reader thread raise a decode error
+the CALLER cannot catch (the thread just dies, logging "Exception in thread
+..." to stderr). `proc.stdout` then comes back `None` instead of a string,
+and `changed_line_ranges` - which has no reason to expect that from a helper
+typed to return output - crashes on `.splitlines()`. Real, ordinary commit
+content on a real, actively-developed protocol was enough; nothing exotic
+or adversarial about the input.
+
+**Reproduced deterministically, both directions - not inferred from the
+traceback.** Built a real two-commit git repo whose diff contains U+1F30D
+(the "Earth Globe Europe-Africa" emoji): its UTF-8 encoding is `f0 9f 8c
+8d`, ending in `0x8d`, one of the five undefined bytes. The OLD
+`subprocess.run(text=True)` (no `encoding=`) reproduces the IDENTICAL
+`UnicodeDecodeError` on that exact byte. Several OTHER emoji tried during
+this investigation did NOT reproduce it - their UTF-8 encodings happened to
+avoid cp1252's five-byte gap - which is precisely why the fixture had to
+target this specific byte class deliberately rather than "any non-ASCII
+text": a careless fixture could have passed by accident against either the
+broken or the fixed code, proving nothing either way.
+
+**Fix (implemented).** `encoding="utf-8", errors="replace"` added at all 12
+sites. `errors="replace"`, not `"strict"`: git accepts arbitrary bytes in a
+commit message, so a truly non-UTF-8 byte sequence (rare, but possible)
+degrades to a replacement character instead of crashing the scan a second
+time for a different input. UTF-8 is what git actually emits on every
+platform, so this removes a locale ASSUMPTION rather than adding a
+Windows-specific special case that happens to also work elsewhere.
+
+Locked by `tests/test_git_encoding.py` (3 tests, a real git repo built in
+`tmp_path`, never a mocked subprocess): `history._git`'s raw diff output
+survives real UTF-8 content and is never `None`; `scan.changed_line_ranges` -
+the exact function that crashed live - produces real line ranges instead of
+raising; a UTF-8 commit SUBJECT (read by `commit_meta`/`sol_commit_pairs`
+elsewhere in the pipeline) survives too.
+
+**Scope, stated honestly.** Confirmed reproducible on Windows without an
+explicit UTF-8 locale override, which is what this development machine runs.
+NOT confirmed whether the live Cloud Run deployment (a Linux container) was
+ever actually hit by this specific bug - Linux commonly defaults its locale
+to UTF-8 already, in which case `locale.getpreferredencoding(False)` there
+may have already been returning `utf-8` even before this fix. The Cloud Run
+job losses documented independently this session are more directly explained
+by `min-instances`/`max-instances` findings recorded separately - conflating
+the two would overclaim what either alone proves. The fix is correct and
+worth having regardless of which platform is deployed to.
+
+---
+
 ### COMP-L1 — the compile PLATFORM is chosen from the TREE, and a Foundry tree compiles to nothing
 
 **Type: WHOLE-ECOSYSTEM COVERAGE HOLE, not a repository quirk. [FN risk] of the
@@ -3571,6 +4019,79 @@ and neither should be rushed onto the shared compile path.
 
 ---
 
+### COMP-L3 — a real contract needs `--via-ir`, and bare solc's default pipeline cannot compile it at all
+
+**Type: COVERAGE HOLE, [FN risk] by omission (a file that never compiled cannot
+fire any rule). NOT a Foundry-family issue - found on an ordinary Hardhat/yarn
+repo. MEASURED live on `1inch/farming` (2026-08-25), a target no prior session
+had scanned.**
+
+#### Mechanism
+
+`FarmingPlugin.sol`, `FarmingPool.sol` and `MultiFarmingPlugin.sol`, at the
+`47134f282822..5773bf135d43` ("Created abstract `Distributor` contract") pair,
+fail to compile under every rule with the identical solc error:
+
+```
+Invalid solc compilation Error: Stack too deep. Try compiling with `--via-ir`
+(cli) or the equivalent `viaIR: true` (standard JSON) while enabling the
+optimizer. Otherwise, try removing local variables.
+```
+
+This is solc's own legacy code generator running out of EVM stack slots for a
+function with enough local variables/intermediate values - a real limit of the
+non-IR pipeline, not a bug in the source. The fix solc names is real: the
+`--via-ir` pipeline (or `viaIR: true` in standard-json input) uses a
+completely different code generator without this ceiling. `_shared._compile`
+never passes either, so no invocation Chainwatch makes can ever succeed on a
+file that needs it - not a version-selection problem the solc-candidate
+fallback could fix, because EVERY installed version hits the identical wall
+under the legacy pipeline.
+
+#### Evidence
+
+One commit pair, three files, all nine non-3c rules identically errored (27
+`rule_errors` entries, one error string):
+
+```
+file comparisons ok   : 26/50  (52.0%)
+```
+from the 15-pair `1inch/farming` window - this single pair supplies the
+majority of that loss (3 files x 9 rules = 27 of the run's ~50 comparisons
+touching this failure mode, before accounting for the 3c-specific COMP-L2/
+compiler-floor overlap on other pairs in the same window).
+
+#### Fix direction (NOT implemented)
+
+Passing `--via-ir` is a real semantic change to how solc compiles the file,
+not just a diagnostics tweak: it changes gas costs and, historically, has had
+its own optimizer correctness bugs in older solc releases - which is exactly
+why CHARTER rule 3's "no invented APIs, read the installed library source
+first" caution applies, and why this needs a deliberate build-config decision
+rather than a blanket default:
+
+1. **Try without it first, `--via-ir` only as a NAMED fallback** when the
+   ambient/candidate loop's error text matches this exact "Stack too deep...
+   --via-ir" signature - symmetric to how `_compile_attempt` already falls
+   back across solc *versions* for a pragma mismatch, but keyed on an error
+   signature instead of a version range.
+2. Verify Slither's own `Slither(..., **extra)` kwarg surface actually threads
+   a `via_ir` / `--via-ir` option through to crytic-compile's standard-json
+   input before assuming this is a one-line change - CHARTER rule 4 forbids
+   guessing at the API.
+3. Needs its own fixture: a case whose ONLY difference from a passing case is
+   enough local-variable pressure to trip "stack too deep" under the legacy
+   pipeline, so the fallback path is exercised by something other than a real
+   multi-minute repo scan.
+
+Not attempted this session: the retry-loop diagnostics fix (this file, above)
+is what made the true cause of this failure legible in the first place, rather
+than a truncated stack trace; actually compiling via-ir is a separate,
+untested build-config change and does not belong in the same commit as a
+diagnostics fix.
+
+---
+
 ### SCAN-L1 — the scan looked at a directory the repository does not have, and called it clean
 
 **Type: CORRECTNESS OF THE RESULT ITSELF, [FN risk], found in the same
@@ -3692,3 +4213,422 @@ which is the intended shape of the thing.
   in place.
 - **Nothing here widens what a pair means.** `changed_sol` still yields only
   `modified` files, for the reason it always has: an added file has no N-1 side.
+
+---
+
+## Capability 14 — Read-only exploitability proof (2026-08-26)
+
+### 14-L1 — full-pipeline CONFIRMED reproduction on the 88mph regression needs the CLONE address, not the implementation address, and this repo has no record of it
+
+**Direction: neither FN nor FP — a verification gap, not a wrong verdict.**
+Capability 14 itself is correct and proven (9 unit tests; a real, direct
+`exploit_proof.prove()` call against live mainnet RPC returned a real `OPEN`
+result — see TODO.md's session entry for the full evidence). What is NOT yet
+demonstrated is capability 14 firing automatically inside a full `scan()` run
+that reaches CONFIRMED on the exact 88mph `NFT.init()` regression this
+project has anchored on all session.
+
+**Root cause, measured.** `liveness.resolve_implementation` on
+`0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634` (the address used for the direct
+capability-14 spot-check) reports `proxy_kind: 'none'`, `code_len: 8500` —
+this address holds the FULL contract, i.e. it IS the shared implementation
+behind the 88mph NFT clones, not a proxy itself. Capability 11's
+immutable-clone liveness fallback (§11-L1/L2/L3) requires `--address` to
+itself resolve as `eip1167-clone` so it can look THROUGH the clone at its
+implementation; passed the implementation address directly, that branch
+never engages, `liveness` stays UNKNOWN, and the finding caps at CANDIDATE —
+which is exactly what re-running the full pipeline with this address
+produced (correctly: the engine did not overclaim).
+
+The earlier session that reached CONFIRMED on this exact regression
+(documented in TODO.md/HANDOFF.md, `"verdict": "CONFIRMED"`, `"liveness":
+"LIVE"`) must have passed one of the three actual CLONE deposit contracts
+(the yaLINK / CRV:STETH / CRV:RENWBTC 88mph pools cited in that same
+evidence table) as `--address`, not the implementation. Their specific
+0x-addresses are not recoverable from anything this repo carries — 88mph's
+`deployments/` directory only has static hardhat-deploy records for
+non-cloned contracts; the NFT clones are created dynamically by the Factory
+via `Clones.clone()` at deposit time, so no JSON manifest lists them. Finding
+one requires reading the Factory's on-chain creation events (`eth_getLogs`
+for the relevant event topic) — a real, bounded, concrete next step,
+deliberately not done this session (would cost real time for a data point
+that does not change whether capability 14's own logic works, which the
+direct RPC call above already settled).
+
+**Fix direction, if picked up:** `eth_getLogs` against 88mph's NFT Factory
+contract for its clone-creation event, take one resulting clone address,
+re-run `chainwatch.py --check-exploit-proof` with `explicit_pairs=[('5f52a2ead702',
+'a4c48d61661a')]` against it, and confirm capability 11 reaches LIVE via the
+clone fallback and capability 14 then fires and returns the same real `OPEN`
+result already observed directly against the implementation.
+
+**Attempted twice, same session, both blocked by real infrastructure
+limits, not abandoned by choice.** Found the real Factory
+(`0x95816Fa25D54061086d4f4aD9a48FDBe9068E541`, "88mph : NFT Factory", found
+via web search after Etherscan UI scraping proved unreliable for
+AJAX-loaded event tabs) and the real `CreateClone(address)` event
+signature from the regression-era `NFTFactory.sol` source. Attempt 1
+(project's own Alchemy free-tier RPC): capped at a 10-block range per
+`eth_getLogs` call - a ~450,000-block search window would need ~45,000
+calls, not attempted. Attempt 2 (`cloudflare-eth.com`, free, no key,
+800-block cap): the full 563-call sweep returned zero events on the first
+pass due to an off-by-one in the range (block-count is inclusive, so 800
+exceeded the cap by one - fixed to 799), then the corrected re-run
+immediately hit `-32603 Internal error` on every single chunk, most likely
+rate-limiting after the first sweep rather than a genuine zero-result -
+not confirmed either way, and not retried a third time this session.
+
+---
+
+### SCAN-L2 verification — real 11-repo sweep, one real bug found and fixed (cosmetic, not evidence)
+
+**Type: verification pass on SCAN-L2 (the `_head_survival` rename-following
+capability), on explicit request, not a bug report about SCAN-L2's own
+logic — that logic held up.**
+
+Ran the unmodified CLI against all 11 real local repos this project has
+worked with this session (`1inch-aqua`, `1inch-solidity-utils`,
+`1inch-swap-vm`, `88mph-src`, `88mph-vuln-worktree`, `aave-v2`,
+`compound-v2`, `kinto-core-src`, `reserve-src`, `v3-core`,
+`v3-periphery`), 30 commits each, sequentially. **Zero crashes.**
+
+**The flagship case, tested properly this time.** `88mph-vuln-worktree`'s
+own HEAD *is* the regression commit (`a4c48d61661a`), so a scan against it
+only exercises `_head_survival` trivially (before-file vs. itself). The
+real test needed `88mph-src`'s actual current HEAD (`f4886f318d07`, branch
+`v3`) — called `scan()` directly with `explicit_pairs=[('5f52a2ead702e4cb9ab
+3d04a1109807462dde228', 'a4c48d61661ae3d8ce5aadfda6e4de27c4f07a9e')]`
+against it. Result: `_renamed_path_at_head` correctly located
+`contracts/NFT.sol`'s real destination and re-ran Rule 10 there; the
+regression genuinely does NOT survive at HEAD (`survives_to_head: False,
+fixed_at: f4886f318d07`) — the file was rewritten onto OZ's
+`Initializable` with a real guard. This is honest and correct: it does
+not contradict the separate, still-true fact that the OLD deployed
+EIP-1167 clones run pre-fix bytecode forever (§11-L1) — those are
+different questions about different targets (current source vs. an
+immutable already-deployed clone), and SCAN-L2 answering the first one
+correctly does not touch the second.
+
+**Checked, not assumed: does a determined `False` interfere with the
+CONFIRMED clone-fallback path that used to only need to beat `None`?**
+Read `scan.py`'s override condition directly: `if f.survives_to_head is
+not True: V.update_survival(f, True)` — this fires identically whether
+the prior value was `None` or `False`. No interference; the CONFIRMED
+path (once a real clone address closes §14-L1) is unaffected by SCAN-L2.
+
+**Investigated and cleared: an apparent over-reporting pattern.**
+`88mph-src` showed Rule 3c firing 3 times on the same commit for the same
+`DInterest` storage collision, each following an unrelated Slither
+IR-generation failure on a different file (`WrappedERC1155Token.sol`).
+Reproduced directly with raw pre-dedup event logging: 6 raw emits across
+the two affected commits, **correctly collapsed to 2 final findings** (one
+per real commit) by the existing `_dedupe()` — RC-DEDUP1 doing exactly
+the job it was built for. Not a bug.
+
+**One real bug found and fixed: cosmetic, not an evidence or verdict
+defect.** Rule 3c's findings are contract-level (no specific function —
+`decl=contract_a`, not a function), which is correct; but three display
+sites formatted this as the literal string `"Contract.None"` instead of
+handling the no-function case, unlike a fourth site
+(`chainwatch.py`'s final summary, and three sites already correct in
+`webapp/static/app.js`) that already guarded correctly. Fixed to match
+the existing correct pattern in `chainwatch.py`'s live-progress printer
+and dossier-status printer, and in `webapp/static/app.js`'s live SSE log
+line. Verified in both surfaces: the CLI's Python f-string and the
+browser's actual JS engine (via the served `app.js`, not a
+reimplementation) both now render `"DInterest"` with no trailing `.None`.
+
+---
+
+### COV-ACCT1 / COV-ACCT2 — coverage was scored per FILE but earned per RULE
+
+**Type: SELF-UNDERSTATEMENT (not a false positive or negative — the verdicts
+were always right; the tool lied about how much it had checked). MEASURED on
+an 11-repository sweep. FIXED 2026-08-27.**
+
+**COV-ACCT1.** `file_ok` in `scan.py` was ONE boolean spanning ~10 rule
+invocations: a single failing rule set it false and the whole file comparison
+counted as lost, discarding the credit for every rule that had run cleanly.
+
+**COV-ACCT2.** Rule 3c needs `solc --combined-json storage-layout`, an option
+that does not exist below ~0.6.x. Verified directly: `solc 0.5.17` answers
+`Invalid option to --combined-json: storage-layout` and nothing else — the
+compiler rejects the FLAG, so nothing was learned about the source either way.
+That was being recorded as a rule error.
+
+**The two stacked.** On 88mph (`a4c48d61661a`, solc 0.5.17) rule 3c is
+permanently inapplicable, so every one of 43 files was marked failed — while nine of ten
+rules had in fact run on all 43 and produced the real rule-10 finding. Reported
+`file comparisons ok: 0/43 (0.0%)`; actual `387/430` rule invocations (90.0%).
+The pair that produced the finding was recorded `comparisons_ok: 0`.
+
+**Why it survived.** It understates, never overstates, so it never tripped the
+zero-false-positive alarm. But coverage is precisely what this project tells a
+reader to consult before believing a quiet result, so a broken counter corrupts
+every judgement built on it — including, during this very session, a written
+claim of "~15% coverage" that was wrong by more than a factor of two.
+
+**Fix.** `RuleUnsupported` (in `_shared.py`) raised by `_storage.storage_layouts`
+when a *version-matched* compiler rejects the flag — deliberately not inferred
+from the ambient attempt, which for a 0.5.x source is usually a wrong-version
+compiler whose complaint says nothing about flag support. `_run_rule` returns it
+as a fourth value; `Coverage` counts `(file, rule)` invocations, excludes
+unsupported ones from BOTH sides of the fraction, and splits files into three
+buckets (ok / partial / lost). Rendered in the CLI and the web UI.
+
+Verified in both directions on real repositories: 88mph `0/43 → 8/8` files with
+`72/72 answerable` and 8 correctly excluded; and — the guard against
+over-correcting — swap-vm's genuine dependency failures still reported
+`0/80 (0.0%)`, not excused. Locked by `tests/test_coverage_accounting.py`
+(8 tests, including "all-unsupported must report 0.0%, never 100%").
+
+### DEP-1 — an explicit `remappings.txt` silently defeated `absolute=True`
+
+**Type: FALSE NEGATIVE, total, on whole repositories. MEASURED. FIXED
+2026-08-27.**
+
+`derive_remaps(root, absolute=True)` exists so a walker can compile two
+checkouts at once without either resolving against the other's dependencies —
+its own docstring says a relative remapping "would resolve against whichever
+cwd happens to be current". A repository's own `remappings.txt` is appended
+LAST, deliberately, so an explicit entry beats a derived one (solc takes the
+last matching remapping for a prefix). Those files hold checkout-relative
+targets. So the appended relative entry **overrode the absolute one just
+derived for the same prefix** — and `Slither()` is invoked with no cwd, so solc
+ran from Chainwatch's own root, where `node_modules/...` does not exist.
+
+**Every import failed as "not found" on a dependency tree that was installed
+correctly the whole time.** Each candidate cause was eliminated by measurement
+before the real one was accepted: the package was installed (`ls` confirmed),
+the specific file existed, all 8 imported files existed in the installed
+version, and the same remap list compiled fine *from the worktree cwd*. The
+error then reproduced byte-for-byte by running that same list from Chainwatch's
+root — `Source "node_modules/@1inch/solidity-utils/contracts/libraries/Calldata.sol"
+not found`, identical to the sweep.
+
+| repository | before | after |
+|---|---|---|
+| `1inch/swap-vm` | 0/1160 invocations (0.0%) | 80/80 (100.0%) |
+| `1inch/aqua` | 11/38 files (28.9%) | 40/40 (100.0%) |
+
+**Fix.** `history._absolutize_remap` re-roots a relative `remappings.txt`
+target onto the checkout it came from, resolving the junction for the same
+reason the derived branch does (WALK-L4). Both design intents are preserved
+rather than traded: the explicit entry still wins (prefix untouched, still
+last), and it is now cwd-independent. `absolute=False` — what the fixture
+scorer uses — is unchanged. Locked by `tests/test_remap_absolutize.py`
+(8 tests, including a guard that no relative target survives in absolute mode).
+
+---
+
+### COMP-L2 — REOPENED and FIXED: the "unfixable" reasoning was factually wrong
+
+**Type: FALSE NEGATIVE, and worse — SILENT WRONG RESOLUTION. Recorded for a
+long time as an unfixable charter boundary. FIXED 2026-08-27.**
+
+The standing claim was: nested submodules each resolve imports in their own
+context, "bare solc holds one flat remapping set", and only `forge` — which
+CHARTER rule 3 forbids installing — can do this. **That is false.** solc has
+long accepted `context:prefix=target`, restricting a remapping to imports made
+from files under `context`. It is the same mechanism `forge remappings` emits,
+and needs no new dependency, so the charter was never the binding constraint.
+
+Measured on a tree where root and submodule pin different versions of one
+dependency:
+
+```
+flat     lib/A/src/A.sol  "dep/D.sol" -> lib/dep/src/D.sol        (root's)
+context  lib/A/src/A.sol  "dep/D.sol" -> lib/A/lib/dep/src/D.sol  (its own)
+```
+
+Note what the flat row shows: not a compile failure, but a silent resolution to
+the **wrong dependency version**. COMP-L2 was filed as a coverage ceiling; it
+was also an undetected correctness hazard, since a rule could compare two
+commits through a library that is not the one the submodule builds against.
+
+**Fix.** `_foundry_lib_remaps` now recurses (depth-bounded) and emits
+context-scoped remappings for nested submodules. Two guards, both measured:
+a nested remap is emitted only when its target actually contains Solidity (an
+uninitialised submodule leaves an empty directory, and remapping onto it would
+break imports that currently resolve through the root copy); and a context
+containing a colon is never emitted — a Windows absolute path is one, and solc
+then parses `C` as the context, which string-prefix-matches every path on the
+drive and produced a silently wrong resolution rather than an error.
+
+**Remaining Windows limit, stated honestly.** Context remappings therefore do
+not engage in absolute mode on Windows; behaviour there is exactly as before,
+no regression. They DO engage on POSIX, including the Linux container this
+deploys to. Full Windows support needs `--base-path <root>` with relative
+remappings — verified working — which is a change to how Slither is invoked,
+not to what this function emits. Locked by `tests/test_nested_lib_remaps.py`.
+
+### COMP-L3 — `Stack too deep` now retries with `--via-ir`
+
+**FIXED 2026-08-27.** Measured live on `1inch/farming`. Neither a broken file
+nor a wrong compiler version: the legacy codegen runs out of EVM stack slots on
+a function the IR pipeline compiles fine.
+
+**`--optimize` is mandatory, and this was measured, not assumed.** solc's own
+message says to retry "while enabling the optimizer", and it means it: on
+0.8.20 against a real stack-too-deep contract, `--via-ir` ALONE aborts with an
+uncaught C++ exception out of libyul and exits 2, while `--via-ir --optimize`
+exits 0. A retry passing only `--via-ir` would have converted a clean compiler
+error into a compiler crash.
+
+Gated on solc's own wording rather than enabled globally (`--via-ir` is
+materially slower). Precision is unaffected either way: it changes CODEGEN, not
+the AST or SlithIR any rule reads. Locked by `tests/test_via_ir_retry.py`,
+including a guard that the fixture still reproduces the error.
+
+### DEP-2 — an old repo's toolchain was lost to the HOST's Node version
+
+**Type: FALSE NEGATIVE, total, on whole repositories. FIXED 2026-08-27.**
+
+`compound-v2` and `aave-v2` skipped every pair as `dep-missing`, and the label
+was all any report ever showed — so the cause looked like a property of those
+repositories. Calling `install()` directly and printing the captured detail
+gave the real answer:
+
+```
+error:0308010C:digital envelope routines::unsupported
+code: 'ERR_OSSL_EVP_UNSUPPORTED'    Node.js v24.15.0
+```
+
+Node 17+ ships OpenSSL 3, which withdrew the legacy hash provider older JS
+toolchains still reach for. That is a property of the machine running
+Chainwatch, not of the code being analysed, so the honest response is to retry
+— not to skip. Retried once with `--openssl-legacy-provider`, gated on the
+measured signature (the flag weakens a crypto policy and must never be a
+default). It can only affect whether the dependency tree materialises; every
+rule still reads the same sources afterwards.
+
+**compound-v2, before → after: every pair skipped → 2/2 pairs, 36/37 files,
+324/333 rule checks (97.3%), 7 findings.** Locked by
+`tests/test_legacy_openssl_retry.py`.
+
+### 3a-L4 — an `internal` function can still be the real attack surface
+
+**Type: FALSE NEGATIVE (capped every UUPS finding at CANDIDATE). FIXED
+2026-08-27.**
+
+UUPS's `_authorizeUpgrade` is `internal` by design — the pattern requires it —
+yet it is the actual authorization gate, reached through the inherited public
+`upgradeTo` / `upgradeToAndCall`. `_reachability` read only the target's own
+visibility, so the single most security-relevant function in the whole proxy
+pattern reported "not externally reachable", and every such finding capped at
+CANDIDATE no matter what surrounded it.
+
+**Fix, and why it infers nothing.** `_shared.external_entry_points` resolves
+the real call graph (Slither's `all_reachable_from_functions`, transitive) and
+returns qualified names a report can cite. Rule 3a populates
+`reachable_via_after`; `verdict._reachability` accepts it *only* when a rule
+established it. Two measured details: Slither exposes several `Function`
+objects for one inherited name and one of them returns an empty reachable set,
+so the helper takes the UNION rather than trusting whichever comes first; and
+the state-change half is satisfied by `upgrade_path` rather than a declared
+write, because `_authorizeUpgrade` is a GUARD that writes nothing and real UUPS
+writes the ERC-1967 slot with a raw `sstore` that is invisible to
+`all_state_variables_written()` anyway (verified: all four upgrade entry points
+in P3a-widen-01 report zero state writes). That is the same judgement this
+module already applies to contract-level rules — "the upgrade path is the
+reachable surface".
+
+Verified both directions: P3a-widen-01 (`internal`) now reaches
+`visibility=internal but reachable from UUPSUpgradeable.upgradeTo,
+UUPSUpgradeable.upgradeToAndCall; controls the upgrade path`, while
+P3a-widen-02 (`external`) is unchanged. `fixtures-r3a-widen` stays 1.00/1.00.
+
+**Still open: 3b-CONF.** Rule 3b's `disableInitializers-removed` trigger has
+never fired under any fixture, so there is nothing to verify a fix against.
+Fixtures before code, per CHARTER rule 1 — not attempted here.
+
+---
+
+## Rule 1 — RULES.md's own Slither-detector cross-check requirement is unimplementable as written
+
+**Direction: neither FN nor FP as things stand (Rule 1 itself is unaffected
+and correct) — this is a SPEC defect, found during a full 10-rule audit
+this session, not an implementation bug.**
+
+RULES.md's Rule 1 section ("Additional CONFIRMED requirements") states:
+"Slither's own `suicidal` / `arbitrary-send` / `unprotected-upgrade`
+detectors run at HEAD as a cross-check; disagreement → CANDIDATE, not
+CONFIRMED." `src/rules/rule1.py` does not implement this at all - confirmed
+by grep across the entire `src/` tree for any Slither detector invocation
+(`register_detector`/`run_detectors`/the three detector class names):
+zero matches anywhere in this codebase.
+
+**Before implementing it, measured whether the literal spec is even safe to
+implement - it is not.** Ran the real API (`slither_obj.register_detector`,
+confirmed real via `SITE-PACKAGES/slither/slither.py`, the same pattern
+Slither's own `__main__.py` CLI uses) against the project's own real,
+existing, precision-1.00 Rule 1 fixture
+(`fixtures-r1/positive/P1-01/after.sol`, `FeeManager.setFee` losing
+`onlyOwner`):
+
+```
+detector produced 0 finding(s)   # Suicidal
+detector produced 0 finding(s)   # ArbitrarySendEth
+detector produced 0 finding(s)   # UnprotectedUpgradeable
+```
+
+**All three detectors are narrowly scoped** - `Suicidal` only fires on
+`selfdestruct`, `ArbitrarySendEth` only on ETH transfers, and
+`UnprotectedUpgradeable` only on upgrade-authorization functions. None of
+them has any reason to flag an ordinary state-setter, which is Rule 1's
+most common real-world shape (as measured on the project's own fixture).
+**Implementing the spec literally - requiring one of these three detectors
+to independently agree before ANY Rule 1 finding may reach CONFIRMED -
+would downgrade essentially every ordinary Rule 1 finding to CANDIDATE**,
+including the exact fixture this project already trusts at precision
+1.00/recall 1.00. That is a severe, silent recall collapse for zero
+precision benefit, directly opposed to this project's own "0 FP, high
+finding value" mandate - not a safe interpretation to guess into code.
+
+**Not fixed. Needs a human decision on what RULES.md actually meant**,
+because more than one reading is plausible and each implies a different
+fix:
+  - Narrow the cross-check to apply ONLY when the Rule 1 finding's own
+    subject matter overlaps one of the three detectors' domains (e.g. the
+    function also does a `selfdestruct`, moves ETH, or is itself an
+    upgrade hook) - most Rule 1 findings would then correctly skip the
+    cross-check entirely, and it would only bite the narrow slice of cases
+    it can actually speak to.
+  - Replace the three named detectors with a broader, actually-overlapping
+    Slither cross-check (e.g. `unprotected-upgrade`-style structural
+    "protected write, unprotected read/entry" detectors that speak to
+    ordinary access control, if one exists in the installed Slither
+    version - not yet surveyed).
+  - Drop the requirement from RULES.md entirely as written, if the intent
+    was already served by Rule 1's own semantic analysis and the six
+    evidence fields, and the named detectors were a documentation
+    aspiration that never matched what Slither's stock detectors actually
+    cover.
+
+Fix direction, once decided: the plumbing itself is straightforward -
+`Slither.register_detector`/`run_detectors()` on the already-parsed `after`
+object in `rule1.py`, matching a flagged element's function name/contract
+against `fn_a`, then `emit(..., severity="CANDIDATE")` + `return
+"candidate"` on disagreement (the same three-value return convention
+2a/2b/5 already use; `scan.py`'s `if not raw` handling is already generic
+over it). Needs its own fixture proving the downgrade path actually
+engages before shipping - the same "never ship an unproven trigger" rule
+this project has enforced on itself repeatedly (RC-VERDICT1/2, 3b's second
+trigger).
+
+### 14-L2 — SCAN-L2's rename-following fix (TODO.md, same session) closes the OTHER half of this finding's evidence, not this one
+
+Read TODO.md's "SCAN-L2" entry for the full mechanism. Directly relevant
+here: applying it to this exact 88mph regression resolved `reachability`
+from a bare "not established" to a real, specific answer -
+`survives_to_head=False, fixed_at=f4886f318d07` (the true `v3` HEAD, found
+after discovering the earlier investigation's `master`-branch citation was
+a stale branch, not 88mph's real default). This is a genuine, verified
+improvement - it turns silence into a checkable fact - but it does NOT
+provide a path to CONFIRMED via source-tracking, because the source really
+was fixed (rewritten onto OZ's `Initializable`). The ONLY remaining route
+to CONFIRMED for this specific 2021-era immutable clone is the liveness
+clone-fallback (§11-L1) proving the exact regression-commit bytecode is
+still deployed, which is gated on 14-L1's still-open clone-address lookup
+above. The two limitations are independent; closing one does not close
+the other.

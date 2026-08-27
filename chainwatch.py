@@ -29,6 +29,8 @@ sys.path.insert(0, str(ROOT))
 from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 from src import verdict as V  # noqa: E402
 from src import liveness as L  # noqa: E402
+from src import exposure as E  # noqa: E402
+from src import deepen as DEEPEN  # noqa: E402
 from src.history import clone_public  # noqa: E402
 
 
@@ -55,8 +57,9 @@ def _print_progress(ev: dict) -> None:
     elif kind == "skip":
         print(f"      SKIPPED: {ev.get('reason')}")
     elif kind == "finding":
-        print(f"      {ev['verdict']:<9} rule {ev['rule']:<3} {ev['file']}"
-              f"::{ev.get('contract')}.{ev.get('function')}")
+        where = (f"{ev.get('contract')}.{ev['function']}" if ev.get("function")
+                 else str(ev.get("contract")))
+        print(f"      {ev['verdict']:<9} rule {ev['rule']:<3} {ev['file']}::{where}")
     elif kind == "warn":
         print(f"  ! {ev.get('message')}")
     elif kind == "liveness":
@@ -135,6 +138,19 @@ def print_report(rep: dict) -> None:
           f"  ({cov['pairs_analyzed_pct']}%)")
     print(f"  file comparisons ok   : {cov['files_ok']}/{cov['files_total']}"
           f"  ({cov['files_ok_pct']}%)")
+    if cov.get("files_partial"):
+        print(f"  partially analysed    : {cov['files_partial']} "
+              f"(some rules ran, some failed)")
+    # COV-ACCT1: the honest denominator. Coverage is earned per rule, and a
+    # file-level count hides nine clean rule runs behind one failure.
+    if cov.get("rule_invocations_total"):
+        print(f"  rule checks completed : {cov['rule_invocations_ok']}"
+              f"/{cov['rule_invocations_answerable']}"
+              f"  ({cov['rule_coverage_pct']}% of answerable)")
+        if cov.get("rule_invocations_unsupported"):
+            print(f"  not applicable here   : "
+                  f"{cov['rule_invocations_unsupported']} rule check(s) "
+                  f"(rule needs a compiler feature this source's version lacks)")
     if cov["pairs_skipped"]:
         print(f"  pairs skipped         : {cov['pairs_skipped']}")
         reasons: dict[str, int] = {}
@@ -174,6 +190,19 @@ def print_report(rep: dict) -> None:
             print("  " + line)
         print("!" * 78)
 
+    exposure = rep.get("exposure") or []
+    if exposure:
+        print("\nEXPOSURE PROBE (capability 13 - live, not a finding, not a verdict)")
+        print("  Is a one-shot init/critical-config function still unconsumed on the")
+        print("  deployed contract right now? Answered by a real read-only eth_call,")
+        print("  never a guess - see src/exposure.py.")
+        for e in exposure:
+            print(f"    {e['status']:<8} {e['contract']}.{e['function']}"
+                  f"  {e['signature']}")
+            print(f"             {e['reason']}")
+            if e["status"] == E.OPEN:
+                print("             >>> exploitable right now, verified, not inferred")
+
     if not rep["findings"]:
         print("\nNo regression matched any shipped rule over the analyzed pairs.")
         return
@@ -202,10 +231,23 @@ def print_report(rep: dict) -> None:
             if f["liveness"] == V.LIVE:
                 # Never print LIVE unqualified - see liveness.LIVE_CAVEAT.
                 print(f"                   {L.LIVE_CAVEAT}")
+        xp = f.get("exploit_proof")
+        if xp and xp["status"] != "NOT_APPLICABLE":
+            print(f"\n    EXPLOITABILITY PROOF (capability 14 - read-only eth_call, "
+                  f"never a transaction)")
+            print(f"      {xp['status']:<8} {xp['reason']}")
         if f["downgrade_reasons"]:
             print("\n    WHY NOT CONFIRMED")
             for r in f["downgrade_reasons"]:
                 print(f"      - {r}")
+        # DEEPEN-1: naming the gap is only half an answer; say what closes it.
+        steps = DEEPEN.next_steps(f)
+        if steps:
+            print("\n    WHAT WOULD SETTLE IT")
+            for s in steps:
+                print(f"      [{s['status']}] {s['gap']}: {s['why']}")
+                for line in _wrap(s["action"], width=66):
+                    print(f"          {line}")
 
 
 def main() -> int:
@@ -220,6 +262,19 @@ def main() -> int:
                     help=f"comma-separated subset of {','.join(RULE_ORDER)}")
     ap.add_argument("--no-head-check", action="store_true",
                     help="skip the survives-to-HEAD re-run (faster, weaker evidence)")
+    ap.add_argument("--check-exposure", action="store_true",
+                    help="capability 13: for files this scan already flagged, also "
+                         "check via a real read-only eth_call whether a one-shot "
+                         "init/critical-config function is still unconsumed on the "
+                         "deployed contract right now. Needs --address. Separate "
+                         "from findings/verdicts - printed as its own section.")
+    ap.add_argument("--check-exploit-proof", action="store_true",
+                    help="capability 14: for every CONFIRMED finding on rule 1, 3a, "
+                         "3b or 10 (the rules where 'callable without authorization' "
+                         "IS the regression), a real read-only eth_call proving the "
+                         "exact regressed function is callable by an unprivileged "
+                         "address right now. Needs --address. Never a real "
+                         "transaction - see src/exploit_proof.py.")
     ap.add_argument("--json", help="write the full report here")
     ap.add_argument("--quiet", action="store_true", help="suppress progress lines")
     ap.add_argument("--generate-reports", action="store_true",
@@ -261,6 +316,8 @@ def main() -> int:
         rpc_url=args.rpc_url,
         check_head_survival=not args.no_head_check,
         rules=[r.strip() for r in args.rules.split(",") if r.strip()] or None,
+        check_exposure=args.check_exposure,
+        check_exploit_proof=args.check_exploit_proof,
     )
     rep = scan(opts, on_event=None if args.quiet else _print_progress)
     print_report(rep)
@@ -308,7 +365,8 @@ def _generate_reports(rep: dict, args) -> None:
     print()
     for res in results:
         f = store.get(res["finding_id"]) or {}
-        who = f"{f.get('contract')}.{f.get('function')}"
+        who = (f"{f.get('contract')}.{f['function']}" if f.get("function")
+               else str(f.get("contract")))
         if res["status"] == "success":
             print(f"  OK       {who:<34} verified, {res['path']}")
         else:

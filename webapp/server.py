@@ -83,6 +83,9 @@ class Job:
     # Capability 12: one entry per finding the user asked a dossier for.
     # {finding_id: {status, markdown, error_message, log:[...]}}
     reports: dict = field(default_factory=dict)
+    # Capability 12's ranking tool: ONE slot per scan (ranking is over several
+    # findings at once, not per-finding like `reports` above).
+    ranking: dict = field(default_factory=lambda: {"status": "none"})
 
     def push(self, ev: dict) -> None:
         self.events.append(ev)
@@ -114,11 +117,25 @@ class ScanRequest(BaseModel):
     rpc_url: Optional[str] = None
     rules: Optional[list[str]] = None
     check_head_survival: bool = True
+    # Capability 13: live one-shot-exposure probe on files this scan already
+    # flagged. Needs `address`. Mirrors ScanOptions.check_exposure exactly.
+    check_exposure: bool = False
+    # Capability 14: read-only exploitability proof on every CONFIRMED finding
+    # in the access-control rule class (1, 3a, 3b). Needs `address`. Mirrors
+    # ScanOptions.check_exploit_proof exactly.
+    check_exploit_proof: bool = False
     # Explicit "prev:cur" commit pairs instead of walking recent history. This
     # is what makes a demo (or a re-check of a previously root-caused case)
     # reproducible rather than dependent on whatever the repo's tip happens to
     # be. Mirrors ScanOptions.explicit_pairs exactly.
     pairs: Optional[list[str]] = None
+
+
+class RankRequest(BaseModel):
+    # Which findings to rank. Omitted (or empty) means "every CONFIRMED
+    # finding in this scan" - the common case, since CANDIDATE findings are
+    # never shown to the agent layer at all (RULES.md's amended hard rule).
+    finding_ids: Optional[list[str]] = None
 
 
 # --------------------------------------------------------------------------- helpers
@@ -166,6 +183,8 @@ def _run_job(job: Job, req: ScanRequest) -> None:
                 rpc_url=req.rpc_url or None,
                 rules=req.rules or None,
                 check_head_survival=req.check_head_survival,
+                check_exposure=req.check_exposure,
+                check_exploit_proof=req.check_exploit_proof,
                 explicit_pairs=[tuple(p.split(":", 1)) for p in (req.pairs or [])
                                 if ":" in p] or None,
             )
@@ -178,6 +197,21 @@ def _run_job(job: Job, req: ScanRequest) -> None:
             for f in job.report.get("findings", []):
                 f["finding_id"] = _fid(f)
             job.status = "cancelled" if job.stop.is_set() else "done"
+            # CORPUS-1. Record the finished scan. Deliberately best-effort and
+            # AFTER the status is set: a scan that completed is complete
+            # whether or not it was persisted, and a Firestore outage must
+            # never turn a good result into a failed job.
+            try:
+                from src import corpus as CORPUS
+
+                res = CORPUS.record_scan(job.report or {}, repo=job.repo)
+                job.push({"kind": "info", "message": (
+                    f"recorded {res['written']} document(s) to the corpus"
+                    if res.get("ok") else
+                    f"not recorded: {res.get('reason', 'corpus unavailable')}")})
+            except Exception as exc:  # noqa: BLE001
+                job.push({"kind": "info",
+                          "message": f"not recorded: {type(exc).__name__}"})
         except RuntimeError as exc:
             # Raised deliberately, with a sentence written FOR the user (see
             # history.classify_clone_failure). Prefixing it with the exception
@@ -268,7 +302,7 @@ def get_diff(job_id: str, file: str, prev: str, cur: str, context: int = 6):
         proc = subprocess.run(
             ["git", *git_safety_args(), "diff",
              f"-U{max(0, min(context, 40))}", prev, cur, "--", file],
-            cwd=str(job.repo_path), capture_output=True, text=True, timeout=120,
+            cwd=str(job.repo_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(500, f"git diff failed: {exc}")
@@ -285,7 +319,7 @@ def get_source(job_id: str, file: str, rev: str, start: int = 1, end: int = 0):
     if not job or not job.repo_path:
         raise HTTPException(404, "no such scan")
     proc = subprocess.run(["git", *git_safety_args(), "show", f"{rev}:{file}"],
-                          cwd=str(job.repo_path), capture_output=True, text=True,
+                          cwd=str(job.repo_path), capture_output=True, text=True, encoding="utf-8", errors="replace",
                           timeout=120)
     if proc.returncode != 0:
         raise HTTPException(404, proc.stderr[:300])
@@ -312,6 +346,28 @@ def agent_status():
 
     return {"available": R.api_key_present(), "model": R.DEFAULT_MODEL,
             "rpm_budget": R.DEFAULT_RPM}
+
+
+@app.get("/api/corpus")
+def corpus_status():
+    """Whether scans are being recorded. Same contract as /api/agent: the UI
+    must be able to say "not recorded" plainly rather than imply a scan was
+    persisted when it was not."""
+    from src import corpus as CORPUS
+
+    return CORPUS.available()
+
+
+@app.get("/api/corpus/findings")
+def corpus_findings(rule_id: str = "", verdict: str = "", repo: str = "",
+                    limit: int = 50):
+    """Cross-repository query over every scan ever recorded - the question a
+    single scan structurally cannot answer."""
+    from src import corpus as CORPUS
+
+    return {"findings": CORPUS.query_findings(
+        rule_id=rule_id or None, verdict=verdict or None,
+        repo=repo or None, limit=min(max(int(limit), 1), 200))}
 
 
 def _run_report(job: Job, finding_id: str) -> None:
@@ -376,6 +432,72 @@ def get_report(job_id: str, finding_id: str):
     if not slot:
         return {"status": "none"}
     return slot
+
+
+# --------------------------------------------- capability 12's ranking tool
+
+
+def _run_ranking(job: Job, finding_ids: list[str]) -> None:
+    """Rank several findings in the background. Same rate-limit/pacing
+    discipline as `_run_report` - a free-tier pause shows up as progress."""
+    from agent import FindingStore
+    from agent import runner as R
+
+    slot = job.ranking
+    try:
+        store = FindingStore(job.report or {})
+
+        def on_event(ev):
+            kind = ev.get("kind")
+            if kind == "tool":
+                slot["log"].append(f"tool: {ev['tool']}")
+            elif kind == "throttle":
+                slot["log"].append(f"pacing {ev['seconds']}s to stay inside the "
+                                   f"free-tier rate limit")
+            elif kind == "retry":
+                slot["log"].append(f"{ev['reason']}; server asked for "
+                                   f"{ev['seconds']}s, waiting")
+            elif kind == "error":
+                slot["log"].append(f"error: {ev['message']}")
+
+        res = R.generate_ranking_sync(store, finding_ids, ROOT / "reports",
+                                      on_event=on_event)
+        slot["status"] = res["status"]
+        slot["ranking"] = res.get("ranking", [])
+        slot["error_message"] = res.get("error_message", "")
+        slot["violations"] = res.get("violations", [])
+        slot["path"] = res.get("path")
+    except Exception as exc:  # noqa: BLE001
+        slot["status"] = "error"
+        slot["error_message"] = f"{type(exc).__name__}: {exc}"[:400]
+
+
+@app.post("/api/scan/{job_id}/rank")
+def start_ranking(job_id: str, req: RankRequest):
+    job = JOBS.get(job_id)
+    if not job or not job.report:
+        raise HTTPException(404, "no such scan")
+    ids = req.finding_ids or [
+        f["finding_id"] for f in job.report.get("findings", [])
+        if f.get("verdict") == "CONFIRMED" and f.get("finding_id")
+    ]
+    if len(ids) < 2:
+        raise HTTPException(400, "ranking needs at least two CONFIRMED findings; "
+                                 f"this scan has {len(ids)}")
+    if job.ranking.get("status") == "running":
+        return {"status": "running"}
+    job.ranking = {"status": "running", "ranking": [], "error_message": "",
+                  "log": [], "violations": []}
+    threading.Thread(target=_run_ranking, args=(job, ids), daemon=True).start()
+    return {"status": "running"}
+
+
+@app.get("/api/scan/{job_id}/rank")
+def get_ranking(job_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "no such scan")
+    return job.ranking
 
 
 @app.get("/")

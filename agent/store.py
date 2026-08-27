@@ -131,6 +131,7 @@ class FindingStore:
             "fixed_at": f.get("fixed_at"),
             "liveness": f.get("liveness"),
             "liveness_reason": f.get("liveness_reason"),
+            "exploit_proof": f.get("exploit_proof"),
             "evidence": ev,
             "missing_evidence": [k for k, v in ev.items() if v in (None, "", [], {})],
             "downgrade_reasons": f.get("downgrade_reasons") or [],

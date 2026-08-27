@@ -117,7 +117,23 @@ function renderSizing(sz) {
     <div class="cov-grid">${rows}</div>${tail}`;
 }
 
-// ---------------------------------------------------------------- bootstrap
+/* Capability 13 - live one-shot-exposure probe. NEVER a finding, NEVER part
+ * of the verdict model - drawn as its own instrument card, same weight class
+ * as sizing, for exactly that reason. */
+function renderExposure(rows) {
+  const el = $("exposure");
+  if (!rows || !rows.length) { el.className = "exposure hidden"; el.innerHTML = ""; return; }
+  el.className = "exposure";
+  el.innerHTML = `<div class="cov-head">Exposure probe — capability 13
+      <span class="muted">(live, present-tense, not a finding)</span></div>` +
+    rows.map((r) => `<div class="exp-row exp-${esc(r.status)}">
+        <span class="exp-status">${esc(r.status)}</span>
+        <span class="exp-who">${esc(r.contract)}.${esc(r.function)}</span>
+        <span class="exp-reason">${esc(r.reason || "")}</span>
+      </div>`).join("");
+}
+
+// -------------------------------------------------------------- bootstrap
 
 fetch("/api/rules").then((r) => r.json()).then((d) => {
   RULE_TITLES = d.titles;
@@ -180,12 +196,17 @@ $("scan-form").addEventListener("submit", async (e) => {
     address: $("address").value.trim() || null,
     rules,
     check_head_survival: $("head_check").checked,
+    check_exposure: $("exposure_check").checked,
+    check_exploit_proof: $("exploit_check").checked,
   };
 
   setStatus("starting…", "running");
   clearAlert();
   $("log").innerHTML = "";
   $("findings-body").innerHTML = `<div class="placeholder">Scanning…</div>`;
+  $("rank-wrap").className = "rank-wrap hidden";
+  $("rank-box").innerHTML = "";
+  $("exposure").className = "exposure hidden";
   REPORT = null;
 
   const res = await fetch("/api/scan", {
@@ -248,11 +269,18 @@ function handle(ev) {
        * follows. A skip (below) is infra, not a verdict, and takes its own tone. */
       const cls = ev.verdict === "CONFIRMED" ? "find-confirmed"
                 : ev.verdict === "CANDIDATE" ? "find-candidate" : "find";
-      log(cls, `    ${ev.verdict} rule ${ev.rule}  ${ev.file}::${ev.contract}.${ev.function}`);
+      const where = ev.function ? `${ev.contract}.${ev.function}` : `${ev.contract}`;
+      log(cls, `    ${ev.verdict} rule ${ev.rule}  ${ev.file}::${where}`);
       break;
     }
     case "liveness":
       log("info", `checking on-chain liveness for ${ev.address}`); break;
+    case "exposure":
+      log("info", `    exposure probe: ${ev.status} ${ev.contract}.${ev.function}`); break;
+    case "exploit-proof":
+      log(ev.status === "OPEN" ? "find-confirmed" : "info",
+        `    exploitability proof: ${ev.status} ${ev.contract}.${ev.function}`);
+      break;
     case "warn": case "info":
       log("info", ev.message); break;
     case "error":
@@ -308,7 +336,7 @@ function render(rep) {
     clearAlert();
   }
   const partial = cov.pairs_analyzed < cov.pairs_total || cov.files_error > 0
-                  || (cov.files_skipped || 0) > 0;
+                  || (cov.files_skipped || 0) > 0 || (cov.files_partial || 0) > 0;
 
   const skipCounts = {};
   (cov.skips || []).forEach((k) => { skipCounts[k.reason] = (skipCounts[k.reason] || 0) + 1; });
@@ -339,6 +367,15 @@ function render(rep) {
         <span>comparisons lost to errors</span></div>
       <div class="cov-metric"><b><span data-count-to="${cov.files_skipped || 0}">0</span></b>
         <span>never attempted (toolchain missing)</span></div>
+      ${cov.rule_invocations_total ? `
+      <div class="cov-metric"><b><span data-count-to="${cov.rule_invocations_ok}">0</span>/${cov.rule_invocations_answerable}</b>
+        <span>rule checks completed (${cov.rule_coverage_pct}% of answerable)</span></div>` : ""}
+      ${cov.files_partial ? `
+      <div class="cov-metric"><b><span data-count-to="${cov.files_partial}">0</span></b>
+        <span>partially analysed (some rules ran)</span></div>` : ""}
+      ${cov.rule_invocations_unsupported ? `
+      <div class="cov-metric"><b><span data-count-to="${cov.rule_invocations_unsupported}">0</span></b>
+        <span>not applicable on this compiler</span></div>` : ""}
     </div>
     <div class="bar"><i></i></div>
     ${skipLines}
@@ -363,11 +400,13 @@ function render(rep) {
   else if (s.candidates > 0) pulseOnce($("summary").querySelector(".chip.candidate"));
 
   renderSizing(rep.sizing || {});
+  renderExposure(rep.exposure || []);
 
   const body = $("findings-body");
   if (!rep.findings.length) {
     body.innerHTML = `<div class="placeholder">
       No regression matched any selected rule over the analysed pairs.</div>`;
+    $("rank-wrap").className = "rank-wrap hidden";
     return;
   }
   const order = { CONFIRMED: 0, CANDIDATE: 1, DISCARDED: 2 };
@@ -389,6 +428,8 @@ function render(rep) {
 
   [...body.querySelectorAll("[data-i]")].forEach((el) =>
     el.addEventListener("click", () => openDrawer(rows[+el.dataset.i])));
+
+  wireRankButton(rows.filter((f) => f.verdict === "CONFIRMED"));
 }
 
 function headCell(f) {
@@ -417,11 +458,14 @@ function verdictPill(verdict) {
 function onChainCell(f) {
   if (!f.liveness) return `<span class="muted">not checked</span>`;
   const caveat = esc((REPORT && REPORT.live_caveat) || "");
+  const xp = f.exploit_proof;
+  const xpBadge = (xp && xp.status === "OPEN")
+    ? `<span class="xp-pill" title="${esc(xp.reason || "")}">callable now</span>` : "";
   if (f.liveness === "LIVE") {
     return `<span class="live-pill" title="${caveat}"><span class="dot"></span>LIVE</span>
-            <span class="live-note">code, not risk</span>`;
+            <span class="live-note">code, not risk</span>${xpBadge}`;
   }
-  return `<span class="muted" title="${caveat}">${esc(f.liveness)}</span>`;
+  return `<span class="muted" title="${caveat}">${esc(f.liveness)}</span>${xpBadge}`;
 }
 
 // -------------------------------------------------------------------- drawer
@@ -487,6 +531,13 @@ function openDrawer(f) {
       <div class="d-detail">${esc(f.liveness)} — ${esc(f.liveness_reason)}</div>
       ${f.liveness === "LIVE" ? `<div class="caveat">${esc(
         (REPORT && REPORT.live_caveat) || "")}</div>` : ""}` : ""}
+
+    ${f.exploit_proof && f.exploit_proof.status !== "NOT_APPLICABLE" ? `
+      <h3 class="d-h">Exploitability proof <span class="muted">(capability 14 —
+        read-only eth_call, never a transaction)</span></h3>
+      <div class="d-detail xp-${esc(f.exploit_proof.status)}">
+        <b>${esc(f.exploit_proof.status)}</b> — ${esc(f.exploit_proof.reason || "")}
+      </div>` : ""}
 
     <h3 class="d-h">Required evidence (all six, or it is not CONFIRMED)</h3>
     <ul class="ev">${evRows}</ul>
@@ -567,6 +618,66 @@ function showReport(f, r) {
     `<div class="genok">✓ verified against the finding record — every hash, address,
        path and line in this document came from the engine, not the model</div>
      <div class="report">${mdToHtml(r.markdown || "")}</div>`;
+}
+
+/* ---- capability 12's ranking tool: order CONFIRMED findings by priority - */
+
+function wireRankButton(confirmed) {
+  const wrap = $("rank-wrap"), btn = $("rank-btn");
+  if (confirmed.length < 2) { wrap.className = "rank-wrap hidden"; return; }
+  wrap.className = "rank-wrap";
+  $("rank-box").innerHTML = "";
+  btn.disabled = false;
+  btn.textContent = `Rank ${confirmed.length} CONFIRMED findings — Gemini`;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    const ids = confirmed.map((f) => f.finding_id).filter(Boolean);
+    const res = await fetch(`/api/scan/${JOB}/rank`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ finding_ids: ids }),
+    });
+    if (!res.ok) {
+      $("rank-box").innerHTML = `<div class="why">${esc(await res.text())}</div>`;
+      btn.disabled = false;
+      return;
+    }
+    pollRanking(confirmed);
+  };
+}
+
+async function pollRanking(confirmed) {
+  const box = $("rank-box");
+  for (;;) {
+    const r = await (await fetch(`/api/scan/${JOB}/rank`)).json();
+    if (r.status !== "running") return showRanking(confirmed, r);
+    box.innerHTML = `<div class="genlog"><b>ranking…</b>${
+      (r.log || []).map((l) => `<div>${esc(l)}</div>`).join("")}</div>`;
+    await new Promise((res) => setTimeout(res, 1200));
+  }
+}
+
+function showRanking(confirmed, r) {
+  const box = $("rank-box"), btn = $("rank-btn");
+  btn.disabled = false;
+  if (r.status === "error") {
+    box.innerHTML = `<div class="why"><b>Ranking refused.</b> ${esc(r.error_message || "")}
+      ${(r.violations || []).map((v) =>
+        `<div>rejected [${esc(v.kind)}] ${esc(v.span)}</div>`).join("")}</div>`;
+    return;
+  }
+  const byId = Object.fromEntries(confirmed.map((f) => [f.finding_id, f]));
+  const ordered = [...(r.ranking || [])].sort((a, b) => a.rank - b.rank);
+  box.innerHTML =
+    `<div class="genok">✓ verified against the finding record — every fact this
+       ordering cites came from the engine, not the model</div>
+     <ol class="rank-list">${ordered.map((item) => {
+        const f = byId[item.finding_id];
+        const who = f ? `${esc(f.contract)}${f.function ? "." + esc(f.function) : ""}`
+                      : esc(item.finding_id);
+        return `<li><div class="rank-who">${who}
+              <span class="rule-tag">${f ? esc(f.rule_id) : ""}</span></div>
+            <div class="rank-why">${esc(item.rationale || "")}</div></li>`;
+      }).join("")}</ol>`;
 }
 
 /* Minimal markdown renderer: headings, blockquote, bold, code, lists. Kept

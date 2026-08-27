@@ -1,0 +1,38 @@
+[
+  {
+    "id": "P4x-01",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "positive",
+    "exclusion_ref": null,
+    "path": "positive/P4x-01",
+    "solc": "0.7.6",
+    "solc_before": "0.7.6",
+    "solc_after": "0.7.6",
+    "summary": "RC-EXTRACT1 (Aave v2 UniswapLiquiditySwapAdapter.executeOperation). SafeMath.add() call EXTRACTED from executeOperation into a new internal helper, _swapLiquidity, which performs the same update with a plain `+`. Pragma stays ^0.7.6 in both commits. executeOperation reaches a checked call at N-1 and reaches none at N -> CONFIRMED."
+  },
+  {
+    "id": "N4x-01",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": null,
+    "path": "negative/N4x-01",
+    "solc": "0.7.6",
+    "solc_before": "0.7.6",
+    "solc_after": "0.7.6",
+    "summary": "Diff-identical extraction to P4x-01, but the new helper KEEPS the SafeMath.add() call. Reachable-checked-call count never drops to zero -> quiet. Proves the fix does not fire on every extraction, only on ones that drop protection."
+  },
+  {
+    "id": "N4x-02",
+    "rule": 4,
+    "sub_rule": null,
+    "label": "negative",
+    "exclusion_ref": null,
+    "path": "negative/N4x-02",
+    "solc": "0.7.6",
+    "solc_before": "0.7.6",
+    "solc_after": "0.7.6",
+    "summary": "deposit()'s own SafeMath.add() call is untouched at N; a new, unrelated internal helper with its own new-at-N plain arithmetic is added alongside it (not through it). Reachable-checked-call count for deposit() stays above zero -> quiet."
+  }
+]

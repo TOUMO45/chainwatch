@@ -303,3 +303,9 @@ This was not always true: `git worktree add` used to run against the target
 directly, which writes metadata into its `.git`. That gap, its measurement and
 its fix are recorded in LIMITATIONS.md under `WALK-L6` rather than quietly
 corrected.
+
+## License
+
+Chainwatch is licensed under AGPL-3.0 — see [LICENSE](LICENSE). This project
+uses Slither, crytic-compile, and solc-select, all AGPL-3.0. Attribution and
+the full third-party component list are in [NOTICE](NOTICE).

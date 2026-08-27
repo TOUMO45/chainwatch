@@ -13,6 +13,7 @@ the complete surface the model is allowed to touch.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -286,27 +287,12 @@ def rank_findings(finding_ids_json: str) -> dict:
     }
 
 
-def verify_ranking(finding_ids_json: str, ranking_json: str) -> dict:
-    """Check a ranking against the records. Mechanical, not a model.
-
-    Rejects an invented finding id, a dropped or duplicated one, a rank that is
-    not a permutation of 1..N, and any rationale asserting a fact absent from
-    that finding's own record (same gate as verify_report/verify_impact).
-
-    Args:
-        finding_ids_json: the same JSON array passed to rank_findings.
-        ranking_json: JSON array of {finding_id, rank, rationale}.
+def _ranking_violations(ids: list, ranking: list) -> list[dict]:
+    """Shared gate: every check verify_ranking (and now save_ranking) applies.
+    Pulled out so the two tools cannot drift into checking different things -
+    save_ranking is the source of truth for what gets persisted, and it must
+    reject exactly what verify_ranking would have flagged, not a weaker set.
     """
-    if (err := _need_store()):
-        return err
-    try:
-        ids = list(json.loads(finding_ids_json))
-        ranking = json.loads(ranking_json)
-        assert isinstance(ranking, list)
-    except Exception:
-        return {"status": "error",
-                "error_message": "both arguments must be JSON arrays"}
-
     violations: list[dict] = []
 
     def cite(kind, span, reason):
@@ -344,8 +330,72 @@ def verify_ranking(finding_ids_json: str, ranking_json: str) -> dict:
                 continue
             cite(v["kind"], v["span"], f"{fid}: {v['reason']}")
 
+    return violations
+
+
+def verify_ranking(finding_ids_json: str, ranking_json: str) -> dict:
+    """Check a ranking against the records. Mechanical, not a model.
+
+    Rejects an invented finding id, a dropped or duplicated one, a rank that is
+    not a permutation of 1..N, and any rationale asserting a fact absent from
+    that finding's own record (same gate as verify_report/verify_impact).
+
+    Args:
+        finding_ids_json: the same JSON array passed to rank_findings.
+        ranking_json: JSON array of {finding_id, rank, rationale}.
+    """
+    if (err := _need_store()):
+        return err
+    try:
+        ids = list(json.loads(finding_ids_json))
+        ranking = json.loads(ranking_json)
+        assert isinstance(ranking, list)
+    except Exception:
+        return {"status": "error",
+                "error_message": "both arguments must be JSON arrays"}
+
+    violations = _ranking_violations(ids, ranking)
     return {"status": "success", "ok": not violations,
             "violation_count": len(violations), "violations": violations[:50]}
+
+
+def save_ranking(finding_ids_json: str, ranking_json: str) -> dict:
+    """Persist a checked ranking of several existing findings.
+
+    Pass the same finding ids you were given and your final ranking, each
+    entry {finding_id, rank, rationale}. Re-checked with the exact same gate
+    as verify_ranking and REFUSED (nothing written) if any violation remains
+    - fix them and call verify_ranking again before saving, the same
+    discipline save_report already applies to a dossier.
+
+    Args:
+        finding_ids_json: the same JSON array passed to rank_findings.
+        ranking_json: JSON array of {finding_id, rank, rationale}.
+    """
+    if (err := _need_store()):
+        return err
+    try:
+        ids = list(json.loads(finding_ids_json))
+        ranking = json.loads(ranking_json)
+        assert isinstance(ranking, list)
+    except Exception:
+        return {"status": "error",
+                "error_message": "both arguments must be JSON arrays"}
+
+    violations = _ranking_violations(ids, ranking)
+    if violations:
+        return {"status": "error",
+                "error_message": "ranking refused: verification failed",
+                "violations": violations[:50]}
+
+    ordered = sorted(ranking, key=lambda r: r.get("rank", 0))
+    key = re.sub(r"[^A-Za-z0-9_]", "_", "_".join(sorted(ids)))[:80]
+    safe = hashlib.sha256(key.encode()).hexdigest()[:16]
+    _OUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = _OUT_DIR / f"ranking_{safe}.json"
+    payload = {"finding_ids": ids, "ranking": ordered}
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return {"status": "success", "path": str(path), "ranking": ordered}
 
 
 def save_report(finding_id: str, slots_json: str) -> dict:
@@ -386,4 +436,4 @@ def save_report(finding_id: str, slots_json: str) -> dict:
 ALL_TOOLS = [list_findings, get_finding, get_diff,
              draft_report, verify_report, save_report,
              explain_impact, verify_impact,
-             rank_findings, verify_ranking]
+             rank_findings, verify_ranking, save_ranking]

@@ -87,6 +87,7 @@ from slither.slithir.operations import (
 
 from ._shared import (
     ERC20_RETURN_FNS,
+    SAFE_ERC20_DEST_POS,
     accept_finding,
     constrains_msg_sender,
     declared_in_repo,
@@ -160,10 +161,17 @@ def _value_vars(contract) -> set:
       * every other ERC20 method moves nothing - `balanceOf`, `allowance` and
         friends are reads (N10e-03).
 
-    RESIDUAL GAP, STATED: a transfer through a wrapper library (SafeERC20's
-    `safeTransfer`) is a LibraryCall, not a HighLevelCall, and is not matched
-    here. Reserve uses exactly that pattern, so this rule still does not see
-    its treasury moves. Widening to library calls needs its own fixtures.
+    SafeERC20's `safeTransfer`/`safeTransferFrom` (OpenZeppelin's `using
+    SafeERC20 for IERC20` wrapper, the pattern Reserve uses throughout) are
+    LibraryCalls, not HighLevelCalls, so the branch above never sees them.
+    Matched separately via `SAFE_ERC20_DEST_POS`: the `using` receiver rides
+    as the LibraryCall's own arguments[0], so `safeTransfer(token, to, amt)`
+    -> position 1 and `safeTransferFrom(token, from, to, amt)` -> position 2 -
+    one more than the raw ERC20_RETURN_FNS positions, for the token argument
+    each wrapper method adds. `fixtures-r10-safeerc20/negative/N10se-02` locks
+    the same argument-position trap one level in: `safeTransferFrom`'s SOURCE
+    is now argument 1 (was 0 for the raw call), and a widening that reused the
+    raw positions unshifted would mis-flag it as the destination.
     """
     out: set = set()
     for fn in contract.functions:
@@ -177,7 +185,15 @@ def _value_vars(contract) -> set:
                 elif isinstance(ir, LowLevelCall):
                     if getattr(ir, "call_value", None) is not None:
                         dest = getattr(ir, "destination", None)
-                elif isinstance(ir, HighLevelCall) and not isinstance(ir, LibraryCall):
+                elif isinstance(ir, LibraryCall):
+                    fname = getattr(ir, "function_name", None)
+                    fname = str(fname) if fname is not None else None
+                    pos = SAFE_ERC20_DEST_POS.get(fname)
+                    if pos is not None:
+                        args = list(getattr(ir, "arguments", []) or [])
+                        if len(args) > pos:
+                            dest = args[pos]
+                elif isinstance(ir, HighLevelCall):
                     fname = getattr(ir, "function_name", None)
                     fname = str(fname) if fname is not None else None
                     if fname in ERC20_RETURN_FNS:
@@ -306,6 +322,18 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                             f"{fn_a.contract_declarer.name}.{fn_a.full_name}"
                         ),
                         "visibility_after": fn_a.visibility,
+                        # Found live (2026-08-26), scanning the real 88mph
+                        # NFT.init() regression this rule exists to catch: this
+                        # key was never set, so evidence field 4 (reachability)
+                        # read writes_state_after as ABSENT (not False) and
+                        # capped every rule 10 finding at CANDIDATE forever,
+                        # regardless of liveness - the same defect SHAPE as
+                        # RC-VERDICT1, on a single-emit-site rule this time. True
+                        # by construction: `fn_a` IS T3's unguarded writer of
+                        # `var`, so it always writes state; matches the
+                        # `bool(fn.all_state_variables_written())` idiom used at
+                        # every other rule's emit site rather than a bare literal.
+                        "writes_state_after": bool(fn_a.all_state_variables_written()),
                     },
                 )
                 return True

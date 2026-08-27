@@ -32,7 +32,7 @@ from ._shared import (
     accept_finding,
     defines_init_machinery,
     emit,
-    is_test_path,
+    is_test_path_segments,
     parse,
 )
 from ._storage import (
@@ -155,7 +155,7 @@ def _namespaced_collision(structs_b: dict, structs_a: dict) -> bool:
 
 def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
     """Returns True iff Rule 3c fires on this before/after pair."""
-    if is_test_path(case_meta.get("source_path", after_path)):
+    if is_test_path_segments(case_meta.get("source_path", after_path)):
         return False
 
     layouts_b = storage_layouts(before_path)
@@ -207,6 +207,7 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
                     evidence={
                         "owasp": "SC10", "mode": "erc7201-namespaced",
                         "proxy_deployed": True,
+                        "collision_before": False, "collision_after": True,
                     },
                 )
                 return True

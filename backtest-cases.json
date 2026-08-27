@@ -1,0 +1,49 @@
+{
+  "_README": [
+    "Incident-anchored backtest corpus (BACKTEST-1).",
+    "",
+    "Each case asks ONE question: at the commit that introduced a publicly",
+    "documented vulnerability, would Chainwatch have fired - at commit time,",
+    "before the incident?",
+    "",
+    "ADMISSION RULE, and it is the whole value of this file: a case may only be",
+    "added once its `parent` and `commit` have been resolved against the REAL",
+    "repository and its `source` verified against a public write-up. A case",
+    "with a guessed commit hash would produce a backtest number that looks",
+    "rigorous and means nothing, which is worse than a small corpus.",
+    "",
+    "`expect.rule` is the rule that SHOULD fire. A case whose rule does not fire",
+    "is a recorded miss, not a bug to be papered over by relaxing the case - the",
+    "corpus is ground truth and is read-only in the same sense fixtures/ is",
+    "(CHARTER rule 1).",
+    "",
+    "To add a case:  see BACKTEST.md, or run  python backtest.py --help"
+  ],
+  "cases": [
+    {
+      "id": "88mph-nft-init-2021",
+      "repo": "realworld-test/88mph-src",
+      "clone_url": "https://github.com/88mphapp/88mph-contracts",
+      "parent": "5f52a2ead702e4cb9ab3d04a1109807462dde228",
+      "commit": "a4c48d61661ae3d8ce5aadfda6e4de27c4f07a9e",
+      "date": "2021-02-16",
+      "expect": {
+        "rule": "10",
+        "file": "contracts/NFT.sol",
+        "contract": "NFT",
+        "function": "init"
+      },
+      "impact_usd": 6500000,
+      "source": "https://medium.com/immunefi/88mph-function-initialization-bug-fix-postmortem-c3a2282894d3",
+      "notes": [
+        "Whitehat-reported via Immunefi; funds moved to treasury within 24h.",
+        "The commit replaces a one-shot constructor(name,symbol) with an",
+        "external init(address newOwner,string,string) carrying no access",
+        "control - the exact shape Rule 10 exists to catch.",
+        "Independently verified in this project: the deployed EIP-1167 clone",
+        "implementation 0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634 is still,",
+        "byte-for-byte, this commit's build (normalized-keccak identical)."
+      ]
+    }
+  ]
+}

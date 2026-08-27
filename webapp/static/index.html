@@ -49,9 +49,19 @@
         <input type="checkbox" id="head_check" checked>
         Check whether each regression survives to HEAD
       </label>
+      <label class="check">
+        <input type="checkbox" id="exposure_check">
+        Capability 13 — probe for a still-unconsumed one-shot initializer
+      </label>
+      <label class="check">
+        <input type="checkbox" id="exploit_check">
+        Capability 14 — read-only exploitability proof on CONFIRMED findings
+      </label>
       <p class="hint cost">Each changed file is compiled twice (once per side)
         with its own commit's dependencies. On a large protocol that is minutes
-        per commit — start with a small commit count.</p>
+        per commit — start with a small commit count. Capabilities 13/14 need
+        a deployed address and spend one real read-only <code>eth_call</code>
+        per candidate — never a transaction.</p>
       <div class="actions">
         <button type="submit" id="go">Run scan</button>
         <button type="button" id="cancel" class="ghost" disabled>Cancel</button>
@@ -78,6 +88,8 @@
 
     <div id="sizing" class="sizing hidden"></div>
 
+    <div id="exposure" class="exposure hidden"></div>
+
     <div class="sect">Findings</div>
 
     <div class="findings-wrap">
@@ -90,6 +102,14 @@
           <div class="placeholder">No findings yet.</div>
         </div>
       </div>
+    </div>
+
+    <div id="rank-wrap" class="rank-wrap hidden">
+      <div class="sect">
+        Priority
+        <button type="button" id="rank-btn" class="rankbtn">Rank CONFIRMED findings — Gemini</button>
+      </div>
+      <div id="rank-box"></div>
     </div>
   </section>
 </main>

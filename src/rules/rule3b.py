@@ -44,7 +44,7 @@ from ._shared import (
     emit,
     has_init_guard,
     is_oneshot_init_guard,
-    is_test_path,
+    is_test_path_segments,
     parse,
     reachable,
 )
@@ -107,10 +107,29 @@ def _constructor_disables_init(contract) -> bool:
     return False
 
 
+def _contract_initializer(contract):
+    """The contract's own critical-config initializer, if it has one - same
+    identification criteria Trigger 1 uses (`has_init_guard` +
+    `_sets_critical_config`), reused here for a different purpose: reachability
+    evidence for Trigger 2 (see `run`, `_disableInitializers` removal).
+
+    Trigger 2's regression is IN THE CONSTRUCTOR, but nothing calls a
+    constructor twice - what actually becomes exploitable is the contract's
+    OWN initializer, now callable directly on the implementation contract
+    instead of only through the proxy. `visibility_after`/`writes_state_after`
+    therefore describe THIS function, not the constructor `decl` is attributed
+    to; file/line attribution is unaffected, since `decl` stays `contract_a`.
+    """
+    for fn in contract.functions:
+        if has_init_guard(fn) and _sets_critical_config(fn, contract):
+            return fn
+    return None
+
+
 def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
     """Returns True iff Rule 3b fires on this before/after pair."""
     # Exclusion 3a.3-style test/mock path check.
-    if is_test_path(case_meta.get("source_path", after_path)):
+    if is_test_path_segments(case_meta.get("source_path", after_path)):
         return False
 
     before = parse(before_path)
@@ -189,17 +208,32 @@ def run(before_path: Path, after_path: Path, case_meta: dict) -> bool:
             # actually changed in this commit.
             if not accept_finding(contract_a, case_meta):
                 continue
+            initializer = _contract_initializer(contract_a)
+            evidence = {
+                "owasp": "SC10", "trigger": "disableInitializers-removed",
+                "proxy_deployed": True,
+                "disables_init_before": True, "disables_init_after": False,
+            }
+            if initializer is not None:
+                # Reachability evidence describes the exposed INITIALIZER
+                # (external, state-changing, callable directly on the
+                # implementation contract now) - not the constructor, which
+                # nothing calls twice. Absent when no critical-config
+                # initializer is identifiable: incomplete evidence caps at
+                # CANDIDATE rather than guessing.
+                evidence["visibility_after"] = initializer.visibility
+                evidence["writes_state_after"] = bool(
+                    initializer.all_state_variables_written())
+                evidence["exposed_initializer"] = initializer.full_name
             emit(
                 case_meta, RULE_ID, decl=contract_a,
                 detail=(
                     f"{cname}'s constructor called _disableInitializers() at commit N-1 "
                     f"and no longer does at commit N: the implementation contract can be "
                     f"initialized directly by anyone"
+                    + (f" (via {initializer.full_name})" if initializer is not None else "")
                 ),
-                evidence={
-                    "owasp": "SC10", "trigger": "disableInitializers-removed",
-                    "proxy_deployed": True,
-                },
+                evidence=evidence,
             )
             return True
 

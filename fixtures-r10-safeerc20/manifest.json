@@ -1,0 +1,20 @@
+[
+  {
+    "id": "P10se-01", "rule": 10, "sub_rule": null, "label": "positive",
+    "exclusion_ref": null, "path": "positive/P10se-01",
+    "source_path": "contracts/Fees.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "THE SAFEERC20 RESIDUAL, CLOSED. Diff-identical migration to P10e-01 (constructor-set feeRecipient -> unguarded init()), but the payout path is `token.safeTransfer(feeRecipient, amount)` via `using SafeERC20 for IERC20`, a LibraryCall the raw-ERC20 widening never matched. feeRecipient qualifies as value-holding because it is argument 1 of safeTransfer's LibraryCall IR (arguments == [token, to, amount] - the `using` receiver rides as argument 0). EXPECTED: quiet before the SafeERC20 widening, fires after."
+  },
+  {
+    "id": "N10se-01", "rule": 10, "sub_rule": null, "label": "negative",
+    "exclusion_ref": "10.6", "path": "negative/N10se-01",
+    "source_path": "contracts/Swapper.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "SAFEAPPROVE IS NOT A PAYMENT, AND NOT EVEN MATCHED. Same migration shape, but `router` is only ever passed to `safeApprove(spender, amount)` - not in SAFE_ERC20_DEST_POS at all, so it is never even considered as a candidate destination, the SafeERC20-side counterpart of N10e-01's raw `approve`. EXPECTED: quiet."
+  },
+  {
+    "id": "N10se-02", "rule": 10, "sub_rule": null, "label": "negative",
+    "exclusion_ref": "10.6", "path": "negative/N10se-02",
+    "source_path": "contracts/Collector.sol", "remaps": "oz4", "solc": "0.8.20",
+    "summary": "ARGUMENT POSITION SHIFTS BY ONE, AND MUST BE TRACKED THROUGH THE SHIFT. `payer` is argument 1 of safeTransferFrom's LibraryCall (arguments == [token, from, to, amount]) - the SOURCE, not the recipient (argument 2). A widening that reused transferFrom's raw position (1, the position right for the UNWRAPPED call) unshifted would mis-flag payer as the destination here. EXPECTED: quiet."
+  }
+]

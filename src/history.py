@@ -71,6 +71,21 @@ CAUSE_DEP_GONE = "dep-gone-from-registry"    # install ran but resolution failed
 CAUSE_SOLC_ABSENT = "solc-absent"            # pinned compiler unavailable
 CAUSE_REMAPPING = "remapping"                # import unresolved despite deps
 CAUSE_NEEDS_SCRIPTS = "needs-install-scripts"  # build requires lifecycle scripts
+
+# Node 17+ ships OpenSSL 3, which withdrew the legacy hash provider that older
+# JS toolchains still reach for; the installer then dies with this. It is a
+# property of the HOST's Node, not of the repository being analysed - which is
+# why it is worth one retry rather than a skip (DEP-2). Both spellings appear
+# depending on Node version and which layer surfaces the error.
+_LEGACY_OPENSSL_MARKERS = (
+    "ERR_OSSL_EVP_UNSUPPORTED",
+    "digital envelope routines::unsupported",
+)
+
+
+def _needs_legacy_openssl(detail: str) -> bool:
+    """True iff an install failed for the OpenSSL-3 legacy-provider reason."""
+    return any(m in (detail or "") for m in _LEGACY_OPENSSL_MARKERS)
 CAUSE_TIMEOUT = "timeout"                    # install/build exceeded its cap
 CAUSE_COMPILE = "compile-error"              # source itself does not compile
 CAUSE_UNKNOWN = "unknown"
@@ -174,7 +189,7 @@ def harden_repo(repo) -> None:
         return
     try:
         subprocess.run(["git", "config", "core.hooksPath", str(hooks_deny_dir())],
-                       cwd=str(repo), capture_output=True, text=True, timeout=60)
+                       cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except Exception:  # noqa: BLE001 - the -c override is the guarantee, not this
         pass
 
@@ -182,7 +197,7 @@ def harden_repo(repo) -> None:
 def _git(repo, *args, check=True, timeout=300):
     proc = subprocess.run(
         ["git", *git_safety_args(), *args],
-        cwd=str(repo), capture_output=True, text=True, timeout=timeout,
+        cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
         env={**os.environ, **git_safety_env()},
     )
     if check and proc.returncode != 0:
@@ -254,7 +269,7 @@ def clone_public(url: str, dest, timeout: int = 1800, on_progress=None) -> Path:
         on_progress(f"cloning {url} (full history, anonymous, read-only)")
     proc = subprocess.run(
         ["git", *git_safety_args(), "clone", url, str(target)],
-        capture_output=True, text=True, timeout=timeout,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
         env={**os.environ, **git_safety_env()},
     )
     if proc.returncode != 0:
@@ -458,7 +473,7 @@ def changed_sol(repo, prev: str, cur: str, root: str = "",
 
 def file_at(repo, sha: str, path: str) -> str | None:
     proc = subprocess.run(
-        ["git", "show", f"{sha}:{path}"], cwd=str(repo), capture_output=True, text=True
+        ["git", "show", f"{sha}:{path}"], cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     return proc.stdout if proc.returncode == 0 else None
 
@@ -505,11 +520,11 @@ def mirror_clone(source, dest) -> Path:
     env = {**os.environ, **git_safety_env()}
     proc = subprocess.run(["git", *git_safety_args(), "clone", "--bare", "--local",
                            "--quiet", str(source), str(dest)],
-                          capture_output=True, text=True, timeout=1800, env=env)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800, env=env)
     if proc.returncode != 0:
         proc = subprocess.run(["git", *git_safety_args(), "clone", "--bare",
                                "--quiet", str(source), str(dest)],
-                              capture_output=True, text=True, timeout=1800, env=env)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800, env=env)
         if proc.returncode != 0:
             raise RuntimeError(
                 f"could not clone {source} into scratch: {proc.stderr[:300]}")
@@ -640,15 +655,25 @@ def detect_env(root) -> EnvSpec:
 # ---------------------------------------------------------------------------
 
 
-def _link_dir(link: Path, target: Path) -> None:
-    """Point `link` at `target` without copying (junction on Windows)."""
-    if link.exists() or link.is_symlink():
-        return
+def _link_dir(link: Path, target: Path) -> bool:
+    """Point `link` at `target` without copying (junction on Windows).
+
+    Returns whether `link` resolves to a real directory afterward - the only
+    fact that matters to a caller deciding whether to trust it (11-L2:
+    `subprocess.run`'s returncode was previously never checked, so a failed
+    `mklink` - e.g. a stale directory ENTRY already occupying `link`, which
+    `mklink` refuses to overwrite - looked identical to success).
+    """
+    if link.exists():
+        return True
+    if link.is_symlink():
+        return False   # a link exists but does not resolve: caller must clear it first
     if os.name == "nt":
         subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     else:
         link.symlink_to(target, target_is_directory=True)
+    return link.exists()
 
 
 INSTALL_CMDS = {
@@ -790,7 +815,22 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
     # packages. Measured cost: reserve-protocol's entry held 900 packages and
     # was missing 3, one of which every ActFacet compile needs.
     if cached.is_dir():
-        _link_dir(link, cached)
+        # 11-L2: a STALE directory entry can already occupy `link` - most
+        # commonly a DANGLING junction left by an earlier run whose cache
+        # target has since been cleared. `mklink` refuses to create a
+        # junction where a directory entry already exists (even a broken
+        # one), and that failure was never checked, so `_link_dir` silently
+        # did nothing and this branch went on to report "cache hit" with
+        # `node_modules` resolving to nothing. Clear any stale entry FIRST -
+        # `_unlink_node_modules` never touches a genuine directory, so this
+        # cannot destroy a real, working install - then verify the link
+        # actually resolves before trusting it, the same "verify before
+        # trusting" principle HIST-L4 already applies to the cache itself.
+        _unlink_node_modules(link)
+        if not _link_dir(link, cached):
+            return (False, CAUSE_DEP_MISSING,
+                    f"cache entry {spec.key} exists but linking {link} to it "
+                    f"failed (mklink error not further diagnosable from here)")
         if marker.is_file():
             return True, "", f"cache hit {spec.key}"
         # Unverified entry: from before this check existed, or an install that
@@ -824,11 +864,37 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
     for cmd in install_commands(spec.node_manager, spec.yarn_flavor):
         try:
             proc = subprocess.run(cmd, cwd=str(spec.root), capture_output=True,
-                                  text=True, timeout=timeout, env=env,
+                                  text=True, encoding="utf-8", errors="replace",
+                                  timeout=timeout, env=env,
                                   shell=(os.name == "nt"))
         except subprocess.TimeoutExpired:
             return False, CAUSE_TIMEOUT, f"{' '.join(cmd)} exceeded {timeout}s"
         detail = (proc.stdout + proc.stderr)[-600:]
+        # DEP-2. Node 17+ ships OpenSSL 3, which withdrew the legacy hash
+        # provider that older JS toolchains (yarn classic, old webpack) still
+        # reach for. The installer dies with ERR_OSSL_EVP_UNSUPPORTED - a
+        # property of the HOST's Node, not of the repository, and the reason
+        # historically-important targets like compound-v2 and aave-v2 skipped
+        # every pair as `dep-missing`. Retried ONCE with the legacy provider
+        # re-enabled, which is the documented remedy for exactly this error.
+        #
+        # Scoped to the measured signature rather than applied always: the flag
+        # weakens a crypto policy, so it is opt-in per failure, never a default.
+        # It also cannot affect analysis - it only lets the dependency tree
+        # materialise; every rule still reads the same sources afterwards.
+        if proc.returncode != 0 and _needs_legacy_openssl(detail):
+            legacy = {**env, "NODE_OPTIONS": (
+                env.get("NODE_OPTIONS", "") + " --openssl-legacy-provider").strip()}
+            try:
+                proc = subprocess.run(cmd, cwd=str(spec.root), capture_output=True,
+                                      text=True, encoding="utf-8", errors="replace",
+                                      timeout=timeout, env=legacy,
+                                      shell=(os.name == "nt"))
+                detail = (proc.stdout + proc.stderr)[-600:]
+            except subprocess.TimeoutExpired:
+                return (False, CAUSE_TIMEOUT,
+                        f"{' '.join(cmd)} exceeded {timeout}s "
+                        f"(retry with --openssl-legacy-provider)")
         # WALK-L9, third layer. `spec.root` is a linked worktree, so a `git
         # config` run inside it writes to the SHARED config of the scratch
         # mirror - which is exactly how `husky install` armed the target's
@@ -858,7 +924,10 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
     if link.is_dir() and not link.is_symlink():
         (cache_root / spec.key).mkdir(parents=True, exist_ok=True)
         shutil.move(str(link), str(cached))
-        _link_dir(link, cached)
+        if not _link_dir(link, cached):
+            return (False, CAUSE_DEP_MISSING,
+                    f"install succeeded but linking {link} back to the cache "
+                    f"({spec.key}) failed after moving it there")
     # The marker is written LAST, so an install interrupted anywhere before this
     # point leaves an unmarked entry that the next run verifies instead of
     # trusting.
@@ -874,9 +943,22 @@ def _unlink_node_modules(link: Path) -> None:
     exactly the destructive shortcut HIST-L4's fix exists to avoid. A junction
     is removed with `Path.unlink`-equivalent semantics on Windows (`rmdir` on
     the reparse point), which does not follow into the target.
+
+    11-L2: the early guard used to read `link.exists()`, which FOLLOWS the
+    link - so a DANGLING junction (its target deleted out from under it, e.g.
+    an earlier run's cache entry that was later cleared) reports `exists()`
+    False and `is_symlink()` False on Windows (a junction is not a Python
+    symlink), and this function did nothing. The stale directory ENTRY stayed
+    on disk, `mklink` later refused to overwrite it (`Cannot create a file
+    when that file already exists`, returncode 1, previously never checked -
+    see `_link_dir`), and node_modules silently resolved to nothing. Measured
+    directly: a deliberately-dangled junction reproduces exactly this.
+    `os.path.lexists` does NOT follow the link, so it sees the entry either
+    way - a real directory, a working link, or a dangling one - which is what
+    this guard needs to decide whether there is anything to remove at all.
     """
     try:
-        if not link.exists() and not link.is_symlink():
+        if not os.path.lexists(link) and not link.is_symlink():
             return
         if link.is_symlink():
             link.unlink()
@@ -1057,44 +1139,150 @@ def derive_remaps(root, contracts_dir: str = "", absolute: bool = False) -> list
     if (root / "remappings.txt").is_file():
         for line in (root / "remappings.txt").read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.strip().startswith("#"):
-                out.append(line.strip())
+                out.append(_absolutize_remap(line.strip(), root) if absolute
+                           else line.strip())
     return out
 
 
+def _absolutize_remap(entry: str, root) -> str:
+    """Re-root ONE `prefix=target` remapping onto `root` (finding DEP-1).
+
+    A `remappings.txt` is appended last on purpose, so an explicit entry beats a
+    derived one - solc takes the LAST matching remapping for a prefix. But these
+    files almost always hold checkout-relative targets
+    (`@1inch/solidity-utils/=node_modules/@1inch/solidity-utils/`), and appending
+    those verbatim silently DEFEATED the whole point of `absolute=True`: the
+    relative duplicate overrode the absolute one this function had just derived,
+    and solc then resolved `node_modules/...` against its own cwd. Slither is
+    invoked without a cwd, so that cwd is Chainwatch's own root - where no such
+    directory exists - and every import failed as "not found" on a dependency
+    tree that was correctly installed the whole time.
+
+    MEASURED on 1inch/swap-vm: 0 of 1160 rule invocations survived, and the
+    error reproduces byte-for-byte by running the derived remap list from
+    Chainwatch's root instead of the worktree. 1inch/aqua lost 27 of 38 files
+    the same way.
+
+    Both intents are preserved rather than traded off: the explicit entry still
+    wins (its prefix mapping is kept exactly), and it becomes cwd-independent
+    (its target is resolved against the checkout it came from). The junction is
+    resolved for the same reason the derived branch resolves it (WALK-L4).
+    An already-absolute target is returned untouched.
+    """
+    prefix, _, target = entry.partition("=")
+    if not target or Path(target).is_absolute():
+        return entry
+    trailing = "/" if target.endswith(("/", "\\")) else ""
+    try:
+        real = (Path(root) / target).resolve()
+    except OSError:  # unresolvable path: keep the original rather than guess
+        return entry
+    return f"{prefix}={real.as_posix()}{trailing}"
+
+
+_MAX_LIB_DEPTH = 4
+
+
 def _foundry_lib_remaps(root, absolute: bool = False) -> list[str]:
-    """Foundry-style auto-remappings for each `lib/<sub>` submodule.
+    """Foundry-style auto-remappings for each `lib/<sub>` submodule, INCLUDING
+    nested ones, using solc's context-dependent remapping syntax.
 
     For every submodule, map BOTH its package.json `name` and its bare directory
     name to the submodule's source directory (`src/`, then `contracts/`, else the
     submodule root) - which is what `forge remappings` generates and how a
     Foundry project's imports (`@openzeppelin/contracts/...`, `forge-std/...`)
     resolve without an explicit remappings.txt entry. Additive: emits nothing
-    when `lib/` is absent, so npm/Hardhat repos are unaffected (finding COMP-L2).
+    when `lib/` is absent, so npm/Hardhat repos are unaffected.
+
+    NESTED SUBMODULES (finding COMP-L2, reopened and fixed 2026-08-27). This
+    used to walk only the TOP-level `lib/`, and COMP-L2 was recorded as an
+    unfixable charter boundary on the reasoning that "bare solc holds one flat
+    remapping set" and only `forge` (which CHARTER rule 3 forbids installing)
+    could resolve per-subtree contexts. **That reasoning was wrong.** solc has
+    long accepted `context:prefix=target`, which restricts a remapping to
+    imports made from files under `context` - exactly the mechanism forge itself
+    emits. Measured directly, on a nested tree where root and submodule pin
+    DIFFERENT versions of the same dependency:
+
+        flat     lib/A/src/A.sol  "dep/src/D.sol" -> lib/dep/src/D.sol
+        context  lib/A/src/A.sol  "dep/src/D.sol" -> lib/A/lib/dep/src/D.sol
+
+    Note what the flat row actually shows: not a failure to compile, but a
+    SILENT resolution to the wrong dependency. COMP-L2 was filed as a coverage
+    ceiling; it was also, undetected, a correctness hazard - a rule could read
+    the wrong version of a dependency and compare against it.
+
+    A nested remapping is emitted only when its target directory actually holds
+    Solidity: an uninitialised git submodule leaves an EMPTY `lib/<sub>/lib/<x>`
+    behind, and remapping onto it would break imports that currently resolve
+    (accidentally but usefully) through the root-level copy.
     """
     root = Path(root)
-    libdir = root / "lib"
-    if not libdir.is_dir():
-        return []
     out: list[str] = []
-    for sub in sorted(p for p in libdir.iterdir() if p.is_dir()):
-        srcdir = sub
-        for cand in ("src", "contracts"):
-            if (sub / cand).is_dir():
-                srcdir = sub / cand
-                break
-        target = (f"{srcdir.resolve().as_posix()}/" if absolute
-                  else f"{srcdir.relative_to(root).as_posix()}/")
-        names = {sub.name}
-        pj = sub / "package.json"
-        if pj.is_file():
-            try:
-                nm = json.loads(pj.read_text(encoding="utf-8", errors="ignore")).get("name")
-                if nm:
-                    names.add(nm)
-            except (ValueError, OSError):
-                pass
-        for nm in names:
-            out.append(f"{nm}/={target}")
+
+    def has_sol(d: Path) -> bool:
+        try:
+            return any(d.rglob("*.sol"))
+        except OSError:
+            return False
+
+    def walk(base: Path, depth: int) -> None:
+        libdir = base / "lib"
+        if depth > _MAX_LIB_DEPTH or not libdir.is_dir():
+            return
+        # Root-level remappings stay unscoped, byte-identical to before. Only a
+        # NESTED submodule gets a context, so every existing repository's flat
+        # remapping set is unchanged unless it actually has nested libs.
+        if base == root:
+            context = ""
+        else:
+            ctx = (base.resolve().as_posix() if absolute
+                   else base.relative_to(root).as_posix())
+            # solc's remapping grammar is `context:prefix=target`, so a context
+            # containing a colon is unparseable - which is exactly what a
+            # Windows absolute path is (`C:/...`). MEASURED: solc then takes
+            # `C` as the context, and since context matching is a plain string
+            # prefix, `C` matches every source unit on that drive. The observed
+            # result was a silently WRONG resolution, not an error.
+            #
+            # Emitting nothing here is a no-op: resolution falls back to the
+            # unscoped root-level remapping, i.e. exactly the pre-fix behaviour.
+            # Full Windows support needs `--base-path <root>` with relative
+            # remappings (verified working: it makes source unit names
+            # root-relative so a relative context matches), which is a change to
+            # how Slither is invoked, not to what this function emits - tracked
+            # in LIMITATIONS.md under COMP-L2.
+            if ":" in ctx:
+                for sub in sorted(p for p in libdir.iterdir() if p.is_dir()):
+                    walk(sub, depth + 1)
+                return
+            context = f"{ctx}/:"
+        for sub in sorted(p for p in libdir.iterdir() if p.is_dir()):
+            srcdir = sub
+            for cand in ("src", "contracts"):
+                if (sub / cand).is_dir():
+                    srcdir = sub / cand
+                    break
+            if context and not has_sol(srcdir):
+                walk(sub, depth + 1)   # still descend; just do not remap onto nothing
+                continue
+            target = (f"{srcdir.resolve().as_posix()}/" if absolute
+                      else f"{srcdir.relative_to(root).as_posix()}/")
+            names = {sub.name}
+            pj = sub / "package.json"
+            if pj.is_file():
+                try:
+                    nm = json.loads(
+                        pj.read_text(encoding="utf-8", errors="ignore")).get("name")
+                    if nm:
+                        names.add(nm)
+                except (ValueError, OSError):
+                    pass
+            for nm in sorted(names):
+                out.append(f"{context}{nm}/={target}")
+            walk(sub, depth + 1)
+
+    walk(root, 0)
     return out
 
 

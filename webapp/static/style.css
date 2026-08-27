@@ -72,13 +72,17 @@ body {
   font: var(--fs-base)/1.5 var(--sans);
   -webkit-font-smoothing: antialiased;
   /* Atmospheric ground: the page reads as a lit console, not a flat sheet.
-   * Two faint fixed glows; everything else is drawn over them. */
+   * Three faint fixed glows (a third, cyan, added for more presence without
+   * touching any verdict-bearing colour); everything else is drawn over them. */
   background:
-    radial-gradient(1100px 520px at 10% -6%, rgba(78,168,255,.12), transparent 60%),
-    radial-gradient(900px 520px at 104% 0%, rgba(155,140,255,.07), transparent 55%),
+    radial-gradient(1100px 520px at 10% -6%, rgba(78,168,255,.14), transparent 60%),
+    radial-gradient(900px 520px at 104% 0%, rgba(155,140,255,.09), transparent 55%),
+    radial-gradient(700px 460px at 50% 110%, rgba(53,214,195,.05), transparent 60%),
     var(--bg);
   background-attachment: fixed;
 }
+code { font: var(--fs-sm) var(--mono); color: var(--accent-2);
+       background: rgba(78,168,255,.08); padding: 1px 5px; border-radius: 4px; }
 
 ::selection { background: rgba(78,168,255,.28); }
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
@@ -390,6 +394,55 @@ button:disabled { opacity: .42; cursor: not-allowed; box-shadow: none; }
              border: 1.5px solid var(--ink); animation: ring 1.8s var(--ease-out) infinite; opacity: 0; }
 @keyframes ring { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(3.4); opacity: 0; } }
 .live-note { display: block; color: var(--dim); font-size: var(--fs-micro); margin-top: 4px; }
+
+/* Capability 14 badge - an ESCALATION appended after LIVE, same "stop"
+ * vocabulary as .live-pill (never a new colour meaning a viewer would have
+ * to learn): a solid amber-to-red chip, because "callable right now, proven"
+ * is a step past "the code is deployed" without claiming funds are at risk. */
+.xp-pill { display: inline-block; margin-left: 6px; font: var(--fs-micro) var(--mono);
+           font-weight: 700; letter-spacing: .04em; color: var(--ink);
+           background: linear-gradient(180deg, var(--confirmed-2), var(--confirmed));
+           padding: 3px 8px; border-radius: 6px;
+           box-shadow: 0 0 12px rgba(255,95,86,.5); }
+.d-detail.xp-OPEN { border-left-color: var(--confirmed); background: var(--confirmed-bg); }
+.d-detail.xp-CLOSED { border-left-color: var(--ok); background: var(--ok-bg); }
+.d-detail.xp-UNKNOWN { border-left-color: var(--line-2); }
+
+/* ------------------------------------------------------------ exposure (13) */
+.exposure { border: 1px solid var(--line); border-radius: var(--r-xl);
+            padding: var(--sp-4); margin-bottom: var(--sp-4);
+            background: linear-gradient(160deg, var(--panel-2), var(--panel));
+            box-shadow: var(--shadow-1); }
+.exposure.hidden { display: none; }
+.exp-row { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap;
+           padding: 5px 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
+.exp-row:first-of-type { border-top: none; }
+.exp-status { font: var(--fs-xs) var(--mono); font-weight: 700; letter-spacing: .06em;
+              padding: 2px 8px; border-radius: var(--r-pill); flex: none; }
+.exp-OPEN .exp-status { background: var(--confirmed-bg); color: var(--confirmed); }
+.exp-CLOSED .exp-status { background: var(--ok-bg); color: var(--ok); }
+.exp-UNKNOWN .exp-status { background: var(--panel-3); color: var(--dim); }
+.exp-who { font: var(--fs-sm) var(--mono); color: var(--text); flex: none; }
+.exp-reason { color: var(--dim); font-size: var(--fs-xs); }
+
+/* --------------------------------------------------- ranking (capability 12) */
+.rank-wrap { margin-top: var(--sp-5); }
+.rank-wrap.hidden { display: none; }
+.rank-wrap .sect { align-items: center; }
+.rankbtn { flex: none; padding: 7px var(--sp-4); font-size: var(--fs-smd);
+           margin-left: var(--sp-2); }
+.rank-list { list-style: none; margin: var(--sp-2) 0 0; padding: 0; counter-reset: rank; }
+.rank-list li { counter-increment: rank; position: relative;
+                border: 1px solid var(--line); border-radius: var(--r-lg);
+                background: linear-gradient(160deg, var(--panel-2), var(--panel));
+                padding: var(--sp-3) var(--sp-4) var(--sp-3) 46px; margin-bottom: var(--sp-2); }
+.rank-list li::before { content: counter(rank); position: absolute; left: 12px; top: var(--sp-3);
+                        width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+                        font: var(--fs-xs) var(--mono); font-weight: 700; color: var(--ink);
+                        background: linear-gradient(180deg, var(--accent-2), var(--accent)); }
+.rank-who { font: var(--fs-smd) var(--mono); color: var(--text); display: flex;
+            align-items: center; gap: var(--sp-2); }
+.rank-why { color: var(--dim); font-size: var(--fs-sm); margin-top: 4px; line-height: 1.5; }
 
 /* ------------------------------------------------------------------ drawer */
 .drawer { position: fixed; inset: 0; background: rgba(3,6,10,.62);
