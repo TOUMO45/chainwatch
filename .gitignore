@@ -78,3 +78,6 @@ realworld-test/v3-core/
 realworld-test/v3-periphery/
 realworld-test/.anchor-scratch/
 .claude/
+realworld-test/etherfi/
+realworld-test/termmax-v2/
+realworld-test/zeroex/

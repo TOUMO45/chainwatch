@@ -4544,7 +4544,102 @@ Fixtures before code, per CHARTER rule 1 — not attempted here.
 
 ---
 
-### MONO-L1 — a monorepo's dependency install outruns any practical timeout, silently
+### DEP-3 — Soldeer-managed Foundry projects have no dependency system Chainwatch recognises
+
+**Type: TOTAL COVERAGE LOSS on a whole package-manager class. MEASURED on
+`term-structure/termmax-contract-v2` 2026-08-27. NOT fixed - documented so a
+future session does not have to re-diagnose it.**
+
+`termmax-v2` reported `0/12` for every pair, `dep-missing`. `npm install`
+completed with exit 0, but installed **none** of the 7 packages the source
+actually imports (`@openzeppelin/contracts`, `@uniswap/v3-core`,
+`@pendle/core-v2`, etc.) - because none of them are npm dependencies at all.
+`package.json` declares only `prettier`/`typescript`; the real dependencies
+live under `foundry.toml`'s `[dependencies]` section, resolved by
+**[Soldeer](https://soldeer.xyz)**, Foundry's Rust-based package manager, into
+a `dependencies/` directory that `history.detect_env` has never heard of.
+
+Confirmed independently against the repository's own `foundry.toml` on
+GitHub, not inferred from the local checkout alone - it carries an explicit
+`[soldeer]` section and per-package `git`/`rev` pins. `npm`'s "success" here
+is real but meaningless: there was nothing for it to install.
+
+**One genuinely useful fact already present**: the repo ships a real, correct
+`remappings.txt` mapping every import to `dependencies/<pkg>-<version>/` -
+Soldeer already generated it. The only missing piece is the `dependencies/`
+directory's actual contents on disk.
+
+**Fix direction, not attempted.** Soldeer's registry
+(`https://api.soldeer.xyz`) is a plain HTTPS package archive host - the same
+shape as `mirror_clone`/`clone_public` already use for git, so resolving
+`[dependencies]` entries and downloading+extracting archives would not require
+installing or executing `forge`/`soldeer` binaries (CHARTER rule 3, WALK-L9).
+Needs measuring the registry's real API shape before writing code - not done
+here, since this session's scope was measuring and re-scanning, not building
+a new capability.
+
+---
+
+### MONO-L1 CORRECTED — the second monorepo case was misdiagnosed; the real cause is a dead git dependency, not size
+
+**Type: original diagnosis was WRONG, recorded here rather than silently
+edited. MEASURED on `0xProject/protocol` 2026-08-27. Fix landed for the real
+cause; the original hypothesis (below) remains UNVERIFIED for Balancer.**
+
+Asked to fix MONO-L1 and re-scan, the natural next step was to measure the
+same symptom on a second monorepo (`0xProject/protocol`, 17,277 commits, a
+yarn workspace) before assuming the Balancer diagnosis generalised. It did
+not. A direct, isolated `yarn install` failed in **7m32s**, not from size, but
+because `yarn.lock` pins a git dependency at
+`https://github.com/0xProject/gitpkg.git` and **that repository has been
+deleted**:
+
+```
+error Command failed. Exit code: 128
+Command: git ls-remote --tags --heads https://github.com/0xProject/gitpkg.git
+Output: remote: Repository not found.
+        fatal: repository '...gitpkg.git/' not found
+```
+
+No timeout increase, workspace scoping, or retry logic fixes a dependency that
+no longer exists anywhere to fetch. This is a **different failure class** from
+"large workspace, slow resolution" and was wrongly filed under the same name.
+
+**What made it worse than a plain failure**: `_REGISTRY_GONE` (the existing
+mechanism for "permanently gone, don't retry") did not recognise this
+signature, so `install()`'s fallback loop ran a SECOND full install attempt
+against the identical dead dependency — provably wasted, since the outcome
+cannot differ. The reported cause was then either the unhelpful generic
+`dep-missing`, or, when the combined wait crossed the per-call timeout, the
+actively **misleading** `timeout` — implying "wait longer and it might work,"
+which is false here.
+
+**Fix.** `_REGISTRY_GONE` gains the two real observed signatures
+(`"Repository not found"`, `"fatal: repository"`). Verified via `H.install()`
+directly against the real checkout (not just the isolated `yarn` command):
+`cause` is now `dep-gone-from-registry`, correct and permanent, on the first
+attempt — no second wasted attempt runs. Locked by
+`tests/test_dead_git_dependency.py` (4 tests) against the real captured error
+text.
+
+**Stated honestly: this does not make `0xProject/protocol` scannable at this
+commit range.** The dependency really is gone; no fix restores it. What
+changed is that discovering this now takes one attempt instead of two, and the
+reported reason is true instead of misleading. Also honestly: yarn's own
+internal retry/backoff before it gives up on the dead remote means discovery
+still costs real wall-clock time (~7-12 minutes measured across two runs) -
+not fixable without altering yarn's own retry behaviour, which is out of scope.
+
+**Balancer v3's original case remains UNVERIFIED against this diagnosis.**
+It was never directly timed the way `0xProject/protocol` now has been; the
+entry below is kept as originally written rather than assumed to be the same
+root cause. If picked up again: measure Balancer's own install directly
+(isolated, timed, real output captured) before assuming either "slow" or
+"dead dependency" - exactly the discipline that caught this misdiagnosis here.
+
+---
+
+### MONO-L1 (original, Balancer v3) — a monorepo's dependency install outruns any practical timeout, silently
 
 **Type: COVERAGE LOSS on a whole repository class, plus a real usability defect.
 MEASURED on `balancer/balancer-v3-monorepo` 2026-08-27. Progress reporting

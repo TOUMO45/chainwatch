@@ -779,7 +779,22 @@ INSTALL_ENV = {
 }
 
 _REGISTRY_GONE = ("404 Not Found", "ETARGET", "no matching version",
-                  "Couldn't find package", "not found in the registry")
+                  "Couldn't find package", "not found in the registry",
+                  # MEASURED against a real target (0xProject/protocol,
+                  # 2026-08-27): yarn.lock pins a git dependency at
+                  # https://github.com/0xProject/gitpkg.git, and that
+                  # repository has been DELETED - `git ls-remote` returns
+                  # "remote: Repository not found." / "fatal: repository
+                  # '...' not found". No timeout, retry or workspace-scoping
+                  # fixes this: the dependency is permanently gone, and
+                  # without this signature the loop below wastes a SECOND
+                  # full install attempt (also measured: ~7.5 minutes) on a
+                  # failure that cannot succeed differently the second time,
+                  # then reports the misleading generic cause "dep-missing"
+                  # (or, if the combined wait crossed the per-call timeout,
+                  # the actively WRONG cause "timeout") instead of the real,
+                  # permanent one.
+                  "Repository not found", "fatal: repository")
 
 
 def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, str]:
