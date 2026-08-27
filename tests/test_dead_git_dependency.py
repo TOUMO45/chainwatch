@@ -23,6 +23,16 @@ proving nothing new - and the eventual cause reported was either the generic
 actively MISLEADING "timeout" (implying "wait longer and it might work", which
 is false here).
 
+A THIRD, independently measured cause was found the same session, on a
+DIFFERENT monorepo (balancer/balancer-v3-monorepo, Yarn Berry): a
+git-fetched dependency (`@zksync/contracts`) whose upstream content no longer
+matches the checksum `yarn.lock` recorded for it -
+
+    The remote archive doesn't match the expected checksum
+
+Deterministic, not transient - the same bytes fail the same comparison every
+retry - so it belongs in the same bucket as the other two.
+
 Run:  python -m pytest tests/test_dead_git_dependency.py -q
 """
 
@@ -56,8 +66,22 @@ def _matches(detail: str) -> bool:
     return any(m in detail for m in _REGISTRY_GONE)
 
 
+_REAL_CHECKSUM_FAILURE = (
+    "➤ YN0018: │ @zksync/contracts@https://github.com/matter-labs/"
+    "era-contracts.git#commit=446d391d34bdb48255d5f8fef8a8248925fc98b9: "
+    "The remote archive doesn't match the expected checksum\n"
+    "➤ YN0000: · Failed with errors in 10m 1s\n"
+)
+
+
 def test_the_real_captured_failure_is_recognised():
     assert _matches(_REAL_YARN_FAILURE)
+
+
+def test_the_real_checksum_mismatch_is_recognised():
+    """balancer/balancer-v3-monorepo, measured directly: a real yarn install
+    ran to completion (10m1s) and failed here, not on size."""
+    assert _matches(_REAL_CHECKSUM_FAILURE)
 
 
 def test_either_signature_alone_is_sufficient():

@@ -62,6 +62,9 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import soldeer  # noqa: E402 - soldeer imports history LAZILY (inside a
+# function body, not at module load), so this top-level import cannot cycle.
+
 # ---------------------------------------------------------------------------
 # failure causes - every unanalyzable pair gets exactly one of these
 # ---------------------------------------------------------------------------
@@ -794,7 +797,18 @@ _REGISTRY_GONE = ("404 Not Found", "ETARGET", "no matching version",
                   # (or, if the combined wait crossed the per-call timeout,
                   # the actively WRONG cause "timeout") instead of the real,
                   # permanent one.
-                  "Repository not found", "fatal: repository")
+                  "Repository not found", "fatal: repository",
+                  # A THIRD, independently measured cause
+                  # (balancer/balancer-v3-monorepo, 2026-08-27, Yarn Berry):
+                  # a git-fetched dependency's upstream content no longer
+                  # matches the checksum yarn.lock recorded for it -
+                  # "The remote archive doesn't match the expected checksum".
+                  # Deterministic, not transient: the exact same bytes fail
+                  # the exact same comparison on every retry, so this belongs
+                  # in the same "stop retrying, report the real cause" bucket
+                  # as the other two - not the generic dep-missing a
+                  # retry-worthy failure would fall through to.
+                  "doesn't match the expected checksum")
 
 
 def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, str]:
@@ -814,8 +828,29 @@ def install(spec: EnvSpec, cache_root, timeout: int = 900) -> tuple[bool, str, s
         except Exception as exc:  # noqa: BLE001
             return False, CAUSE_DEP_MISSING, f"submodule update failed: {exc}"[:300]
 
+    # DEP-3. Independent of node_manager: a Foundry project can declare
+    # Soldeer dependencies with an EMPTY or absent package.json (measured on
+    # term-structure/termmax-contract-v2 - only prettier/typescript in
+    # devDependencies, all 7 real Solidity dependencies under foundry.toml's
+    # [dependencies] instead). Run before the node branch below, and before
+    # either of them decides the outcome, so both dependency systems get a
+    # chance regardless of which one (if either) the repo actually uses.
+    # `_missing_imported_packages` below is already remapping-aware and reads
+    # the target's own remappings.txt, so nothing downstream needs to know
+    # `dependencies/` exists - it already resolves once the files are there.
+    soldeer_detail = ""
+    if soldeer.has_soldeer_dependencies(spec.root):
+        _ok, soldeer_detail = soldeer.install_soldeer_dependencies(
+            spec.root, timeout=min(timeout, 120))
+
     if spec.node_manager is None:
-        return True, "", "no node dependency system declared"
+        missing = _missing_imported_packages(spec.root)
+        if missing:
+            return (False, CAUSE_DEP_MISSING,
+                    f"no node dependency system, and these imports remain "
+                    f"unresolved after Soldeer: {', '.join(sorted(missing))} "
+                    f"({soldeer_detail})"[:300])
+        return True, "", soldeer_detail or "no node dependency system declared"
 
     cached = cache_root / spec.key / "node_modules"
     marker = cache_root / spec.key / MARKER
@@ -1083,7 +1118,17 @@ def imported_packages(root, contracts_dir: str = "", exclude_deps: bool = False)
     search = root / contracts_dir if contracts_dir else root
     pkgs = set()
     for f in search.rglob("*.sol"):
-        if "node_modules" in f.parts:
+        # DEP-3. `dependencies/` is Soldeer's install directory - the same
+        # role `node_modules` plays for npm/yarn/pnpm - so it is excluded
+        # UNCONDITIONALLY, the same way node_modules always is, never gated
+        # behind `exclude_deps` the way `lib` is. MEASURED: without this, a
+        # transitively-vendored package's OWN imports (chainlink's full
+        # monorepo, pulled in as one Soldeer git dependency, itself imports
+        # @eth-optimism/contracts, erc4626-tests, base64-sol for code
+        # termmax-v2 never uses) were reported as the TARGET repo's missing
+        # imports, keeping every pair `dep-missing` even after every real
+        # dependency had resolved correctly.
+        if "node_modules" in f.parts or "dependencies" in f.parts:
             continue
         if exclude_deps and "lib" in f.parts:
             continue

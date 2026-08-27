@@ -4538,17 +4538,50 @@ Verified both directions: P3a-widen-01 (`internal`) now reaches
 UUPSUpgradeable.upgradeToAndCall; controls the upgrade path`, while
 P3a-widen-02 (`external`) is unchanged. `fixtures-r3a-widen` stays 1.00/1.00.
 
-**Still open: 3b-CONF.** Rule 3b's `disableInitializers-removed` trigger has
-never fired under any fixture, so there is nothing to verify a fix against.
-Fixtures before code, per CHARTER rule 1 — not attempted here.
+### 3b-CONF CLOSED — `disableInitializers-removed` now has real fixture evidence, precision 1.00 / recall 1.00
+
+**Type: unproven trigger, not a known bug — the rule's own logic looked
+structurally sound on reading, and testing confirmed it. FIXED (fixtures
+written; zero code changes to the rule itself were needed) 2026-08-27.**
+
+Rule 3b's second trigger — a constructor's `_disableInitializers()` call
+removed, exposing the implementation contract to direct initialization by
+anyone — had never fired under any fixture since it was written. This is a
+real, named, high-profile OWASP SC10 pattern (uninitialized-implementation
+takeover; the same class behind several 2022–2023 incidents), so it was worth
+closing properly rather than leaving as permanently unproven.
+
+Fixtures-first, per CHARTER rule 1: `fixtures-r3b-disableinit/` built on the
+EXACT real OZ5 `Initializable`/`UUPSUpgradeable` pattern already proven
+working by the existing `fixtures/positive/P3b-01` (Trigger 1's own fixture),
+varying only the one thing Trigger 2 cares about — whether the constructor's
+`_disableInitializers()` call survives to commit N. One positive
+(P3b-2-01: the call removed) and three negatives, each isolating a different
+way a naive implementation could false-positive: N3b-2-01 (call unchanged,
+unrelated code added elsewhere — must not fire on a file that merely
+changed), N3b-2-02 (no init machinery at all — `defines_init_machinery` must
+gate the whole check), N3b-2-03 (real init machinery, but the call was never
+there in either version — nothing was removed).
+
+**Result: `python scorer.py --fixtures fixtures-r3b-disableinit` — precision
+1.00, recall 1.00, all four cases correct.** The trigger's own logic needed
+no changes at all — reading it against RULES.md's spec and Trigger 1's own
+proven pattern was sufficient; the fixtures were the missing piece, not a bug
+in the code. Verified the full evidence chain reaches genuine CONFIRMED
+eligibility, not just "fires": `reachability` resolves via the exposed
+initializer (`initialize(address,address)`, external, writes state, still
+present at HEAD) — the same `_contract_initializer` reachability path
+Trigger 1 already uses.
+
+Full 25-fixture-set sweep (now 25, this set included) reconfirmed 0 FP.
 
 ---
 
-### DEP-3 — Soldeer-managed Foundry projects have no dependency system Chainwatch recognises
+### DEP-3 — FIXED: Soldeer-managed Foundry projects now resolve, without executing forge or soldeer
 
 **Type: TOTAL COVERAGE LOSS on a whole package-manager class. MEASURED on
-`term-structure/termmax-contract-v2` 2026-08-27. NOT fixed - documented so a
-future session does not have to re-diagnose it.**
+`term-structure/termmax-contract-v2` 2026-08-27. FIXED and verified
+end-to-end same session.**
 
 `termmax-v2` reported `0/12` for every pair, `dep-missing`. `npm install`
 completed with exit 0, but installed **none** of the 7 packages the source
@@ -4569,14 +4602,57 @@ is real but meaningless: there was nothing for it to install.
 Soldeer already generated it. The only missing piece is the `dependencies/`
 directory's actual contents on disk.
 
-**Fix direction, not attempted.** Soldeer's registry
-(`https://api.soldeer.xyz`) is a plain HTTPS package archive host - the same
-shape as `mirror_clone`/`clone_public` already use for git, so resolving
-`[dependencies]` entries and downloading+extracting archives would not require
-installing or executing `forge`/`soldeer` binaries (CHARTER rule 3, WALK-L9).
-Needs measuring the registry's real API shape before writing code - not done
-here, since this session's scope was measuring and re-scanning, not building
-a new capability.
+**Fix.** `src/soldeer.py` (Capability 18). Measured the real Soldeer API
+before writing anything: `api.soldeer.xyz/api/v1/revision?project_name=X` lists
+a package's revisions; each carries a plain public S3 `url` to download. Two
+resolution paths, matching `[dependencies]`'s two real shapes:
+
+  * **Registry-hosted** (`name = "version"`): query the API for the pinned
+    version, download the zip, extract it - the same trust model as an npm
+    tarball fetch, and strictly SAFER (a zip extraction runs no code at all;
+    guarded against zip-slip regardless). No `forge`/`soldeer` binary
+    involved (CHARTER rule 3, WALK-L9).
+  * **Git-pinned** (`{ version, git, rev }`): a shallow, rev-targeted fetch
+    through the project's own trusted `history._git` - read-only, same trust
+    model as resolving the target repository itself.
+
+Directory naming is not guessed: confirmed against termmax-v2's own committed
+`remappings.txt` to be `dependencies/<toml-key>-<version>/`, derivable
+directly from `foundry.toml` alone.
+
+**A real bug found building this, not hypothetical.** An early version of
+`_resolve_git` did a FULL `git clone`. termmax-v2 pins `@chainlink-contracts`
+at `smartcontractkit/chainlink` - a large monorepo - and a full clone hung
+past any reasonable per-dependency budget; a locked scratch directory was
+still writing a pack file minutes after the wrapping process was killed.
+Fixed to `git init` + `remote add` + `fetch --depth 1 origin <rev>` +
+`checkout FETCH_HEAD`: measured directly, **33.5s and 54MB** for the exact
+pinned commit, instead of the repository's full history.
+
+**A second real bug found only by testing end-to-end, not in isolation.**
+After all 8 dependencies resolved correctly on disk, every commit pair STILL
+reported `dep-missing`. Root cause: `history.imported_packages` (which the
+pre-flight coverage gate calls) excludes `node_modules` and `lib` from its
+scan, but had never been taught about Soldeer's `dependencies/` directory -
+so chainlink's OWN transitive imports (`@eth-optimism/contracts`,
+`erc4626-tests`, `base64-sol`, needed by code termmax-v2 never uses) were
+counted as the TARGET repo's missing imports. Fixed by excluding
+`dependencies/` unconditionally, the same way `node_modules` already is.
+
+**Verified end to end, not just at the module level**: a real
+`chainwatch.py` scan of `term-structure/termmax-contract-v2`, before -> after:
+
+```
+commit pairs analyzed :  0/12  (0.0%)     ->  12/12  (100.0%)
+rule checks completed :  0/0                  190/290  (65.5%)
+```
+
+The remaining ~34.5% loss is an unrelated, already-understood class (specific
+solc versions not locally installed for a handful of files) - not a Soldeer
+issue. 0 findings over this window is the correct, honestly-measured answer,
+not a clean bill of health claim. Locked by `tests/test_soldeer.py`
+(15 tests offline, 2 more against the real registry/git host, opt-in via
+`CHAINWATCH_TEST_NETWORK=1`).
 
 ---
 
@@ -4630,12 +4706,36 @@ internal retry/backoff before it gives up on the dead remote means discovery
 still costs real wall-clock time (~7-12 minutes measured across two runs) -
 not fixable without altering yarn's own retry behaviour, which is out of scope.
 
-**Balancer v3's original case remains UNVERIFIED against this diagnosis.**
-It was never directly timed the way `0xProject/protocol` now has been; the
-entry below is kept as originally written rather than assumed to be the same
-root cause. If picked up again: measure Balancer's own install directly
-(isolated, timed, real output captured) before assuming either "slow" or
-"dead dependency" - exactly the discipline that caught this misdiagnosis here.
+**Balancer v3's own case, now independently measured rather than left
+unverified.** A direct, isolated `yarn install --mode=skip-build` ran to
+completion in 10m1s - it was not hanging, and it was not slow because of
+size either. It failed with a THIRD, different signature:
+
+```
+@zksync/contracts@https://github.com/matter-labs/era-contracts.git#commit=...:
+The remote archive doesn't match the expected checksum
+```
+
+A git-fetched dependency's upstream content no longer matches the checksum
+`yarn.lock` recorded for it at lockfile-generation time - deterministic, not
+transient, so retrying changes nothing. Three real monorepos, three
+genuinely different root causes, and NONE of them was "large repository,
+give it more time": the original MONO-L1 hypothesis has now been tested
+against every case this project has actually measured and been wrong every
+time. Signature added to `_REGISTRY_GONE` alongside the other two.
+
+**Verified via `H.install()` directly against the real checkout: `cause` is
+now `dep-gone-from-registry`** (11m7s - real, ordinary Yarn Berry resolution
+time for this workspace before it reaches the broken dependency, not
+avoidable without touching yarn's own behaviour). One more thing checked
+rather than assumed while verifying this: does Chainwatch's own real output
+path ever print the raw failure `detail` text (which can contain non-ASCII
+- yarn Berry's own box-drawing characters crashed a throwaway diagnostic
+print on this session's Windows console, a WALK-L11-shaped bug at the
+OUTPUT layer instead of the input layer WALK-L11 fixed)? Checked directly:
+`chainwatch.py` never prints `detail` to the console, only the short `cause`
+string; `detail` only reaches the `--json` file, written with explicit
+`encoding="utf-8"`. Confirmed not a real-product risk - not a fix needed.
 
 ---
 

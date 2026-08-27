@@ -1,0 +1,24 @@
+[
+  {
+    "id": "P3b-2-01", "rule": 3, "sub_rule": "3b", "label": "positive",
+    "exclusion_ref": null, "path": "positive/P3b-2-01",
+    "summary": "Rule 3b Trigger 2, never exercised by any fixture before this set. Constructor called _disableInitializers() at commit N-1 (the exact real OZ5 pattern from fixtures/positive/P3b-01, unchanged) and the call is removed entirely at commit N; initialize() keeps its initializer modifier and still sets owner (critical config) unchanged in both versions, isolating the ONE thing that changed. EXPECTED: fires, trigger=disableInitializers-removed."
+  },
+  {
+    "id": "N3b-2-01", "rule": 3, "sub_rule": "3b", "label": "negative",
+    "exclusion_ref": null, "path": "negative/N3b-2-01",
+    "summary": "Baseline sanity for Trigger 2: constructor keeps calling _disableInitializers() unchanged across the commit; an unrelated owner-gated setter is added elsewhere in the file. Proves the trigger does not fire on a file that merely changed, when the disable-initializers call itself did not move. EXPECTED: quiet."
+  },
+  {
+    "id": "N3b-2-02", "rule": 3, "sub_rule": "3b", "label": "negative",
+    "exclusion_ref": "3b.4",
+    "path": "negative/N3b-2-02",
+    "summary": "A plain, non-upgradeable contract with NO init machinery at all (no Initializable, no initializer modifier) loses an unrelated constructor-set flag (`paused`) between commits. Must not be mistaken for _disableInitializers() removal: defines_init_machinery(contract_a) is False, so Trigger 2 cannot even evaluate this contract. EXPECTED: quiet."
+  },
+  {
+    "id": "N3b-2-03", "rule": 3, "sub_rule": "3b", "label": "negative",
+    "exclusion_ref": null,
+    "path": "negative/N3b-2-03",
+    "summary": "Real init machinery present (Initializable/initializer), but the constructor NEVER called _disableInitializers() in EITHER version - a factory-style template intentionally left initializable at deploy time by design. An unrelated state variable (creationBlock) is added to the constructor between commits. EXPECTED: quiet - nothing that was ever there was removed."
+  }
+]

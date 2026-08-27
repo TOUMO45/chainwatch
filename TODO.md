@@ -1,5 +1,52 @@
 # Deferred (documented in LIMITATIONS.md, not yet fixed)
 
+## Session 2026-08-27 (continued) — DEP-3, MONO-L1's third measured cause, and 3b-CONF closed
+
+Told to act on my own judgement as the domain expert, no further check-ins.
+Worked the map's remaining items in priority order: Soldeer support
+(unblocks a real, growing 2026 Foundry package-manager class), Balancer's
+still-unverified MONO-L1 case, then Rule 3b's untested trigger.
+
+**DEP-3 CLOSED (LIMITATIONS.md).** `src/soldeer.py` (Capability 18) resolves
+both `[dependencies]` shapes (registry-hosted zip, git-pinned shallow fetch)
+without executing `forge`/`soldeer` (CHARTER rule 3). Two real bugs found
+only by testing end-to-end against `term-structure/termmax-contract-v2`, not
+in isolation: a full `git clone` of `@chainlink-contracts`'s upstream
+monorepo hung indefinitely (fixed to a shallow, rev-targeted fetch: 33.5s
+measured, not minutes+); and even after every dependency resolved, every
+pair still reported `dep-missing` because the pre-flight import scan had
+never learned to exclude Soldeer's `dependencies/` directory, so a vendored
+package's OWN transitive imports were counted as the target's missing ones.
+Verified end to end: `0/12 (0.0%) -> 12/12 pairs (100%), 190/290 rule checks
+(65.5%)`.
+
+**MONO-L1's third measured cause (LIMITATIONS.md).** Balancer v3's own case
+was flagged unverified last entry. Measured directly rather than left as an
+assumption: a real, isolated `yarn install` ran to completion in 10m1s and
+failed on a checksum mismatch for a git-fetched dependency
+(`@zksync/contracts`) — a THIRD distinct root cause, on a third monorepo.
+Three real cases measured, three different causes, and "large repository,
+give it more time" was wrong every single time. Signature added to
+`_REGISTRY_GONE`; verified via `H.install()` against the real checkout
+(`cause: dep-gone-from-registry`).
+
+**3b-CONF CLOSED (LIMITATIONS.md).** Rule 3b's `disableInitializers-removed`
+trigger had never fired under any fixture since it was written. Read the
+logic against RULES.md and Trigger 1's own already-proven real-OZ5 fixture
+pattern; it needed zero code changes — only `fixtures-r3b-disableinit/`
+(1 positive, 3 negatives, each isolating a different false-positive risk).
+`precision 1.00, recall 1.00`. Full evidence chain confirmed to reach genuine
+CONFIRMED-eligibility, not just "fires".
+
+Suite 304 -> 319 passing (+15 tests: 5 dead-git-dependency, 17 Soldeer minus
+2 network-gated by default). 26 fixture sets (25 -> 26, `fixtures-r3b-
+disableinit` added), 0 FP; `guard.sh freeze` re-run to lock the new set in.
+
+Still open: ANCHOR-1/BACKTEST-1/CORPUS-1 (already shipped earlier this
+session, unaffected), RULE1-SPEC (needs the human decision already written
+up in LIMITATIONS.md's Rule 1 section — three resolution paths, none of them
+an engineering fact this session can settle by measurement alone).
+
 ## Session 2026-08-27 — the coverage arc: two accounting bugs and one total false negative, all measured before/after
 
 The user asked for a map of every weakness and then "do it". The map
