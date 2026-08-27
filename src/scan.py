@@ -57,6 +57,7 @@ from typing import Callable, Optional
 from . import history as H
 from . import sizing as SZ
 from . import verdict as V
+from . import verified as VER
 from .rules import register_all
 from .rules import _shared, _storage
 
@@ -1042,14 +1043,26 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
                                    f"immutable-clone liveness fallback disarmed "
                                    f"for this scan")
 
+    # Capability 17: the settings the deployment was ACTUALLY built with, if it
+    # is verified. Fetched once per scan (one address, immutable per address),
+    # and every field falls back to the previous guess when unknown - so an
+    # unverified contract behaves exactly as it did before this existed.
+    build = VER.settings_for(opts.address)
+    emit_event("info", message=f"build settings for {opts.address}: "
+                               f"{VER.describe(build)}")
+    _runs = build["optimize_runs"] if build["optimize_runs"] is not None \
+        else DEFAULT_OPTIMIZE_RUNS
+    _bc = {"optimize_runs": _runs, "optimize": build["optimize"],
+           "evm_version": build["evm_version"],
+           "compiler_version": build["compiler_version"]}
+
     head_cache: dict[str, tuple[str, str]] = {}
     clone_cache: dict[str, tuple[str, str]] = {}   # keyed by regression commit sha
     for f in findings:
         key = f"{f.file}:{f.contract}"
         if key not in head_cache:
             try:
-                runtime = _runtime_bytecode(head_wt.path, f.file, f.contract,
-                                           optimize_runs=DEFAULT_OPTIMIZE_RUNS)
+                runtime = _runtime_bytecode(head_wt.path, f.file, f.contract, **_bc)
                 if not runtime:
                     head_cache[key] = (V.UNKNOWN, "contract not present at HEAD, or it does "
                                                   "not compile to runtime bytecode")
@@ -1073,8 +1086,8 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
                         clone_cache[ck] = (V.UNKNOWN,
                                            f"regression-commit env unavailable ({cause})")
                     else:
-                        runtime = _runtime_bytecode(cur_wt.path, f.file, f.contract,
-                                                   optimize_runs=DEFAULT_OPTIMIZE_RUNS)
+                        runtime = _runtime_bytecode(cur_wt.path, f.file,
+                                                    f.contract, **_bc)
                         if not runtime:
                             clone_cache[ck] = (V.UNKNOWN, "regression commit does not "
                                                           "compile to runtime bytecode")
@@ -1099,7 +1112,10 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
 
 
 def _runtime_bytecode(root: Path, rel: str, contract: str,
-                      optimize_runs: Optional[int] = None) -> Optional[str]:
+                      optimize_runs: Optional[int] = None,
+                      *, optimize: Optional[bool] = None,
+                      evm_version: Optional[str] = None,
+                      compiler_version: Optional[str] = None) -> Optional[str]:
     """`solc --bin-runtime` for one contract in a checkout. Build config only.
 
     `optimize_runs` matters for liveness and nothing else: deployed bytecode was
@@ -1135,11 +1151,30 @@ def _runtime_bytecode(root: Path, rel: str, contract: str,
         if dest and dest not in allowed:
             allowed.append(dest)
     cmd = ["solc", *remaps, "--allow-paths", ",".join(allowed)]
-    if optimize_runs is not None:
-        cmd += ["--optimize", "--optimize-runs", str(optimize_runs)]
+    # Capability 17. `optimize` is a TRI-state, and the distinction is
+    # load-bearing: None means "not known, keep the historical behaviour of
+    # optimizing whenever runs were supplied", while False means a verified
+    # deployment says the optimizer was OFF. Measured on WETH9
+    # (optimizer.enabled == False): passing --optimize there rebuilds bytecode
+    # the deployment never had, so liveness could only ever answer UNKNOWN.
+    want_optimize = optimize if optimize is not None else (optimize_runs is not None)
+    if want_optimize:
+        cmd += ["--optimize"]
+        if optimize_runs is not None:
+            cmd += ["--optimize-runs", str(optimize_runs)]
+    # evmVersion was never set at all before this. It is the most invisible of
+    # the three settings: a contract built for `istanbul` and rebuilt under a
+    # modern compiler's default differs in the opcodes available (PUSH0), so
+    # the hashes cannot match however correct everything else is.
+    if evm_version:
+        cmd += ["--evm-version", str(evm_version)]
 
     env = dict(os.environ)
-    pin = H.exact_pin(_shared.source_pragma_expr(Path(root) / rel))
+    # A verified compiler version is stronger evidence than the file's own
+    # pragma: the pragma says what was ALLOWED, the verification record says
+    # what was actually USED (a `^0.8.0` file may be deployed by any 0.8.x).
+    pin = compiler_version or H.exact_pin(
+        _shared.source_pragma_expr(Path(root) / rel))
     if pin:
         env["SOLC_VERSION"] = pin
 
