@@ -414,6 +414,19 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
             except Exception:  # noqa: BLE001 - a broken listener never stops a scan
                 pass
 
+    def checkout(wt, sha: str) -> None:
+        """`Worktree.checkout`, plus surfacing SEC-L1 (symlink stripping) at
+        BANNER weight - a target repository shipping a tracked symlink is a
+        genuine, non-accidental signal worth a scan's reader seeing plainly,
+        not a detail buried in a debug log."""
+        stripped = wt.checkout(sha)
+        if stripped:
+            emit_event("warn", message=(
+                f"removed {len(stripped)} symlink(s) from the target's own "
+                f"tracked tree at {sha[:12]} before reading any file "
+                f"(SEC-L1): {', '.join(stripped[:5])}"
+                + (f" (+{len(stripped) - 5} more)" if len(stripped) > 5 else "")))
+
     repo = Path(opts.repo).resolve()
     # Scratch worktrees are namespaced PER TARGET REPOSITORY. Two scans of
     # different repos would otherwise check out into the same `prev`/`cur`
@@ -478,7 +491,7 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
     head_spec = None
     if head_wt is not None:
         try:
-            head_wt.checkout(head)
+            checkout(head_wt, head)
             head_spec = H.detect_env(head_wt.path)
             # Progress BEFORE the call, not after. A dependency install is the
             # longest silent phase of a scan - a Yarn Berry monorepo can run for
@@ -527,8 +540,8 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
             })
 
         try:
-            prev_wt.checkout(prev)
-            cur_wt.checkout(cur)
+            checkout(prev_wt, prev)
+            checkout(cur_wt, cur)
         except Exception as exc:  # noqa: BLE001
             cov.pairs_skipped += 1
             cov.skips.append({"pair": f"{prev[:12]}..{cur[:12]}", "reason": "checkout-failed",
@@ -1090,7 +1103,7 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
             ck = f.commit
             if ck not in clone_cache:
                 try:
-                    cur_wt.checkout(ck)
+                    checkout(cur_wt, ck)
                     spec = H.detect_env(cur_wt.path)
                     ok, cause, _detail = H.install(spec, cache)
                     if not ok:

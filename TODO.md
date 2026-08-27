@@ -1,5 +1,49 @@
 # Deferred (documented in LIMITATIONS.md, not yet fixed)
 
+## Session 2026-08-28 — professional security audit: 3 real findings against Chainwatch's OWN infrastructure, all closed
+
+Different question from every prior session: not "does the tool detect a
+regression correctly", but "can a malicious target repository, or a
+malicious caller of the public web app, attack Chainwatch itself". Found
+and fixed three (LIMITATIONS.md `SEC-L1`/`SEC-L2`/`SEC-L3`); checked and
+confirmed three adjacent classes were NOT vulnerable rather than assuming so
+(`git clone` argument injection via the web form's `repo` field — blocked
+structurally by the existing `CLONE_SCHEMES` prefix gate; stored XSS in the
+Gemini-report/diff renderers — `mdToHtml()`/`esc()` already escape correctly;
+`agent/store.py`'s own unprotected-argv `git diff` call — its `commit`/
+`parent` values are hash outputs, never attacker-reachable text, so nothing
+to fix).
+
+**SEC-L1**: a tracked git symlink in a malicious target repo could read
+arbitrary host files through the exact paths every rule and compiler already
+opens with no sandbox — inert on this Windows dev box (`core.symlinks=false`,
+measured directly) but real on the Linux/Cloud Run production target. Fixed
+by deleting every symlinked entry immediately after checkout, at all 5 real
+checkout call sites.
+
+**SEC-L2**: `webapp/server.py`'s public `rpc_url` field reached
+`Web3.HTTPProvider` with zero validation — a live SSRF path to
+`169.254.169.254`, the cloud metadata endpoint, on the real Cloud Run
+deployment. Fixed with a scheme + resolved-address validator at the shared
+`liveness._w3()` choke point every caller already routes through.
+**Left open, stated honestly, not silently unfixed**: this is
+validate-then-use, not pinned-connection, so it does not defend against DNS
+rebinding (a domain resolving to a public IP at check time and a private one
+moments later at request time) — closing that needs a custom transport
+adapter pinning the already-validated IP; real, separate work, deliberately
+not bundled into this fix.
+
+**SEC-L3**: `prev`/`cur`/`rev` on the public diff/source endpoints reached
+`git diff`/`git show` as unprotected argv content — `--output=<path>` alone
+is an arbitrary-file-write primitive, reachable pre-authentication. Fixed
+with a strict hex-SHA shape check on all three, matching what these fields
+are ever legitimately populated with.
+
+New tests: `tests/test_symlink_strip.py` (7), `tests/test_rpc_ssrf_guard.py`
+(9), `tests/test_diff_source_arg_injection.py` (15). Full suite and
+`guard.sh check` both run clean before commit — see HANDOFF.md's newest arc
+for the exact gate output.
+
 ## Session 2026-08-27 (continued) — DEP-3, MONO-L1's third measured cause, and 3b-CONF closed
 
 Told to act on my own judgement as the domain expert, no further check-ins.

@@ -547,6 +547,45 @@ def mirror_clone(source, dest) -> Path:
     return dest
 
 
+def _strip_symlinks(root: Path) -> list[str]:
+    """Remove every symlink found under `root`, return their (relative) paths.
+
+    Not "refuse to compile a symlinked path" - REMOVE the symlink outright,
+    unconditionally, before any rule or compiler ever gets a chance to open
+    it. A narrower "check the resolved target stays inside root" guard would
+    still let an attacker use compile SUCCESS/FAILURE as a existence oracle
+    for arbitrary host paths; deleting the entry denies that signal too, at
+    the cost of that one path legitimately missing from the scan (reported
+    like any other unreadable file - not a new failure class to special-case
+    downstream).
+
+    A single `Path.is_symlink()` per entry, not a realpath-containment check:
+    this project's own Solidity trees have no legitimate use for a tracked
+    symlink at all (chained npm/Foundry dependency resolution already has its
+    own, separate, whitelisted mechanisms - `_link_dir` for node_modules,
+    `soldeer._resolve_git`/`_resolve_registry` for Soldeer - none of which
+    goes through a symlink placed in the TARGET's own tracked tree), so
+    "is it a symlink at all" is the correct question, not "does it point
+    somewhere we don't like".
+    """
+    stripped: list[str] = []
+    root = Path(root)
+    for entry in root.rglob("*"):
+        if entry.is_symlink():
+            rel = str(entry.relative_to(root)).replace("\\", "/")
+            stripped.append(rel)
+            try:
+                if entry.is_dir():
+                    entry.unlink()  # a symlink-to-directory is still unlink()able
+                else:
+                    entry.unlink()
+            except OSError:
+                pass  # best-effort: a removal failure still leaves it inert
+                       # for read purposes on most platforms, and is not
+                       # itself a reason to fail the whole checkout
+    return stripped
+
+
 class Worktree:
     """A scratch checkout of the target repo, reused across commits.
 
@@ -563,11 +602,37 @@ class Worktree:
             _git(self.repo, "worktree", "add", "--detach", str(self.path), "HEAD",
                  timeout=600)
 
-    def checkout(self, sha: str) -> None:
+    def checkout(self, sha: str) -> list[str]:
         if self.sha == sha:
-            return
+            return []
         _git(self.path, "checkout", "--detach", "--force", sha, timeout=600)
         self.sha = sha
+        # SEC-L1. The target repository is untrusted, by charter. A tracked
+        # git blob at file mode 120000 checks out as a REAL OS symlink on any
+        # host where core.symlinks is enabled - the Linux default this
+        # project actually deploys to (Cloud Run), even though it is inert on
+        # this project's Windows dev machine (core.symlinks=false there,
+        # confirmed directly: a hand-crafted 120000 blob materialises as a
+        # plain text file containing the target path string, not a working
+        # symlink - which is exactly why this cannot be left unverified on
+        # local reproduction alone and needed reasoning through the
+        # production platform instead).
+        #
+        # Every rule reads through THIS worktree's paths via plain
+        # `Path.read_text()` / handing a path to solc, neither of which
+        # cares about a sandbox boundary - a symlink pointing at
+        # `/root/.config/gcloud/...` or the container's own service-account
+        # token would be opened exactly like any other file, and a solc
+        # parse-error snippet is a real, standing information-leak channel
+        # for whatever it points to (content on partial-parse failure,
+        # existence via a differing error otherwise).
+        #
+        # Called HERE, immediately after the checkout and strictly BEFORE
+        # `history.install()` ever runs, so this only ever touches symlinks
+        # that arrived as part of the TARGET's own tracked tree - never
+        # Chainwatch's own legitimate node_modules cache link, which
+        # `_link_dir` creates afterward, in a separate call.
+        return _strip_symlinks(self.path)
 
     def remove(self) -> None:
         _git(self.repo, "worktree", "remove", "--force", str(self.path), check=False,

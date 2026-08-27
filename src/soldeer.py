@@ -220,4 +220,11 @@ def _resolve_git(url: str, rev: Optional[str], target: Path,
     # under analysis, but leaving real git metadata inside `dependencies/`
     # is unnecessary attack surface and unnecessary disk for no benefit.
     shutil.rmtree(target / ".git", ignore_errors=True)
+    # SEC-L1, same reasoning as history.Worktree.checkout: `url`/`rev` here
+    # come from the TARGET repository's own foundry.toml - equally untrusted
+    # as the target itself (WALK-L9's own governing principle extends to
+    # anything the target's build config directs Chainwatch to fetch). A
+    # symlink in this vendored tree is read through the exact same
+    # unsandboxed compiler path as one in the target's own tree.
+    H._strip_symlinks(target)
     return True, "fetched (shallow, one commit)"

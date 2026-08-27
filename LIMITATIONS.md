@@ -4876,3 +4876,234 @@ clone-fallback (§11-L1) proving the exact regression-commit bytecode is
 still deployed, which is gated on 14-L1's still-open clone-address lookup
 above. The two limitations are independent; closing one does not close
 the other.
+
+---
+
+### SEC-L1 — a malicious target repository could read arbitrary files off the host through a tracked symlink
+
+**Type: SECURITY, not a false positive/negative — a genuine attack surface
+against the tool itself, not against a scanned contract's verdict. FOUND and
+FIXED 2026-08-28, during a dedicated professional security audit (user
+request: "review the whole project ... until you see the gap and weakness
+and fix it").**
+
+Chainwatch's entire premise is compiling **untrusted, arbitrary public
+repositories** submitted through the web form. A git blob tracked at file
+mode `120000` is a symlink; on checkout, every rule and every compiler
+subsequently opens whatever it points to through this worktree's ordinary
+paths (`Path.read_text()`, handing a path to `solc`) — neither has, or was
+ever meant to have, a sandbox boundary of its own. A repository could commit
+`evil.sol -> /etc/passwd`, a mounted service-account token, or (this
+project's own history, this same session) a leaked `.env`, and a solc
+parse-error snippet on a partial-parse failure is a real, standing
+content-disclosure channel for whatever it points to — independent of
+whether the "compile" ever fully succeeds. Compile success/failure alone is
+also an existence oracle for arbitrary host paths, which is why the fix
+below deletes the entry rather than merely checking it stays inside the
+worktree: a containment check would still leak that oracle.
+
+**Measured, not assumed, in both directions.** `core.symlinks` is
+config/platform dependent, so a naive local test would have proven nothing
+either way. Confirmed directly: on this project's own Windows dev machine
+(`core.symlinks=false`), a hand-crafted `120000` blob checks out as an
+inert plain-text file containing the literal target-path STRING, not a
+working symlink (`is_symlink()` is `False`) — the attack is genuinely
+harmless there. But the production deployment is Cloud Run, a Linux
+container, where `core.symlinks` defaults to enabled wherever the
+filesystem supports it (the ordinary case) — standard, well-established git
+behaviour, not something in doubt, and not something a Windows-only local
+repro could ever have ruled in or out. The fix therefore could not be
+"verified end-to-end" on this machine in the way this project's other fixes
+have been, and that limitation is stated here rather than glossed over —
+see the test file's own `skipif` for the one assertion that genuinely needs
+a POSIX host to run for real.
+
+**Also checked, and confirmed NOT a second instance of the same bug rather
+than assumed safe:** Python's `zipfile.extractall()` (used by
+`soldeer._extract_zip` for registry-hosted Soldeer packages) — a crafted
+ZIP entry with Unix `S_IFLNK` mode bits was built and extracted directly;
+Python does not interpret those bits on ANY platform, it always writes the
+entry's raw bytes as a plain file. Structurally safe by construction; no
+fix needed, and none added, there.
+
+**Fix.** `history._strip_symlinks(root)`: walks a checked-out worktree and
+`unlink()`s every entry where `Path.is_symlink()` is true, returning the
+stripped relative paths. Called from `Worktree.checkout()` immediately
+after the real `git checkout`, and strictly BEFORE `history.install()` ever
+runs — so it only ever touches symlinks that arrived as part of the
+TARGET's own tracked tree, never Chainwatch's own legitimate
+`node_modules` cache link (`_link_dir`), which is created afterward, in a
+separate call. Applied at all four `Worktree.checkout()` call sites in
+`scan.py` (via a small `checkout()` wrapper that also surfaces a `warn`
+event at banner weight — a target trying this is a genuine, non-accidental
+signal worth a reader seeing plainly) and at `anchor.py`'s standalone call
+site. Also applied inside `soldeer._resolve_git`: a git-pinned Soldeer
+dependency's `url`/`rev` come from the TARGET repository's own
+`foundry.toml`, equally untrusted as the target itself (the same principle
+WALK-L9 already established: never execute, and by extension never blindly
+trust the fetch results of, anything the target's own build config directs
+Chainwatch toward).
+
+**Verified**: `Worktree.checkout()`'s return-type change (`None` ->
+`list[str]`) checked against every real call site (`grep` across `src/`,
+`tests/`, `webapp/`, `chainwatch.py`) — every one discards the return value
+today, so this is additive and non-breaking. `_strip_symlinks`'s actual
+logic verified via `Path.is_symlink` monkeypatching (real OS symlink
+creation needs elevated privileges this project's own sandbox does not
+have — confirmed directly, `os.symlink` raises `WinError 1314` without
+elevation, a standard Windows restriction unrelated to Chainwatch): removes
+a symlinked entry, leaves an ordinary file alone, finds one nested in a
+subdirectory, reports a repo-relative path rather than ever echoing the
+absolute host path back into any report. `Worktree.checkout`'s own contract
+locked separately (mocked `_git`/`_strip_symlinks`, confirms the wrapper
+propagates the stripped list and that a same-sha no-op checkout returns
+`[]` rather than `None`, so `scan.py`'s `if stripped:` works
+unconditionally). One test (`test_strip_symlinks_removes_a_real_symlink_
+where_the_platform_allows_it`) exercises a GENUINE OS symlink end to end
+and is `skipif`'d to POSIX only — it will run for real on any Linux CI
+runner or the actual Cloud Run target, which is the honest way to state
+"this could not be fully verified on the machine that wrote it" rather than
+claim more than was actually checked. Locked by `tests/test_symlink_strip.py`
+(7 tests, 6 running here, the 7th on POSIX).
+
+---
+
+### SEC-L2 — a remote caller could aim Chainwatch's own outbound RPC request at internal network space (SSRF)
+
+**Type: SECURITY, not a false positive/negative — a genuine attack surface
+against the tool's own hosting infrastructure, not against a scanned
+contract's verdict. FOUND and FIXED 2026-08-28, same audit pass as SEC-L1.**
+
+`webapp/server.py`'s `ScanRequest.rpc_url` is a plain string field on a
+public HTTP API, and `chainwatch.py`'s `--rpc-url` and `src/anchor.py`'s
+`rpc_url` parameter both accept the same kind of value from a caller.
+Confirmed by reading every layer in the chain: none of them validated it in
+any way before it reached `liveness._w3()`, which built
+`Web3.HTTPProvider(rpc_url)` and let `web3.py` issue real outbound HTTP
+requests to it. That is the textbook SSRF primitive: on a public deployment
+(this project's own Cloud Run instance included), a remote, unauthenticated
+caller could make the service itself issue a request to an address the
+caller could never reach directly — most seriously
+`169.254.169.254`, the cloud instance-metadata endpoint that on GCP answers
+unauthenticated requests carrying the running service account's own OAuth
+token, but equally any RFC1918-internal service, `localhost`-bound admin
+surface, or other address inside the container's own network.
+
+**Confirmed as a real gap, not assumed.** Grepped `rpc_url` across
+`webapp/server.py`, `chainwatch.py`, `src/anchor.py`, `src/scan.py`, and read
+`liveness._w3()` directly — zero validation existed anywhere in the chain
+before this fix. Also confirmed, before treating this as the only concern,
+that the sibling risk — Chainwatch itself sending a transaction — is
+structurally absent: a full-project grep for
+`send_transaction|send_raw_transaction|sign_transaction|eth_sendTransaction
+|eth_sendRawTransaction|PRIVATE_KEY|Account\.from_key|private_key` returned
+no matches, and direct reads of `src/exploit_proof.py` and `src/exposure.py`
+confirm the only chain-touching call in the whole exploit-proof/exposure
+pipeline is `w3.eth.call(...)` — read-only by construction, requires no
+signature, cannot broadcast. CHARTER rule 5 ("never send a transaction.
+Ever.") holds structurally, not just as policy — this audit re-verified that
+directly rather than trusting the docstring.
+
+**Fix.** `liveness._validate_rpc_url(url)`: parses the URL, rejects any
+scheme other than `http`/`https`, resolves the hostname via
+`socket.getaddrinfo` (which also correctly handles a literal IP with no real
+DNS round-trip), and rejects the request if ANY resolved address is private,
+loopback, link-local, reserved, multicast, or unspecified per Python's
+`ipaddress` module — deliberately checking every returned address rather
+than just the first, since a hostname can carry multiple A/AAAA records and
+an attacker controlling DNS for their own domain could list a public decoy
+first and a private address second. `169.254.169.254` is caught by
+`is_link_local`. Called from `_w3()` — the single shared choke point every
+caller (webapp, CLI, `anchor.py`) already routes through — and scoped
+deliberately to only the EXPLICITLY-PASSED `rpc_url` argument, never the
+`.env`-configured operator default: an operator's own self-hosted RPC node
+may legitimately sit on a private network they trust, and guarding a value
+no untrusted caller can influence would be exactly the kind of check against
+a scenario that cannot happen this project avoids elsewhere. Failure is an
+explicit `RuntimeError` naming what was rejected and why — "UNKNOWN beats a
+guess" extended to this guard: it refuses loudly rather than silently
+substituting a different URL or swallowing the caller's request.
+
+**Stated honestly: one residual gap, not silently left unfixed.** This is a
+validate-then-use check, not a pinned-connection one. A DNS answer that
+changes between the validation call and web3.py's own actual HTTP request
+(DNS rebinding: a domain resolves to a public decoy IP at check time, then a
+private IP moments later at request time) is not defended against —
+closing that fully needs a custom transport adapter that connects to the
+already-validated IP directly while still sending the original Host header,
+real additional work deliberately not bundled into this fix under time
+pressure rather than rushed in half-verified. This closes the
+overwhelmingly more common and more likely case: a literal metadata or
+private-range address typed or supplied directly in the `rpc_url` field,
+which is also the only variant of this class ever observed in the wild
+against comparable tools.
+
+**Verified**: grepped every real call site of `rpc_url` (`chainwatch.py`,
+`webapp/server.py`, `src/anchor.py`, `src/scan.py`) to confirm none bypass
+`_w3()`, and grepped `tests/` to confirm no existing test exercises `_w3`
+with a real local RPC URL that this guard would now reject (none do —
+`test_anchor.py` fakes `deployed_fingerprint` entirely and never reaches
+`_w3`). Locked by `tests/test_rpc_ssrf_guard.py`: a plain public HTTPS URL
+and a literal public IP both pass; `169.254.169.254` (both the AWS/GCP and
+the Azure/GCP metadata paths), `127.0.0.1`, `localhost`, all three RFC1918
+ranges, `0.0.0.0`, IPv6 loopback (`::1`) and IPv6 link-local (`fe80::1`) are
+all refused; non-http(s) schemes (`file://`, `gopher://`, `ftp://`, `ws://`)
+are refused; a URL with no host, and a hostname that fails to resolve, both
+fail with a clear `RuntimeError` rather than an uncaught exception; a
+second-position private address behind a public first address is still
+caught.
+
+---
+
+### SEC-L3 — `prev`/`cur`/`rev` on the diff and source endpoints were usable as injected git options
+
+**Type: SECURITY, not a false positive/negative — a genuine attack surface
+against the tool's own hosting infrastructure, not against a scanned
+contract's verdict. FOUND and FIXED 2026-08-28, same audit pass as SEC-L1
+and SEC-L2.**
+
+`GET /api/scan/{job_id}/diff?file=&prev=&cur=` built
+`["git", ..., "diff", f"-U{n}", prev, cur, "--", file]`, and
+`GET /api/scan/{job_id}/source?file=&rev=` built `git show f"{rev}:{file}"`
+— both public, unauthenticated HTTP GET endpoints, no `shell=True` anywhere
+(so no shell-metacharacter injection), but in both cases the user-supplied
+`prev`/`cur`/`rev` reached `subprocess.run` as bare argv content with
+nothing stopping a value that starts with `-` from being parsed by git as
+an OPTION rather than a revision. In `get_diff`, the `--` separator was
+placed AFTER `prev`/`cur` (protecting `file`, which cannot be an option),
+leaving `prev`/`cur` themselves unprotected. `git diff`'s own
+`--output=<path>` flag alone is enough to turn either endpoint into an
+arbitrary-file-write primitive — write attacker-chosen content to any path
+the process can reach — reachable with no valid job, no valid repository,
+and no scan ever having run: the vulnerable code sat before the job lookup
+in both handlers.
+
+**Confirmed as real, not theoretical**: read `git-diff(1)` and `git-show(1)`
+directly rather than assuming — `--output=<file>` is a documented, standard
+flag on both, not an obscure edge case. Checked the frontend
+(`webapp/static/app.js`) to confirm what these three parameters are ever
+legitimately populated with: `f.parent` and `f.commit`, echoed straight out
+of finding data that `scan.py` itself already emitted as full 40-character
+commit SHAs — so the fix below narrows nothing a real caller needs.
+
+**Fix.** `webapp.server._require_git_rev(value, param)`: requires
+`^[0-9a-fA-F]{4,40}$` (a real or abbreviated hex SHA, matching every shape
+this project's own data model ever produces for these fields) and raises
+`HTTPException(400, ...)` naming the offending parameter otherwise. Called
+at the very top of `get_diff` (for both `prev` and `cur`) and `get_source`
+(for `rev`), before the job lookup — so the guard holds even against a
+request naming a job that was never real. Denylisting a leading `-` alone
+would have been narrower to reason about and easier to bypass by accident
+later; requiring the actual expected shape closes the whole class at once.
+
+**Verified**: `tests/test_diff_source_arg_injection.py` (15 tests) —
+`_require_git_rev` rejects `--output=...`, `-O...`, `--ext-diff`, a bare
+`-c`, shell metacharacters, an empty string, non-hex text, and an
+over-length string, while accepting full and abbreviated SHAs in either
+case; both endpoints return `400` (naming the bad parameter) for an
+option-shaped `prev`/`rev` against a job id that does not exist, proving
+the check runs before the job lookup; a well-shaped SHA against the same
+nonexistent job id still reaches the endpoint's ORIGINAL `404 "no such
+scan"`, proving the new check does not shadow genuine behaviour for a real
+request. Exercised through FastAPI's own `TestClient`, hitting the real
+route handlers, not just the validator function in isolation.

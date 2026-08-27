@@ -111,10 +111,79 @@ class LivenessResult:
         return asdict(self)
 
 
+# SEC-L2. `rpc_url` can arrive from an untrusted remote caller
+# (webapp/server.py's `ScanRequest.rpc_url`, straight from an HTTP request
+# body, with zero prior validation anywhere in the call chain - confirmed by
+# reading every caller: chainwatch.py's CLI flag, webapp/server.py,
+# src/anchor.py all pass it straight through with no check). Without this, a
+# public Chainwatch deployment (this project's own Cloud Run instance
+# included) would make an outbound HTTP request to ANY url a remote caller
+# supplies - the textbook SSRF primitive, and on a cloud host specifically
+# capable of reaching the instance metadata endpoint
+# (169.254.169.254 on GCP/AWS/Azure alike), which on some cloud metadata
+# APIs answers unauthenticated requests carrying real, sensitive credentials.
+#
+# Scoped to the EXPLICITLY-PASSED parameter only, never the `.env`-configured
+# operator default: an operator's own self-hosted RPC node may legitimately
+# sit on a private network they trust, and validating a value nobody
+# untrusted can influence would be exactly the kind of guard against a
+# scenario that cannot happen this project avoids elsewhere.
+_SSRF_SAFE_SCHEMES = ("http", "https")
+
+
+def _validate_rpc_url(url: str) -> None:
+    """Raise RuntimeError if `url` could reach non-public network space.
+
+    Resolves the hostname and checks every returned address, not just the
+    first: a hostname can have multiple A/AAAA records, and an attacker
+    controlling DNS for their own domain can list a public decoy first and a
+    private-range address second - some HTTP clients try addresses in
+    order and stop at the first that connects, so only the FIRST address
+    being public proves nothing. Every resolved address must be public.
+
+    Residual, stated honestly rather than implied fixed: this is a
+    validate-then-use check, not a pinned-connection one, so a DNS answer
+    that changes between this check and the actual HTTP request (DNS
+    rebinding) is not defended against. Closing that fully needs a custom
+    transport that connects to the validated IP directly while still
+    sending the original Host header - real, additional work, deliberately
+    not bundled into this fix to avoid touching web3.py's HTTPProvider
+    internals under time pressure. This closes the overwhelmingly more
+    common case: a literal metadata/private-range URL typed directly into
+    the field.
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in _SSRF_SAFE_SCHEMES:
+        raise RuntimeError(
+            f"rpc_url must be http(s); refused scheme {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise RuntimeError("rpc_url has no host to validate")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise RuntimeError(f"rpc_url host could not be resolved: {exc}") from exc
+    if not infos:
+        raise RuntimeError(f"rpc_url host {host!r} resolved to no addresses")
+    for _family, _type, _proto, _canon, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise RuntimeError(
+                f"rpc_url host {host!r} resolves to a non-public address "
+                f"({ip}); refused (SEC-L2)")
+
+
 def _w3(rpc_url: Optional[str] = None) -> Web3:
     if rpc_url is None:
         load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
         rpc_url = os.environ.get("RPC_URL")
+    else:
+        _validate_rpc_url(rpc_url)  # SEC-L2: only the caller-supplied value
     if not rpc_url:
         raise RuntimeError("RPC_URL not set (.env)")
     return Web3(Web3.HTTPProvider(rpc_url))

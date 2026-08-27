@@ -1,7 +1,107 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `da3ffca`** (everything below, from BOTH this session and the
-prior one, is still UNCOMMITTED — see "Uncommitted this session" below).
+**Last commit: `18c311f`** ("Capability 18 (Soldeer support), MONO-L1's
+third measured cause, 3b-CONF closed" — that arc's own work, described
+further down this file under its own 2026-08-27 heading, is already
+committed). Only the NEWEST ARC below (the security audit) is uncommitted
+as of this edit; it is about to be committed and pushed right after this
+file is saved, so check `git log` before trusting that this line is still
+accurate.
+
+## NEWEST ARC (2026-08-28) — professional security audit of Chainwatch itself. Read this first.
+
+**The user's mandate**: "act like [a] profe[ss]ional in web3 and bug hunter
+in cryp[t]o and smart contract[s] [with] over 10 year[s'] experience, review
+the whole project line [by] line and code by code and function by function
+until you see the gap and weakness and fix it" — then granted an extended
+unattended window ("I will go to sleep for 8 hours, you have all permission
+and resource[s], do [y]our best") to keep going without further check-ins.
+
+**This audit turned the lens around**: every prior arc hardened what
+Chainwatch REPORTS about a target repository (coverage, attribution,
+liveness). This one asked a different question — can a malicious TARGET
+repository, or a malicious HTTP caller of the public web app, attack
+Chainwatch's own hosting infrastructure? Three real, independently
+exploitable findings, all fixed, all with new regression tests:
+
+**SEC-L1 — a malicious target repository could read arbitrary files off the
+host through a tracked git symlink.** A git blob at file mode `120000` is a
+symlink; every rule and every compiler opens whatever it points to with no
+sandbox of its own. `core.symlinks` defaults ON for the real Linux/Cloud Run
+target (confirmed OFF and thus inert on this Windows dev machine — a real
+measured platform difference, not glossed over). Fix: `history._strip_symlinks`
+deletes every symlinked entry from a checkout before anything reads it
+(deletion, not a containment check, so compile success/failure can't be used
+as a file-existence oracle either). Applied at all 4 `scan.py` checkout call
+sites, `anchor.py`'s, and `soldeer.py`'s independent git-dependency fetch.
+Confirmed the sibling ZIP-extraction path (Soldeer registry packages) is
+NOT vulnerable — Python's `zipfile.extractall()` never honors `S_IFLNK` mode
+bits on any platform, verified directly rather than assumed.
+
+**SEC-L2 — a remote caller could aim Chainwatch's own outbound RPC request
+at internal network space (SSRF).** `webapp/server.py`'s public
+`ScanRequest.rpc_url` reached `Web3.HTTPProvider(rpc_url)` with zero
+validation anywhere in the chain — on Cloud Run, a live path to
+`169.254.169.254`, the metadata endpoint that answers unauthenticated
+requests carrying the running service account's own token. Fix:
+`liveness._validate_rpc_url` — http(s)-only scheme, resolves the hostname
+and rejects the request if ANY resolved address (not just the first — DNS
+can return several) is private/loopback/link-local/reserved/multicast,
+verified this also catches IPv4-mapped-IPv6 bypass attempts
+(`::ffff:169.254.169.254`) since Python's `ipaddress` module classifies
+those correctly. Scoped to only the explicitly-passed argument, never the
+operator's own trusted `.env` default. Stated honestly: does not close DNS
+rebinding (a TOCTOU gap between validation and web3.py's own request) —
+that needs a pinned-connection transport, deliberately not bundled in.
+
+**SEC-L3 — `prev`/`cur`/`rev` on the public diff/source endpoints were
+usable as injected git options.** `GET /api/scan/{id}/diff?prev=&cur=` and
+`GET /api/scan/{id}/source?rev=` passed those values as bare argv content
+to `git diff`/`git show` with no `--` protecting them from being parsed as
+options — `--output=<path>` alone turns either into an arbitrary-file-write
+primitive, reachable pre-authentication, before any job lookup even runs.
+Fix: `webapp.server._require_git_rev` requires `^[0-9a-fA-F]{4,40}$` (every
+legitimate value these fields ever carry, confirmed against `app.js`, which
+echoes `f.parent`/`f.commit` straight out of finding data `scan.py` itself
+already emits as full SHAs) and 400s otherwise, checked before the job
+lookup in both handlers.
+
+**Checked and confirmed NOT vulnerable, not just assumed** (documented so a
+future reader doesn't re-litigate the same question): `git clone`
+argument-injection via the web form's `repo` field — blocked structurally,
+not by validation added this session, because `_run_job` only calls
+`clone_public` when `repo.startswith(CLONE_SCHEMES)` (`http(s)://`,
+`git@`, `ssh://`, `git://`, `file://` — none start with `-`), so a
+`-`-prefixed value falls through to the local-path branch instead of ever
+reaching `git clone`. The Gemini-report and diff renderers in
+`webapp/static/app.js` — read closely for stored XSS given an attacker
+fully controls the source text an LLM might echo back; `mdToHtml()`
+escapes `&`/`<`/`>` on every line BEFORE any markdown transform runs, and
+`loadDiff()` wraps every line in `esc()`. `agent/store.py`'s own
+`git diff` call, same unprotected-argv shape as SEC-L3's — but its
+`parent`/`commit` values are never attacker-reachable text: they only ever
+come from `Store.get(fid)`, sourced from `scan.py`'s own git walk, and a
+git commit SHA is a hash output, structurally incapable of starting with
+`-`. Left unchanged rather than "fixed" for a scenario that cannot happen
+— matches this project's own stated engineering discipline.
+
+**Gates, all read from raw output, not summarised:**
+
+```
+python -m pytest tests/ -q     346 passed, 3 skipped, 0 failed (1053.87s / 17m34s)
+./guard.sh check                INTEGRITY OK
+```
+
+(326 passed, 3 skipped before this arc's new tests were added — the +20 is
+the new SEC-L1/L2/L3 coverage. The 3 skips are unchanged: platform-gated
+tests that need a real POSIX host, same as before this arc.)
+
+New test files this arc: `tests/test_symlink_strip.py` (7),
+`tests/test_rpc_ssrf_guard.py` (9), `tests/test_diff_source_arg_injection.py`
+(15). Full writeups with evidence: `LIMITATIONS.md` — `SEC-L1`, `SEC-L2`,
+`SEC-L3`.
+
+---
 
 ## NEWEST ARC (2026-08-27) — the coverage work. Read this first.
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -288,6 +289,30 @@ async def scan_events(job_id: str):
     return EventSourceResponse(gen())
 
 
+_GIT_REV_RE = re.compile(r"^[0-9a-fA-F]{4,40}$")
+
+
+def _require_git_rev(value: str, param: str) -> str:
+    """SEC-L3. `prev`/`cur`/`rev` reach `subprocess.run` as bare argv
+    elements ahead of `--` (or, for `get_source`, concatenated into a single
+    `rev:file` string) with no prior validation - a value starting with `-`
+    is not a revision to git, it is an option. `--output=<path>` alone turns
+    either endpoint into an arbitrary-file-write primitive reachable by any
+    unauthenticated caller of this public API, no repository content or
+    scan state involved at all.
+
+    Every legitimate value these three parameters ever carry is a commit
+    SHA that Chainwatch itself already emitted as finding data (confirmed:
+    the frontend echoes `f.parent`/`f.commit` straight out of the finding
+    object it was handed) - so requiring hex-SHA shape, rather than merely
+    blocklisting a leading `-`, rejects everything else a caller could
+    supply without narrowing any real use of this endpoint.
+    """
+    if not _GIT_REV_RE.match(value):
+        raise HTTPException(400, f"{param} must be a git commit sha")
+    return value
+
+
 @app.get("/api/scan/{job_id}/diff")
 def get_diff(job_id: str, file: str, prev: str, cur: str, context: int = 6):
     """The actual `git diff` for one finding's file at its regression commit.
@@ -295,6 +320,8 @@ def get_diff(job_id: str, file: str, prev: str, cur: str, context: int = 6):
     This is the evidence a researcher reads: not our description of the change,
     the change. Read-only `git diff` against the analysed repository.
     """
+    _require_git_rev(prev, "prev")
+    _require_git_rev(cur, "cur")
     job = JOBS.get(job_id)
     if not job or not job.repo_path:
         raise HTTPException(404, "no such scan")
@@ -315,6 +342,7 @@ def get_diff(job_id: str, file: str, prev: str, cur: str, context: int = 6):
 def get_source(job_id: str, file: str, rev: str, start: int = 1, end: int = 0):
     """A slice of one file at one revision - the function the rule fired on,
     read straight out of git."""
+    _require_git_rev(rev, "rev")
     job = JOBS.get(job_id)
     if not job or not job.repo_path:
         raise HTTPException(404, "no such scan")

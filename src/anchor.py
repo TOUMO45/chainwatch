@@ -151,7 +151,13 @@ def find_anchor(
     for i, sha in enumerate(commits, 1):
         emit("anchor-try", index=i, total=len(commits), commit=sha[:12])
         try:
-            wt.checkout(sha)
+            stripped = wt.checkout(sha)
+            if stripped:  # SEC-L1: notable, but the checkout still proceeds -
+                          # a distinct event, not "anchor-skip" (which means
+                          # this commit was abandoned; this one was not).
+                emit("anchor-warn", commit=sha[:12],
+                    reason=f"removed {len(stripped)} symlink(s) from the "
+                           f"target's own tracked tree before reading any file")
             # A commit's own dependency tree, or nothing compiles and every
             # answer below is vacuous. Cached by manifest hash, so consecutive
             # commits that share a package.json pay for one install between
