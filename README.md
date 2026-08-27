@@ -48,6 +48,141 @@ re-verified mechanically against it. The agent explains; it never decides.
 
 ---
 
+## Try it yourself — a real, publicly disclosed $6.5M exploit
+
+This is the exact run shown in the demo video, reproducible end to end in about
+30 seconds once dependencies are cached.
+
+**The case.** In February 2021, 88mph refactored `NFT.sol` to use EIP-1167
+clones. Commit `a4c48d61` replaced a one-shot `constructor(name, symbol)` with
+an external `init(address newOwner, string, string)` carrying **no access
+control** — anyone could seize ownership of a deposit NFT. It was reported
+responsibly through Immunefi, fixed six weeks later, and
+[publicly written up](https://medium.com/immunefi/88mph-function-initialization-bug-fix-postmortem-c3a2282894d3).
+
+Chainwatch is not "finding" this bug — a whitehat did, five years ago. It is
+demonstrating that the tool **locates the introducing commit from history alone,
+and then proves the deployed code still matches it.**
+
+```bash
+# 1. Get the target repository at the vulnerable commit
+git clone https://github.com/88mphapp/88mph-contracts realworld-test/88mph-src
+
+# 2. Scan the one commit pair, with the real deployed address
+python chainwatch.py   --repo realworld-test/88mph-src   --address 0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634   --pairs 5f52a2ead702e4cb9ab3d04a1109807462dde228:a4c48d61661ae3d8ce5aadfda6e4de27c4f07a9e   --check-exploit-proof
+```
+
+Or start the web UI and paste the same three values into the form:
+
+```bash
+python webapp/server.py          # then open http://127.0.0.1:8000
+```
+
+**What you should see:**
+
+```
+[1/1] 5f52a2ead702..a4c48d61661a  integrate EIP-1167 into NFT deployment
+... installing dependencies for 5f52a2ead702..a4c48d61661a (npm)
+    CANDIDATE rule 10  contracts/NFT.sol::NFT.init
+checking on-chain liveness for 0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634
+build settings for 0xDe71B24F...: solc 0.5.17, optimizer on (200 runs), evm istanbul
+    exploitability proof: OPEN NFT.init
+finished: 1 finding(s), 1/1 pairs analysed, 28.8s
+
+#1  CONFIRMED   rule 10 - SC01 Control migrated to an unguarded entry point
+    contracts/NFT.sol:39   NFT.init
+```
+
+Watch the verdict move. The rule fires as **CANDIDATE**; then liveness returns
+`LIVE` — the deployed bytecode is byte-identical to that commit's build — and
+only then is it promoted to **CONFIRMED**. That promotion is the entire product.
+
+Three things are worth noticing in that output:
+
+- **`build settings … solc 0.5.17, optimizer on (200 runs), evm istanbul`** —
+  fetched from Sourcify, not guessed. Rebuilding with the wrong optimizer
+  setting produces bytecode 56% larger than what is deployed, and liveness could
+  then only ever answer `UNKNOWN`.
+- **`exploitability proof: OPEN`** — a read-only `eth_call` from an unprivileged
+  address showing `init()` does not revert against the live deployed bytecode.
+  Never a transaction; no exploit code is generated, by charter.
+- **No funds are at risk.** 88mph moved everything to treasury within 24 hours
+  of the 2021 disclosure; the implementation holds 0 ETH today. The source was
+  fixed — but an EIP-1167 clone's implementation is immutable, so the deployed
+  instances still run the vulnerable code. *"Fixed in source"* and *"fixed
+  on-chain"* are different claims, and that gap is what this tool exists to
+  surface.
+
+### Would it have caught it at the time?
+
+```bash
+python backtest.py
+```
+
+Anchors to incidents this project did not author, at commits chosen by someone
+else, with the answer already settled by a public post-mortem:
+
+```
+88mph-nft-init-2021  (2021-02-16)
+  expect rule 10 on NFT.init
+  -> CAUGHT   14.7s
+```
+
+Fixture precision says an implementation matches its own specification.
+A backtest says the specification catches real attacks. See [BACKTEST.md](BACKTEST.md).
+
+---
+
+## Google Cloud and Gemini
+
+**Gemini 3.5** (`gemini-3.5-flash-lite`) via **Google ADK**, running on
+**Cloud Run** with **Firestore** — all three used for what they are actually
+good at, and deliberately kept out of the trust path.
+
+### What the Gemini agent does
+
+It runs a real tool-using loop over a finished finding — read the evidence,
+draft, self-verify, correct, save, then rank findings against each other:
+
+```
+get_finding → get_diff → draft_report → verify_report → verify_report
+            → save_report → explain_impact → verify_impact
+```
+
+`verify_report` appearing **twice** in that trace is the system working: the
+first draft violated the gate, the agent was told exactly which span failed, and
+it corrected itself before saving.
+
+### What it cannot do, structurally
+
+- **It cannot change a verdict.** CONFIRMED/CANDIDATE is decided by
+  `src/verdict.py` before the model sees anything. The agent is handed a
+  finished record and ten read-only tools.
+- **It cannot invent a fact.** [`agent/verify.py`](agent/verify.py) is a
+  *mechanical* gate, not a second model: every commit hash, address, source
+  path, line reference and qualified name in the draft must already appear in
+  the finding record, or the report is refused. Asking a model to grade a model
+  gives you two things that can be wrong instead of one.
+- **It never produces exploit material.** Enforced by the same gate.
+
+So the model does the part it is genuinely better at — turning a machine record
+into a disclosure a human can read and prioritise — while every claim a reader
+could act on remains something deterministic code established.
+
+### Google Cloud services
+
+| Service | Role |
+|---|---|
+| **Cloud Run** | hosts the scanner and web UI; scale-to-zero, 2 vCPU / 4 GiB, 3600s timeout |
+| **Firestore** | findings corpus + job state, keyed by `(repo, prev_sha, cur_sha)` — so a pair is never re-analysed, and cross-repository queries become possible |
+| **Secret Manager** | `GEMINI_API_KEY`, never in the image or the repo |
+
+Firestore is optional at runtime: with no cloud project configured,
+[`src/corpus.py`](src/corpus.py) degrades to *"not recorded"* and the analysis
+engine runs unchanged on a laptop.
+
+---
+
 ## Run it
 
 ```bash

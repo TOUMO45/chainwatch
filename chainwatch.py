@@ -260,6 +260,11 @@ def main() -> int:
     ap.add_argument("--repo", help="local path or clone URL (omit only with --from-json)")
     ap.add_argument("--address", help="deployed address for the liveness gate")
     ap.add_argument("--rpc-url", help="override RPC_URL from .env")
+    ap.add_argument("--pairs", default="",
+                    help="explicit prev:cur commit pairs (comma-separated) "
+                         "instead of walking recent history. What makes a "
+                         "demo or a re-check reproducible rather than "
+                         "dependent on wherever the branch tip happens to be.")
     ap.add_argument("--limit", type=int, default=50,
                     help="how many .sol-touching commits to walk (default 50)")
     ap.add_argument("--root", default="", help="restrict to a subdirectory, e.g. contracts")
@@ -321,6 +326,9 @@ def main() -> int:
         rpc_url=args.rpc_url,
         check_head_survival=not args.no_head_check,
         rules=[r.strip() for r in args.rules.split(",") if r.strip()] or None,
+        explicit_pairs=[tuple(x.split(":", 1))
+                        for x in args.pairs.split(",")
+                        if ":" in x] or None,
         check_exposure=args.check_exposure,
         check_exploit_proof=args.check_exploit_proof,
     )
