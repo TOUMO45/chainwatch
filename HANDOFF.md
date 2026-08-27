@@ -1,12 +1,18 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `18c311f`** ("Capability 18 (Soldeer support), MONO-L1's
-third measured cause, 3b-CONF closed" — that arc's own work, described
-further down this file under its own 2026-08-27 heading, is already
-committed). Only the NEWEST ARC below (the security audit) is uncommitted
-as of this edit; it is about to be committed and pushed right after this
-file is saved, so check `git log` before trusting that this line is still
-accurate.
+**Last commit: `4712be8`** ("Security audit of Chainwatch itself: symlink
+file-read, SSRF, and git argument-injection, all fixed" — this is the
+NEWEST ARC below, already committed locally). **NOT YET PUSHED** — `git
+push origin master` hung for 2 minutes (Git Credential Manager waiting on
+an interactive browser/OAuth prompt nobody was present to complete;
+`credential.helper=manager` has no currently-cached token) and a forced
+non-interactive retry confirmed `fatal: could not read Username for
+'https://github.com': terminal prompts disabled`. `gh` CLI is not installed
+on this machine either. Nothing was lost — the commit is real and local —
+but a session with a human present needs to run `git push origin master`
+once (completing GCM's browser prompt when it appears) before this arc
+reaches GitHub. Check `git status --branch` (`ahead N`) to see how many
+commits are still waiting.
 
 ## NEWEST ARC (2026-08-28) — professional security audit of Chainwatch itself. Read this first.
 
