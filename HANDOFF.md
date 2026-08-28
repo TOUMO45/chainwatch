@@ -1,10 +1,10 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `a200539`** (NEXTGEN Phases 5b + 6 — the arc below). **NOT YET
-PUSHED** — every commit this arc and the prior ones are local only; `git push
-origin master` needs a human present to complete Git Credential Manager's
-browser prompt (`credential.helper=manager` has no cached token; `gh` CLI not
-installed). `git status --branch` shows `ahead N`. Nothing is lost.
+**Last commit: `a12fd5f`** (this HANDOFF entry; the NEXTGEN arc is `d92e02f`
+through `a12fd5f`). **PUSHED** to `origin/master` 2026-08-28
+(`3d221d5..a12fd5f`) — this also carried the two previously-stuck commits
+(`4712be8` security audit, `39de94f` scoping fix). `master` is level with
+`origin/master`.
 
 ## NEWEST ARC (2026-08-28) — NEXTGEN: the execution-grounded proof engine. Read this first.
 
