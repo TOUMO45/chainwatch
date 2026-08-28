@@ -1,20 +1,69 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `4712be8`** ("Security audit of Chainwatch itself: symlink
-file-read, SSRF, and git argument-injection, all fixed" — this is the
-NEWEST ARC below, already committed locally). **NOT YET PUSHED** — `git
-push origin master` hung for 2 minutes (Git Credential Manager waiting on
-an interactive browser/OAuth prompt nobody was present to complete;
-`credential.helper=manager` has no currently-cached token) and a forced
-non-interactive retry confirmed `fatal: could not read Username for
-'https://github.com': terminal prompts disabled`. `gh` CLI is not installed
-on this machine either. Nothing was lost — the commit is real and local —
-but a session with a human present needs to run `git push origin master`
-once (completing GCM's browser prompt when it appears) before this arc
-reaches GitHub. Check `git status --branch` (`ahead N`) to see how many
-commits are still waiting.
+**Last commit: `a200539`** (NEXTGEN Phases 5b + 6 — the arc below). **NOT YET
+PUSHED** — every commit this arc and the prior ones are local only; `git push
+origin master` needs a human present to complete Git Credential Manager's
+browser prompt (`credential.helper=manager` has no cached token; `gh` CLI not
+installed). `git status --branch` shows `ahead N`. Nothing is lost.
 
-## NEWEST ARC (2026-08-28) — professional security audit of Chainwatch itself. Read this first.
+## NEWEST ARC (2026-08-28) — NEXTGEN: the execution-grounded proof engine. Read this first.
+
+The user asked to upgrade Chainwatch from a regression scanner into an
+"execution-grounded security research and proof engine" per a 27-section spec.
+**All 27 sections are implemented**, additively, under `src/nextgen/`, behind
+the `CHAINWATCH_NEXTGEN` flag. The classic pipeline (`src/scan.py`,
+`src/verdict.py`, `src/rules/`, `fixtures*/`, `guard.sh`) is untouched — nothing
+on that path imports `src/nextgen/`.
+
+**Roadmap + per-phase acceptance checks: `NEXTGEN.md`.** Three decisions the
+user made up front (recorded there and in a `CHARTER.md` amendment): (1) the
+fuzz/symbolic/PoC anti-goals are narrowed **for the next-gen pipeline only** to
+local-fork execution — no broadcast tx, no weaponised artifact, no
+auto-disclosure; (2) Foundry approved (it is in WSL — see below); a symbolic
+solver stays deferred, §6 uses a Python constraint sketch; (3) the new
+machinery is additive, `verdict.py` frozen, a next-gen CONFIRMED must clear the
+classic gate first and then a stricter evidence chain.
+
+**Commits (all local):** `d92e02f` P0 substrate · `0d92b52` P1-2 Time Machine +
+invariants · `ffa7fa1` P3a attack graph · `3b37036` P3b provenance/deployment/
+compensating · `896fb9a` P4 adversarial/benchmark/report · `85e788c` P5a
+Foundry adapter + reproducer + economics · `a200539` P5b+6 sequences/hybrid/
+regfuzz + composability + `pipeline.py`.
+
+**Gates, raw:**
+```
+python -m pytest tests/ -q        581 passed, 3 skipped in 1154.44s (0:19:14)
+                                  (baseline 509/3 at the P3 boundary; +72 new
+                                   test_nextgen_* tests, 0 failures; 3 skips
+                                   unchanged. Slither- AND WSL-Foundry-gated
+                                   nextgen tests all RAN here, none skipped.)
+bash guard.sh check               INTEGRITY OK
+```
+
+**Execution grounding is real.** `forge`/`anvil` 1.8.0 live in **WSL**
+(`kali-linux`, `/home/kali/.foundry/bin`), NOT on the Windows PATH.
+`src/nextgen/execground/foundry.py` shells to them via
+`wsl.exe -d kali-linux --exec /bin/bash <script>` (path-mangling disabled, PATH
+set explicitly, files written via base64, all subprocess I/O
+`utf-8`/`errors=replace`). Verified end to end: a generated minimal Foundry
+test for an unguarded `setOwner` printed `[PASS] test_invariant_is_violated()
+(gas: 37579)` → REPRODUCED; an `onlyOwner`-guarded one → NOT_REPRODUCED. With
+no `forge` reachable every execground entry point returns PENDING and the
+`reproducer` gate never PASSES (same discipline as `liveness.py` without an RPC).
+
+**Entry point:** `src/nextgen/pipeline.py::run(PipelineInputs) -> PipelineResult`
+runs every phase's analyzer in evidence order (each wrapped, degrades to
+PENDING), then `state.classify` → verdict, `proofscore.score` → the §16 tally,
+`report.render` → the §23 report with the §18 evidence-graph appendix.
+
+**Deferred by decision, not omission:** a symbolic solver (halmos); the
+`unauthorized_upgrade` / `state_relation_violated` reproducer generators (they
+return a clear "Phase 5b follow-up" reason); real corpus-backed dedup in the
+pipeline (`not_duplicate` gate is set only from an explicit input for now).
+
+---
+
+## PRIOR ARC (2026-08-28) — `4712be8` professional security audit of Chainwatch itself.
 
 **The user's mandate**: "act like [a] profe[ss]ional in web3 and bug hunter
 in cryp[t]o and smart contract[s] [with] over 10 year[s'] experience, review
