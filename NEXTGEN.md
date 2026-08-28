@@ -472,3 +472,100 @@ passes, and includes: a genuine offline removal → verdict UNKNOWN with
 `no_compensating_control` (and, with forge, `reproducer` / `invariant_violated`)
 all PASS; a renamed modifier → REJECTED; a still-present guard → REJECTED on
 `regression_commit`; a garbage source → still a classified result, not a raise.
+
+---
+
+## Counterfactual Protocol Twin (trace-driven; separate 10-phase build)
+
+A complement to the source/git-history pipeline above: reason from REAL
+ON-CHAIN BEHAVIOUR, not code. Architecture (user-supplied):
+
+    1 collect      real txs for an address (calldata/sender/value/block/order/
+                   success/logs/token transfers/proxy impl; deep call traces +
+                   state diffs by RE-EXECUTING on a local Anvil fork, not a
+                   paid trace RPC)
+    2 fingerprint  per function: accepted vs rejected inputs, callers, state
+                   transitions, asset flows, events, cross-contract calls
+    3 boundaries   MINE conservation / authorization / accounting / state-
+                   machine / replay / collateral / withdrawal / oracle-freshness
+                   / governance constraints from behaviour. Inference != proof.
+    4 diverge      compare fingerprints + boundaries across impl versions
+    5 mutate       counterfactual variants of REAL traces (actor sub, boundary
+                   values, repetition, reorder, delay, callback insert, state
+                   timing, oracle state, permission change, cross-contract call
+                   variation); prioritised near changed code
+    6 replay       execute candidates in an isolated Anvil fork at exact
+                   historical state; never broadcast
+    7 check        invariant violation / unauthorized transition / asset
+                   conservation / unexpected balance gain / loss / unexpected
+                   success / revert-boundary bypass
+    8 minimize     smallest real tx sequence that reproduces it
+    9 provenance   git → build → bytecode → impl → proxy → live (reuses
+                   nextgen/provenance + deployment)
+    10 validate    independent Hunter / Skeptic / Reproducer (reuses
+                   nextgen/adversarial). Only then CONFIRMED; else REJECTED /
+                   UNKNOWN.
+
+Delivery: 3 phased commits under `src/nextgen/twin/`.
+
+### Twin commit 1/3 — model + Phase 1 + Anvil + Phase 2 (done, 2026-08-28, `18907d6`)
+
+- `twin/rpc.py` — stdlib JSON-RPC (reads, batching, feature probe, anvil-only
+  helpers). `twin/model.py` — the record types. `twin/collect.py` (Phase 1) —
+  `alchemy_getAssetTransfers` → else `eth_getLogs` → optional deep block scan;
+  decodes ERC-20/721/1155 transfers; samples EIP-1967 impl to spot upgrades.
+  `twin/enrich.py` — deep traces via **local Anvil re-execution** (one fork per
+  span window, snapshot/revert per tx, callTracer + prestateTracer diff).
+  `twin/fingerprint.py` (Phase 2) — per-selector behavioural aggregate;
+  `caller_exclusive` surfaces a candidate authorization boundary.
+- `execground/foundry.AnvilFork` — isolated fork lifecycle. **The Alchemy
+  gotcha**: `anvil --fork-url` probes the upstream with `anvil_nodeInfo` /
+  `anvil_metadata`, Alchemy's proxy answers HTTP 400, anvil aborts. Fix: an
+  embedded JSON-RPC shim (`_RPC_SHIM` in foundry.py) run in WSL that returns
+  `-32601` for those two methods and forwards the rest (with retry). anvil
+  forks against `http://127.0.0.1:<shim>`; a persistent `wsl.exe` launcher with
+  an EXIT `trap` keeps it alive (`--exec` reaps `nohup`'d children on return);
+  Windows reaches anvil at `127.0.0.1:<port>` via WSL2 localhost forwarding.
+
+**Acceptance check (Twin 1/3):**
+`python -m pytest tests/test_nextgen_twin_model.py tests/test_nextgen_twin_collect.py tests/test_nextgen_twin_anvil.py -q`
+→ 15 passed (2 anvil-gated). Live-verified: 80 WETH txs collected + fingerprinted;
+AnvilFork up/serve/down in ~10s; a real router tx re-executed to a depth-8 call
+tree with 41 external calls, 11 state-diff addresses, 12 transfers.
+
+### Twin commit 2/3 — Phases 3–5 (TODO)
+
+- `twin/boundaries.py` (Phase 3) — `mine_boundaries(fingerprints, transfers,
+  traces)`: authorization (from `caller_exclusive`), conservation (token in ==
+  out per successful call across samples), accounting (a supply-like slot delta
+  tracks Σ Transfer), replay (a nonce/hash slot strictly increases; no repeat),
+  oracle-freshness (staleness gap of a read oracle slot), governance. Reuse
+  `invariants/model.CandidateInvariant` with `source=SOURCE_TRACE`; status
+  INFERRED→TESTED→VALIDATED (TESTED = holds across N≥k samples with 0
+  counterexamples).
+- `twin/diverge.py` (Phase 4) — `compare_versions(fp_old, fp_new, b_old,
+  b_new)` → accepted↔rejected flips per selector, asset-flow / state-transition
+  / authorization divergence, invariant weakening, changed external-call
+  behaviour. Version split = the `Collection.upgrades` block ranges (collect
+  two windows around an impl change).
+- `twin/mutate.py` (Phase 5) — `generate_mutations(tx, trace, ctx,
+  changed_selectors)` → one `Mutation` per kind (`model.ACTOR_SUBSTITUTION`
+  …`CROSS_CONTRACT_VARIATION`), each carrying concrete `{from,to,value,data}`
+  calls + `state_overrides` + `fork_block`; weight/order by proximity to
+  `changed_selectors`.
+
+### Twin commit 3/3 — Phases 6–10 + orchestrator (TODO)
+
+- `twin/replay.py` (Phase 6) — `replay(fork_rpc, mutation) → ReplayResult`:
+  apply `state_overrides` via `anvil_setStorageAt`, `anvil_impersonate`(sender),
+  `send_tx` to the LOCAL fork, read receipt + `debug_trace` + prestate diff,
+  compare pre/post balances. `twin/checks.py` (Phase 7) —
+  `check_violations(baseline_trace, replay_result, boundaries) → list[Violation]`.
+  Phase 8 — reuse `execground/sequences.minimize` (ddmin) over a mutation/tx
+  sequence.
+- `twin/twin.py` — `CounterfactualTwin(address, rpc_url, from_block, to_block).
+  run() → TwinResult`. Phase 9 → `provenance.run` / `deployment.run`. Phase 10
+  → `adversarial.skeptic.sweep` + a blinded `adversarial.reproducer` fed the
+  replay. Verdict: CONFIRMED only if a violation reproduced on the fork AND
+  provenance MATCH AND Skeptic clean AND independent reproduction agrees; else
+  REJECTED / UNKNOWN. Add `chainwatch.py --twin <address> --blocks lo:hi`.

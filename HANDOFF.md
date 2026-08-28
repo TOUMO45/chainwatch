@@ -1,12 +1,74 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `a12fd5f`** (this HANDOFF entry; the NEXTGEN arc is `d92e02f`
-through `a12fd5f`). **PUSHED** to `origin/master` 2026-08-28
-(`3d221d5..a12fd5f`) — this also carried the two previously-stuck commits
-(`4712be8` security audit, `39de94f` scoping fix). `master` is level with
-`origin/master`.
+**Last commit: `18907d6`** (NEXTGEN Twin commit 1/3). **NOT YET PUSHED** — the
+NEXTGEN Tier-1 + Twin-1 work (`d92b52`.. `18907d6`, roughly 8 commits) is local
+only; run `git push origin master` with a human present. `git status -sb`
+shows `ahead N`.
 
-## NEWEST ARC (2026-08-28) — NEXTGEN: the execution-grounded proof engine. Read this first.
+## RESUME HERE — Counterfactual Protocol Twin (a NEW 3-commit build, 1/3 done)
+
+The user asked to build a **Counterfactual Protocol Twin** (a trace-driven
+complement to the NEXTGEN pipeline) per a 10-phase architecture, then said
+"COMPLETE THE WHOLE WORK IN NEW CHAT". **Commit 1/3 is done and committed
+(`18907d6`); commits 2/3 and 3/3 are the remaining work.**
+
+**The full spec, the phase-by-phase design for commits 2/3 and 3/3, the
+Alchemy/anvil gotcha and its fix, and the acceptance checks are in
+`NEXTGEN.md` → "Counterfactual Protocol Twin" (bottom of the file). Read that
+section first.** Short version:
+
+- Done (`18907d6`, under `src/nextgen/twin/` + `execground/foundry.AnvilFork`):
+  `rpc.py` (stdlib JSON-RPC + batching), `model.py`, `collect.py` (Phase 1 —
+  alchemy_getAssetTransfers / eth_getLogs enumeration, transfer decode, impl
+  sampling), `enrich.py` (deep traces by re-executing on a local Anvil fork),
+  `fingerprint.py` (Phase 2). `AnvilFork` starts anvil in WSL behind an
+  embedded JSON-RPC shim that answers `anvil_nodeInfo`/`anvil_metadata` with
+  `-32601` (Alchemy 400s them and anvil aborts otherwise); a persistent
+  `wsl.exe` launcher with an EXIT trap keeps it alive.
+  Tests: `tests/test_nextgen_twin_{model,collect,anvil}.py` → 15 passed.
+- Commit 2/3 (TODO): `twin/boundaries.py` (Phase 3 mining),
+  `twin/diverge.py` (Phase 4 version compare), `twin/mutate.py` (Phase 5
+  counterfactual mutations). Reuse `invariants/model.CandidateInvariant` with a
+  `SOURCE_TRACE` tag.
+- Commit 3/3 (TODO): `twin/replay.py` (Phase 6, uses AnvilFork +
+  `anvil_setStorageAt`/`anvil_impersonate`/`send_tx` — LOCAL only),
+  `twin/checks.py` (Phase 7), Phase 8 reuses `execground/sequences.minimize`,
+  and `twin/twin.py` = the orchestrator wiring Phase 9 to
+  `nextgen/provenance`+`deployment` and Phase 10 to `nextgen/adversarial`
+  (Skeptic sweep + blinded reproducer). Add `chainwatch.py --twin <addr>
+  --blocks lo:hi`.
+
+**Environment notes for the new chat:**
+- Foundry is in WSL (`kali-linux`, `/home/kali/.foundry/bin`) — see the
+  `foundry-in-wsl` memory. `anvil --version` works; `AnvilFork` handles the
+  Alchemy probe issue.
+- `RPC_URL` in `.env` is an Alchemy free endpoint: `eth_*` + `eth_getLogs` +
+  `alchemy_getAssetTransfers` work; `debug_*` / `trace_*` return HTTP 400
+  (that's why enrichment re-executes on a local anvil).
+- Windows C: drive runs low on space; if a run hits `ENOSPC`, clear
+  `%TEMP%\chainwatch-*` and (in WSL) `~/.foundry/cache/rpc/*` + `/tmp/cw-*`.
+- Kill stray forks between runs: `wsl -d kali-linux -- bash -c 'pkill -f
+  "cw-anvil|cw-rpcshim"'`.
+
+---
+
+## PRIOR ARC (2026-08-28) — NEXTGEN Tier 1: real-repo scanning. Commits `db23265`, `a6a1c68`.
+
+Made `nextgen/pipeline.py` work on REAL GitHub repos: `src/nextgen/repo.py`
+`RepoContext` reuses the classic per-commit worktree + dep reconstruction so a
+next-gen analysis compiles a historical commit with imports resolved.
+`pipeline.run_from_repo(...)` + `chainwatch.py --nextgen FILE:CONTRACT:FUNCTION`
+(one `--pairs prev:cur`, optional `--address`). **Verified end to end: 88mph
+`NFT.init` @ `a4c48d61` with addr `0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634`
+→ `CHAINWATCH CONFIRMED FINDING`** (regression commit + dependency-resolved
+invariant regression + `EOA→NFT.init` unprivileged path + byte-identical
+on-chain bytecode provenance + `target_live` YES + read-only eth_call
+reproduction for the pre-0.6 pragma); reserve `ActFacet.revenueOverview` @
+`e27227b2` → `NOT A FINDING`. `a6a1c68` fixed a global-state pollution
+(`RepoContext` now restores `_shared`/`_storage`/`$SOLC_VERSION` on `close()`).
+Full `pytest tests/` after this arc: 587 passed / 3 skipped.
+
+## PRIOR ARC (2026-08-28) — NEXTGEN: the execution-grounded proof engine.
 
 The user asked to upgrade Chainwatch from a regression scanner into an
 "execution-grounded security research and proof engine" per a 27-section spec.
