@@ -142,3 +142,33 @@ Chainwatch deliberately does **not**:
 - Auto-publish or auto-disclose anything. If a CONFIRMED finding is LIVE on a real
   contract with funds at risk, that is a responsible-disclosure decision the human makes
   deliberately, through the appropriate program. Never automated, never rushed for a demo.
+
+## Amendment 2026-08-28 — the execution-grounded pipeline (opt-in, `src/nextgen/`)
+
+The human authorised an upgrade toward an execution-grounded proof engine
+(`NEXTGEN.md`). It is **additive and flag-gated** (`CHAINWATCH_NEXTGEN=1`):
+the classic pipeline above, its three verdicts, its six evidence fields,
+`fixtures*/`, `guard.sh`, and every existing test are untouched, and a next-gen
+`CONFIRMED` must pass the classic gate first and then a *stricter* evidence
+chain. This amendment narrows three anti-goals **for that pipeline only**:
+
+- **Fuzz / symbolically execute** — permitted only as (a) Foundry regression
+  fuzzing that compares two commits' behaviour, and (b) a Python constraint
+  *sketch*. A full symbolic engine as a trust root stays deferred. Formal
+  verification is still out.
+- **Economic-intent reasoning (SC02/SC04/SC07)** — a rough economic-feasibility
+  *estimate* is permitted as a non-gating signal and as a REJECT reason
+  (economically infeasible → not CONFIRMED). No new SC02/SC04/SC07 detection
+  rules.
+- **Proof-of-concept** — a minimal reproducer that demonstrates an invariant
+  violation **against a local forked EVM** is permitted as evidence. It is not
+  a weaponised exploit: no reusable attack contract, no calldata payload
+  intended for reuse, and it never leaves the local fork.
+
+Unchanged and non-negotiable: **on-chain access stays strictly read-only**
+(`eth_getCode`, `eth_getStorageAt`, read-only `eth_call`); **no transaction is
+ever broadcast to a real network**; **nothing is auto-disclosed, auto-filed, or
+sent to any project**; and **the LLM never decides a verdict** (spec §22 — it
+hypothesises and explains; deterministic evidence confirms). New dependencies
+still require the human's yes: Foundry/anvil is approved for Phase 5, a
+symbolic engine is not.
