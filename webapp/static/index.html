@@ -8,6 +8,13 @@
 </head>
 <body>
 
+<div class="bg" aria-hidden="true">
+  <div class="grid"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
 <header class="top">
   <div class="brand">
     <span class="logo">◐</span>
@@ -18,7 +25,15 @@
          and whether that commit is live on-chain.</p>
     </div>
   </div>
-  <div class="status" id="status">idle</div>
+  <div class="header-right">
+    <div class="pill" id="agent-pill" title="Capability 12/15 — Gemini drafts and ranks findings, every fact checked against the engine's own record before it can render">
+      <span class="dot"></span><span>Agent <strong id="agent-pill-state">checking…</strong></span>
+    </div>
+    <div class="pill" id="corpus-pill" title="Capability 16 — every analysed commit pair is recorded so it is never re-analysed">
+      <span class="dot"></span><span>Corpus <strong id="corpus-pill-state">checking…</strong></span>
+    </div>
+    <div class="status" id="status">idle</div>
+  </div>
 </header>
 
 <main>
@@ -76,6 +91,25 @@
     <div id="alert" class="alert hidden" role="alert"></div>
 
     <div class="sect">Instruments</div>
+
+    <div class="cap-grid">
+      <div class="cap-card">
+        <div class="cap-head"><span class="cap-dot"></span>Rule engine<span class="cap-badge">10 classes</span></div>
+        <p class="cap-desc">Regression detectors for access control, initializer guards, storage-layout breaks, unsafe transfers and more — checked commit by commit, never on source alone.</p>
+      </div>
+      <div class="cap-card">
+        <div class="cap-head"><span class="cap-dot"></span>Build reconstruction<span class="cap-badge">Foundry · Hardhat · Soldeer</span></div>
+        <p class="cap-desc">Reconstructs the target's real build environment per commit — remappings, dependency pins — so old commits actually compile, not just parse.</p>
+      </div>
+      <div class="cap-card">
+        <div class="cap-head"><span class="cap-dot"></span>On-chain liveness<span class="cap-badge">read-only</span></div>
+        <p class="cap-desc">Normalized runtime-bytecode match against what is actually deployed right now — CBOR metadata and immutables stripped before comparing. Never a transaction.</p>
+      </div>
+      <div class="cap-card">
+        <div class="cap-head"><span class="cap-dot"></span>Gemini agent<span class="cap-badge" id="cap-agent-badge">checking…</span></div>
+        <p class="cap-desc">Drafts the report and ranks CONFIRMED findings by priority — every fact it states is checked against the engine's own record before it can render.</p>
+      </div>
+    </div>
 
     <div id="coverage" class="coverage empty">
       <div class="cov-head">Coverage</div>

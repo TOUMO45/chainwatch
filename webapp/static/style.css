@@ -80,6 +80,49 @@ body {
     radial-gradient(700px 460px at 50% 110%, rgba(53,214,195,.05), transparent 60%),
     var(--bg);
   background-attachment: fixed;
+  position: relative;
+}
+
+/* ------------------------------------------------------------- atmosphere
+ * Fixed, decorative, non-interactive. Reuses only the two already-non-verdict
+ * accents (--accent, --violet, --cyan) so the moving background can never be
+ * mistaken for a signal — it carries zero meaning, same rule as every other
+ * neutral surface on this page. */
+.bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.bg .grid {
+  position: absolute; inset: -60px;
+  background-image:
+    linear-gradient(rgba(78,168,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(78,168,255,.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 75% 60% at 50% 40%, black 20%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 75% 60% at 50% 40%, black 20%, transparent 78%);
+  animation: grid-drift 44s linear infinite;
+}
+@keyframes grid-drift { from { background-position: 0 0; } to { background-position: 64px 64px; } }
+.bg .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .38; animation: orb-float 22s ease-in-out infinite; }
+.bg .orb-1 { width: 480px; height: 480px; background: var(--accent); top: -140px; left: -120px; }
+.bg .orb-2 { width: 420px; height: 420px; background: var(--violet); top: 45%; right: -140px; animation-delay: -7s; }
+.bg .orb-3 { width: 360px; height: 360px; background: var(--cyan); bottom: -160px; left: 28%; animation-delay: -14s; opacity: .28; }
+@keyframes orb-float {
+  0%,100% { transform: translate(0,0) scale(1); }
+  33%     { transform: translate(36px,-24px) scale(1.06); }
+  66%     { transform: translate(-24px,30px) scale(.96); }
+}
+.bg .particle {
+  position: absolute; width: 2.5px; height: 2.5px; border-radius: 50%;
+  background: var(--accent-2); box-shadow: 0 0 7px currentColor; opacity: 0;
+  animation: particle-rise linear infinite;
+}
+@keyframes particle-rise {
+  from { transform: translateY(8vh); opacity: 0; }
+  8%   { opacity: .55; }
+  92%  { opacity: .55; }
+  to   { transform: translateY(-100vh); opacity: 0; }
+}
+main, .top { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .bg .grid, .bg .orb, .bg .particle { animation: none !important; }
 }
 code { font: var(--fs-sm) var(--mono); color: var(--accent-2);
        background: rgba(78,168,255,.08); padding: 1px 5px; border-radius: 4px; }
@@ -96,8 +139,9 @@ code { font: var(--fs-sm) var(--mono); color: var(--accent-2);
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--sp-5); padding: var(--sp-4) var(--sp-5);
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(23,32,46,.92), rgba(9,13,19,.35));
-  position: relative; overflow: hidden;
+  background: linear-gradient(180deg, rgba(23,32,46,.78), rgba(9,13,19,.42));
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  position: sticky; top: 0; z-index: 20; overflow: visible;
 }
 /* A hairline of light along the header's base — the console's "power on" seam. */
 .top::after {
@@ -114,9 +158,35 @@ code { font: var(--fs-sm) var(--mono); color: var(--accent-2);
   0%,100% { filter: drop-shadow(0 0 8px rgba(78,168,255,.5)); }
   50%     { filter: drop-shadow(0 0 16px rgba(78,168,255,.9)); }
 }
-h1 { margin: 0; font-size: var(--fs-xl); letter-spacing: .3px; font-weight: 650; }
+h1 {
+  margin: 0; font-size: var(--fs-xl); letter-spacing: .3px; font-weight: 700;
+  background: linear-gradient(120deg, var(--text) 10%, var(--accent-2) 45%, var(--violet) 70%, var(--text) 92%);
+  background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: title-sheen 7s ease infinite;
+}
+@keyframes title-sheen { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 .tag { margin: 3px 0 0; color: var(--dim); font-size: var(--fs-smd); max-width: 70ch; }
 .tag strong { color: var(--text); font-weight: 600; }
+
+.header-right { display: flex; align-items: center; gap: var(--sp-2); position: relative; z-index: 1; }
+
+/* Small factual status pills (agent/corpus). Deliberately the SAME visual
+ * weight as the neutral chrome around them — this is capability availability,
+ * not a verdict, and must never compete with the confirmed/candidate palette. */
+.pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  font: var(--fs-xs) var(--mono); color: var(--dim); white-space: nowrap;
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  padding: 6px 12px; background: var(--panel);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.pill:hover { border-color: var(--line-2); background: var(--panel-2); }
+.pill strong { color: var(--text); font-weight: 650; }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: none; transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.pill.on .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.pill.on strong { color: var(--ok); }
+.pill.off .dot { background: var(--faint); }
+.pill.off strong { color: var(--faint); font-weight: 500; }
 
 /* Live status pill. The dot PULSES only while work happens; a glow rests on the
  * done/error states so a finished pill still looks instrument-lit, not dead. */
@@ -150,9 +220,34 @@ main { display: grid; grid-template-columns: 348px 1fr; align-items: start; }
 .panel {
   border-right: 1px solid var(--line); padding: var(--sp-4);
   height: calc(100vh - 68px); overflow-y: auto;
-  background: linear-gradient(180deg, var(--panel), rgba(9,13,19,.6));
+  background: linear-gradient(180deg, rgba(17,25,37,.75), rgba(9,13,19,.5));
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  position: sticky; top: 68px;
 }
-.content { padding: var(--sp-5); height: calc(100vh - 68px); overflow-y: auto; }
+.content { padding: var(--sp-5); height: calc(100vh - 68px); overflow-y: auto; position: relative; z-index: 1; }
+
+/* --------------------------------------------------------- capabilities grid
+ * Replaces a placeholder "Instruments" section with what this build actually
+ * runs — no tool named here that the pipeline does not really invoke. */
+.cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.cap-card {
+  border: 1px solid var(--line); border-radius: var(--r-xl); padding: var(--sp-3) var(--sp-4);
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+  box-shadow: var(--shadow-1); position: relative; overflow: hidden;
+  transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.cap-card::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; transform: scaleX(0);
+  transform-origin: left; transition: transform var(--dur-slow) var(--ease);
+  background: linear-gradient(90deg, var(--accent), var(--violet));
+}
+.cap-card:hover { transform: translateY(-2px); border-color: var(--line-2); box-shadow: var(--shadow-2); }
+.cap-card:hover::after { transform: scaleX(1); }
+.cap-head { display: flex; align-items: center; gap: 8px; font-size: var(--fs-smd); font-weight: 650; color: var(--text); margin-bottom: 6px; }
+.cap-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); flex: none; }
+.cap-badge { margin-left: auto; font: var(--fs-micro) var(--mono); color: var(--dim); border: 1px solid var(--line-2);
+             border-radius: var(--r-pill); padding: 2px 8px; white-space: nowrap; }
+.cap-desc { font-size: var(--fs-xs); color: var(--dim); line-height: 1.55; }
 
 h2 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .12em;
      color: var(--faint); margin: var(--sp-5) 0 var(--sp-2); font-weight: 600; }
@@ -199,13 +294,15 @@ p.cost { font-size: var(--fs-xs); color: var(--faint); margin: -2px 0 var(--sp-3
 button {
   flex: 1; padding: 9px var(--sp-3); border-radius: var(--r); cursor: pointer;
   border: 1px solid var(--accent);
-  background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: var(--ink);
+  background: linear-gradient(135deg, var(--accent-2), var(--accent) 55%, var(--violet));
+  background-size: 160% 160%; background-position: 0% 50%;
+  color: var(--ink);
   font-size: var(--fs-smd); font-weight: 650; letter-spacing: .2px;
   box-shadow: 0 0 16px rgba(78,168,255,.2);
   transition: filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease),
-              box-shadow var(--dur-fast) var(--ease);
+              box-shadow var(--dur-fast) var(--ease), background-position var(--dur-slow) var(--ease);
 }
-button:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 0 22px rgba(78,168,255,.35); }
+button:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 0 24px rgba(155,140,255,.4); background-position: 100% 50%; }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:focus-visible { outline: none; box-shadow: var(--ring); }
 button.ghost { background: transparent; color: var(--dim); border-color: var(--line); box-shadow: none; }

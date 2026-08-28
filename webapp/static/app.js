@@ -135,6 +135,46 @@ function renderExposure(rows) {
 
 // -------------------------------------------------------------- bootstrap
 
+/* Decorative only — the moving grid/orbs are pure CSS; this just seeds a
+ * handful of rising dots so the atmosphere isn't perfectly static. Reuses
+ * the existing non-verdict accent tokens via CSS, no colour choice here. */
+(function seedParticles() {
+  const bg = document.querySelector(".bg");
+  if (!bg || prefersReduced()) return;
+  for (let i = 0; i < 22; i++) {
+    const p = document.createElement("div");
+    p.className = "particle";
+    p.style.left = Math.random() * 100 + "%";
+    p.style.animationDuration = (14 + Math.random() * 18) + "s";
+    p.style.animationDelay = -(Math.random() * 20) + "s";
+    bg.appendChild(p);
+  }
+})();
+
+/* Real capability status, not decoration: the same /api/agent and /api/corpus
+ * endpoints the rest of the app already trusts to say "available" honestly
+ * rather than fail obscurely (see webapp/server.py's own docstrings on both). */
+(async function loadCapabilityPills() {
+  try {
+    const agent = await (await fetch("/api/agent")).json();
+    const on = !!agent.available;
+    $("agent-pill").className = "pill " + (on ? "on" : "off");
+    $("agent-pill-state").textContent = on ? agent.model || "available" : "no API key";
+    $("cap-agent-badge").textContent = on ? (agent.model || "available") : "no API key";
+  } catch (e) {
+    $("agent-pill-state").textContent = "unreachable";
+    $("cap-agent-badge").textContent = "unreachable";
+  }
+  try {
+    const corpus = await (await fetch("/api/corpus")).json();
+    const on = !!corpus.available;
+    $("corpus-pill").className = "pill " + (on ? "on" : "off");
+    $("corpus-pill-state").textContent = on ? corpus.database || "recording" : "not connected";
+  } catch (e) {
+    $("corpus-pill-state").textContent = "unreachable";
+  }
+})();
+
 fetch("/api/rules").then((r) => r.json()).then((d) => {
   RULE_TITLES = d.titles;
   $("rule-boxes").innerHTML = d.order.map((r) =>
