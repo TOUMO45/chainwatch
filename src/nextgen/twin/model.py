@@ -280,3 +280,196 @@ class Boundary:
                 "selector": self.selector, "status": self.status,
                 "support": self.support[:6], "counterexamples": self.counterexamples[:6],
                 "detail": self.detail}
+
+
+# --- Phase 4: cross-version divergence ------------------------------------- #
+
+@dataclass
+class Divergence:
+    kind: str                      # one of the divergence constants above
+    selector: str
+    statement: str
+    old_ref: str = ""               # implementation address / version label, old side
+    new_ref: str = ""
+    detail: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.kind not in _DIVERGENCE_KINDS:
+            raise ValueError(f"unknown divergence kind {self.kind!r}")
+
+    def as_dict(self) -> dict:
+        return {"kind": self.kind, "selector": self.selector,
+                "statement": self.statement, "old_ref": self.old_ref,
+                "new_ref": self.new_ref, "detail": self.detail}
+
+
+# --- Phase 5: counterfactual mutations -------------------------------------- #
+
+@dataclass
+class Mutation:
+    """One counterfactual variant of a REAL trace: still the same `base_tx`
+    (an actual historical transaction), replayed with one concrete change.
+    `calls` is the exact sequence of `{from,to,value,data}` dicts Phase 6 sends
+    to the fork, in order - a mutation is not always a single call (REORDER /
+    REPETITION / CALLBACK_INSERT touch more than one)."""
+
+    kind: str
+    base_tx: str                    # hash of the real tx this varies
+    selector: str
+    statement: str                  # human-readable: what changed
+    calls: list = field(default_factory=list)         # [{from,to,value,data}]
+    state_overrides: dict = field(default_factory=dict)  # {addr:{slot:value}}
+    fork_block: int = 0
+    weight: float = 1.0             # ranking only - proximity to changed_selectors
+    detail: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.kind not in _MUTATION_KINDS:
+            raise ValueError(f"unknown mutation kind {self.kind!r}")
+
+    def as_dict(self) -> dict:
+        return {"kind": self.kind, "base_tx": self.base_tx,
+                "selector": self.selector, "statement": self.statement,
+                "n_calls": len(self.calls), "fork_block": self.fork_block,
+                "weight": self.weight, "detail": self.detail}
+
+
+# --- Phase 6: replay --------------------------------------------------------- #
+
+@dataclass
+class ReplayResult:
+    mutation: Optional[Mutation]
+    executed: bool                  # every call in the mutation was submitted
+    trace: Optional[Trace] = None   # the LAST call's trace (call tree + state diff)
+    all_traces: list = field(default_factory=list)   # Trace per call, in order
+    balances_before: dict = field(default_factory=dict)   # {addr: wei}
+    balances_after: dict = field(default_factory=dict)
+    error: str = ""
+
+    def as_dict(self) -> dict:
+        return {"mutation": self.mutation.as_dict() if self.mutation else None,
+                "executed": self.executed,
+                "trace": self.trace.as_dict() if self.trace else None,
+                "n_calls_traced": len(self.all_traces),
+                "balances_before": self.balances_before,
+                "balances_after": self.balances_after, "error": self.error}
+
+
+# --- Phase 7: violations ----------------------------------------------------- #
+
+@dataclass
+class Violation:
+    kind: str
+    statement: str
+    selector: str = ""
+    boundary: Optional[str] = None     # the Boundary.kind it violates, if any
+    evidence: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.kind not in _VIOLATION_KINDS:
+            raise ValueError(f"unknown violation kind {self.kind!r}")
+
+    def as_dict(self) -> dict:
+        return {"kind": self.kind, "statement": self.statement,
+                "selector": self.selector, "boundary": self.boundary,
+                "evidence": self.evidence}
+
+
+# --- orchestrator verdicts (Phase 9/10) ------------------------------------- #
+TWIN_CONFIRMED = "CONFIRMED"
+TWIN_REJECTED = "REJECTED"
+TWIN_UNKNOWN = "UNKNOWN"
+
+
+@dataclass
+class TwinResult:
+    address: str
+    from_block: int
+    to_block: int
+    verdict: str = TWIN_UNKNOWN
+    reason: str = ""
+    collection: Optional[Collection] = None
+    fingerprints: dict = field(default_factory=dict)
+    boundaries: list = field(default_factory=list)
+    divergences: list = field(default_factory=list)
+    mutations_tried: int = 0
+    violations: list = field(default_factory=list)
+    minimal_repro: Optional[Mutation] = None
+    deployment_facts: Optional[object] = None
+    provenance_chain: Optional[object] = None
+    skeptic_report: Optional[object] = None
+    reproducer_result: Optional[object] = None
+    notes: list = field(default_factory=list)
+
+    def render_text(self) -> str:
+        lines = ["=" * 78, "COUNTERFACTUAL PROTOCOL TWIN", "=" * 78, "",
+                 f"address     {self.address}",
+                 f"blocks      [{self.from_block}, {self.to_block}]"]
+        if self.collection:
+            lines.append(f"collected   {len(self.collection.txs)} tx(s), "
+                         f"{len(self.collection.transfers)} transfer(s)"
+                         + (f", {len(self.collection.upgrades)} implementation "
+                            f"change(s) observed" if self.collection.upgrades else ""))
+        lines.append(f"fingerprints {len(self.fingerprints)} selector(s)")
+        lines.append(f"boundaries  {len(self.boundaries)} mined "
+                     f"({sum(1 for b in self.boundaries if b.status == TESTED)} TESTED)")
+        if self.divergences:
+            lines.append(f"divergence  {len(self.divergences)} cross-version "
+                         f"divergence(s)")
+        lines.append(f"mutations   {self.mutations_tried} replayed")
+        lines.append(f"violations  {len(self.violations)}")
+        for v in self.violations[:5]:
+            lines.append(f"    [{v.kind}]  {v.statement}")
+        if self.minimal_repro:
+            lines.append(f"minimal repro: {len(self.minimal_repro.calls)} call(s) "
+                         f"- {self.minimal_repro.statement}")
+        if self.deployment_facts is not None:
+            lines.append(f"deployment  gate={getattr(self.deployment_facts, 'gate', '?')}  "
+                         f"{getattr(self.deployment_facts, 'rationale', '')}")
+        if self.skeptic_report is not None:
+            lines.append(f"skeptic     disproved={self.skeptic_report.disproved}")
+        if self.reproducer_result is not None:
+            lines.append(f"reproducer  {self.reproducer_result.status}")
+        lines += ["", f"VERDICT: {self.verdict}", f"  {self.reason}"]
+        if self.notes:
+            lines += ["", "notes:"] + [f"  - {n}" for n in self.notes]
+        return "\n".join(lines)
+
+    def as_dict(self) -> dict:
+        return {
+            "address": self.address, "from_block": self.from_block,
+            "to_block": self.to_block, "verdict": self.verdict,
+            "reason": self.reason,
+            "collection": self.collection.as_dict() if self.collection else None,
+            "n_fingerprints": len(self.fingerprints),
+            "boundaries": [b.as_dict() for b in self.boundaries],
+            "divergences": [d.as_dict() for d in self.divergences],
+            "mutations_tried": self.mutations_tried,
+            "violations": [v.as_dict() for v in self.violations],
+            "minimal_repro": self.minimal_repro.as_dict() if self.minimal_repro else None,
+            "deployment_facts": (self.deployment_facts.as_dict()
+                                 if hasattr(self.deployment_facts, "as_dict") else None),
+            "provenance_chain": (self.provenance_chain.as_dict()
+                                 if hasattr(self.provenance_chain, "as_dict") else None),
+            "skeptic_report": (self.skeptic_report.as_dict()
+                              if hasattr(self.skeptic_report, "as_dict") else None),
+            "reproducer_result": (self.reproducer_result.as_dict()
+                                  if hasattr(self.reproducer_result, "as_dict") else None),
+            "notes": self.notes,
+        }
+
+
+_DIVERGENCE_KINDS = frozenset({
+    ACCEPT_TO_REJECT, REJECT_TO_ACCEPT, ASSET_FLOW_DIVERGENCE,
+    STATE_TRANSITION_DIVERGENCE, AUTHORIZATION_DIVERGENCE, INVARIANT_WEAKENING,
+    EXTERNAL_CALL_DIVERGENCE,
+})
+_MUTATION_KINDS = frozenset({
+    ACTOR_SUBSTITUTION, BOUNDARY_VALUE, REPETITION, REORDER, DELAY,
+    CALLBACK_INSERT, STATE_TIMING, ORACLE_STATE, PERMISSION_CHANGE,
+    CROSS_CONTRACT_VARIATION,
+})
+_VIOLATION_KINDS = frozenset({
+    V_INVARIANT, V_UNAUTHORIZED_TRANSITION, V_ASSET_CONSERVATION, V_BALANCE_GAIN,
+    V_PROTOCOL_LOSS, V_UNEXPECTED_SUCCESS, V_REVERT_BYPASS,
+})
