@@ -61,6 +61,15 @@ class RepoContext:
         self._cache = base / "cache"
         self._worktrees: dict[str, H.Worktree] = {}
         self._info: dict[str, CheckoutInfo] = {}
+        # `_apply_build_config` mutates process-global build state
+        # (_shared._ROOT_REMAPS / .REMAPS, _storage.PROJECT_ROOT / .REMAPPINGS,
+        # $SOLC_VERSION). Snapshot it so `close()` can restore - otherwise a
+        # long-lived process (a test session) is left pointing at a worktree
+        # dir this context later deletes.
+        self._saved_globals = (
+            list(_shared._ROOT_REMAPS), list(getattr(_shared, "REMAPS", [])),
+            _storage.PROJECT_ROOT, list(_storage.REMAPPINGS),
+            os.environ.get("SOLC_VERSION"))
 
     # -- checkout + env -------------------------------------------------- #
 
@@ -195,6 +204,24 @@ class RepoContext:
             except Exception:  # noqa: BLE001
                 pass
         self._worktrees.clear()
+        # Restore the process-global build state to its pre-context value so a
+        # long-lived caller (test session) is not left pointing at a worktree
+        # dir just deleted. Also drop the compile / layout memos.
+        roots, remaps, proj, remappings, solc = self._saved_globals
+        _shared._ROOT_REMAPS[:] = roots
+        if hasattr(_shared, "REMAPS"):
+            _shared.REMAPS = remaps
+        _storage.PROJECT_ROOT = proj
+        _storage.REMAPPINGS = list(remappings)
+        if solc is None:
+            os.environ.pop("SOLC_VERSION", None)
+        else:
+            os.environ["SOLC_VERSION"] = solc
+        try:
+            _shared.reset_caches()
+            _storage.reset_caches()
+        except Exception:  # noqa: BLE001
+            pass
 
     def __enter__(self) -> "RepoContext":
         return self
