@@ -5107,3 +5107,62 @@ nonexistent job id still reaches the endpoint's ORIGINAL `404 "no such
 scan"`, proving the new check does not shadow genuine behaviour for a real
 request. Exercised through FastAPI's own `TestClient`, hitting the real
 route handlers, not just the validator function in isolation.
+
+---
+
+### SCAN-L2 — SEC-L1's own fix silently broke the immutable-EIP-1167-clone liveness fallback
+
+**Type: REGRESSION, introduced by this session's own SEC-L1 fix and caught
+by this session's own re-verification, not by a user report. `src/scan.py`.
+FOUND and FIXED 2026-08-28, same day as SEC-L1.**
+
+SEC-L1's fix added a `checkout(wt, sha)` wrapper — `Worktree.checkout()`
+plus surfacing any stripped symlinks at `warn` weight — defined as a
+closure **local to `scan()`**, and updated every `checkout(...)` call site
+*inside* `scan()` to use it. One call site was missed because it lives in a
+**different, module-level function**: `_attach_liveness()`'s own
+immutable-EIP-1167-clone fallback (the mechanism 11-L1/11-L2/11-L3 exist to
+support — recompiling from the REGRESSION COMMIT's own source, not HEAD's,
+because an EIP-1167 implementation's deployed bytecode is immutable and a
+later source fix can never reach it) called `checkout(cur_wt, ck)` at what
+was line 1106. Python resolved that name against `_attach_liveness`'s own
+scope, found nothing, and raised `NameError: name 'checkout' is not
+defined` — caught by that call site's own blanket `except Exception`,
+so the whole fallback silently degraded to `UNKNOWN` on every call, with
+no warning, no error, nothing distinguishing it from a genuine bytecode
+mismatch.
+
+**Real impact, not theoretical**: this is the exact mechanism the project's
+own flagship reproducible case — the 88mph `NFT.init()` finding — depends
+on to reach CONFIRMED at all (querying the shared implementation address
+alone always stays UNKNOWN; only a real EIP-1167 clone address of it
+triggers `proxy_kind == "eip1167-clone"` and this fallback). Caught only
+because this session re-ran `README.md`'s own documented reproduction
+command (`--pairs 5f52a2ead702e4cb9ab3d04a1109807462dde228:
+a4c48d61661ae3d8ce5aadfda6e4de27c4f07a9e --address
+0xF0b7DE03134857391d8D43Ed48e20EDF21461097 --check-exploit-proof`) while
+preparing a live demo — it produced `CANDIDATE` where the documented,
+previously-verified output is `CONFIRMED` + `LIVE` + exploit-proof `OPEN`.
+Without that re-check this would have shipped silently broken.
+
+**Fix.** Promoted the checkout-plus-symlink-warning wrapper to a
+module-level function, `_checkout(wt, sha, emit_event)`, taking
+`emit_event` as an explicit parameter instead of closing over it. `scan()`
+keeps a one-line local `checkout(wt, sha)` that just calls
+`_checkout(wt, sha, emit_event)` (so its own four call sites are
+unchanged); `_attach_liveness`'s clone-fallback now calls
+`_checkout(cur_wt, ck, emit_event)` directly, using the `emit_event`
+parameter it already receives.
+
+**Verified**: re-ran the exact `README.md` command after the fix —
+`CONFIRMED`, `on-chain LIVE (matched the REGRESSION COMMIT's own build...)`,
+`exploitability proof: OPEN`, byte-for-byte the documented expected output.
+`tests/test_verdict.py` (22 tests, including
+`test_update_survival_unlocks_confirmed_for_immutable_clone`) still passes
+— that test exercises `verdict.update_survival` in isolation and would not
+have caught this, since the bug was in `scan.py`'s own wiring, not in the
+verdict logic it drives; noted here as a real gap (no test exercises
+`_attach_liveness`'s clone-fallback through an actual `scan()`/`_checkout`
+call, only through the deterministic function it eventually calls) rather
+than silently left unfixed. Full suite re-run after the fix; see this
+session's commit for the pass count.

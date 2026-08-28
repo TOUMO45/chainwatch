@@ -402,6 +402,31 @@ def _restores_build_config(fn):
     return wrapper
 
 
+def _checkout(wt, sha: str, emit_event: Callable[..., None]) -> None:
+    """`Worktree.checkout`, plus surfacing SEC-L1 (symlink stripping) at
+    BANNER weight - a target repository shipping a tracked symlink is a
+    genuine, non-accidental signal worth a scan's reader seeing plainly,
+    not a detail buried in a debug log.
+
+    Module-level (not a closure inside `scan()`) because `_attach_liveness`'s
+    own clone-fallback checkout needs it too, and a per-function local of the
+    same name silently shadowed nothing but its OWN scope: a call from
+    `_attach_liveness` raised `NameError: name 'checkout' is not defined`,
+    caught by that call site's blanket `except Exception`, so the immutable-
+    EIP-1167-clone liveness fallback silently degraded to UNKNOWN on every
+    call instead of erroring loudly. Found while re-verifying the 88mph demo
+    case still reaches CONFIRMED after this session's SEC-L1 change - it no
+    longer did, for exactly this reason.
+    """
+    stripped = wt.checkout(sha)
+    if stripped:
+        emit_event("warn", message=(
+                f"removed {len(stripped)} symlink(s) from the target's own "
+                f"tracked tree at {sha[:12]} before reading any file "
+                f"(SEC-L1): {', '.join(stripped[:5])}"
+                + (f" (+{len(stripped) - 5} more)" if len(stripped) > 5 else "")))
+
+
 @_restores_build_config
 def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
          should_stop: Optional[Callable[[], bool]] = None) -> dict:
@@ -415,17 +440,7 @@ def scan(opts: ScanOptions, on_event: Optional[Callable[[dict], None]] = None,
                 pass
 
     def checkout(wt, sha: str) -> None:
-        """`Worktree.checkout`, plus surfacing SEC-L1 (symlink stripping) at
-        BANNER weight - a target repository shipping a tracked symlink is a
-        genuine, non-accidental signal worth a scan's reader seeing plainly,
-        not a detail buried in a debug log."""
-        stripped = wt.checkout(sha)
-        if stripped:
-            emit_event("warn", message=(
-                f"removed {len(stripped)} symlink(s) from the target's own "
-                f"tracked tree at {sha[:12]} before reading any file "
-                f"(SEC-L1): {', '.join(stripped[:5])}"
-                + (f" (+{len(stripped) - 5} more)" if len(stripped) > 5 else "")))
+        _checkout(wt, sha, emit_event)
 
     repo = Path(opts.repo).resolve()
     # Scratch worktrees are namespaced PER TARGET REPOSITORY. Two scans of
@@ -1103,7 +1118,7 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
             ck = f.commit
             if ck not in clone_cache:
                 try:
-                    checkout(cur_wt, ck)
+                    _checkout(cur_wt, ck, emit_event)
                     spec = H.detect_env(cur_wt.path)
                     ok, cause, _detail = H.install(spec, cache)
                     if not ok:
