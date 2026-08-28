@@ -96,9 +96,15 @@ touches mainnet.
 
 | Dependency | Phase | Status |
 |---|---|---|
-| Foundry (`forge`, `anvil`) | 5 | **Approved.** Not yet installed on the dev host; Phase 5 modules degrade to `UNKNOWN` when absent. |
+| Foundry (`forge`, `anvil`) | 5 | **Approved and available.** `forge`/`anvil` `1.8.0` are installed in **WSL** (`kali-linux`, `/home/kali/.foundry/bin`), not on Windows. Verified end to end (`forge init`/`build`/`test`, svm solc auto-download). Phase 5 shells to WSL via a `nextgen/execground/` adapter and still degrades to `UNKNOWN` (never `CONFIRMED`) when no `forge` is reachable — same as `liveness.py` without an RPC. |
 | `halmos` / `hevm` (symbolic) | later | Deferred. §6's symbolic half starts as a Python constraint sketch. |
 | No other new runtime deps in phases 0–4. | — | — |
+
+**WSL Foundry invocation** (from the Windows/Git-Bash host): argv path mangling
+must be disabled, and the toolchain PATH set explicitly —
+`MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' wsl.exe -d kali-linux --exec /bin/bash <script.sh>`,
+where the script does `export PATH="$HOME/.foundry/bin:/usr/local/bin:/usr/bin:/bin"`.
+Run forge in an isolated `/tmp` dir so it does not auto-load the repo `.env`.
 
 ## Section → module map
 
@@ -106,9 +112,9 @@ Legend: **done** · **wip** · **planned** · *(extends existing module)*
 
 | §  | Title | Module | Status |
 |----|-------|--------|--------|
-| 1  | Security Time Machine | `nextgen/timemachine.py` *(extends `history.py`)* | planned (Phase 1) |
-| 2  | Automatic security invariant discovery | `nextgen/invariants/discover.py` | planned (Phase 2) |
-| 3  | Invariant regression engine | `nextgen/invariants/regress.py` | planned (Phase 2) |
+| 1  | Security Time Machine | `nextgen/timemachine.py` + `timemachine_probes.py` | **done (Phase 1)** |
+| 2  | Automatic security invariant discovery | `nextgen/invariants/discover.py` + `validate.py` + `model.py` | **done (Phase 2)** |
+| 3  | Invariant regression engine | `nextgen/invariants/regress.py` | **done (Phase 2)** |
 | 4  | Attack-path graph | `nextgen/attackgraph.py` | planned (Phase 3) |
 | 5  | Stateful multi-transaction reasoning | `nextgen/execground/sequences.py` | planned (Phase 5) |
 | 6  | Symbolic + concrete hybrid validation | `nextgen/execground/hybrid.py` | planned (Phase 5) |
@@ -124,7 +130,7 @@ Legend: **done** · **wip** · **planned** · *(extends existing module)*
 | 16 | Proof quality score | `nextgen/proofscore.py` | **wip (Phase 0)** |
 | 17 | Finding state machine | `nextgen/state.py` | **wip (Phase 0)** |
 | 18 | Security evidence graph | `nextgen/evidence_graph.py` | **wip (Phase 0)** |
-| 19 | Compiler / build-environment security | `nextgen/buildenv.py` *(extends `history.py`, `verified.py`)* | planned (Phase 1) |
+| 19 | Compiler / build-environment security | `nextgen/buildenv.py` *(extends `history.py`, `verified.py`)* | **done (Phase 1)** |
 | 20 | Known-exploit replay benchmark | `nextgen/benchmark/` *(extends `backtest.py`)* | planned (Phase 4) |
 | 21 | Regression fuzzing | `nextgen/execground/regfuzz.py` | planned (Phase 5) |
 | 22 | Do not trust the LLM | architecture-wide; enforced by `proofscore` hard gates + `state` | **wip (Phase 0)** |
@@ -163,4 +169,78 @@ Delivers the shared machinery every later phase writes into:
 passes, and it includes: a score of +100 with a failed hard gate still yields
 `permits_confirmed == False`; a gate set with one `UNKNOWN` and no `FAIL`
 yields verdict `UNKNOWN` (not `REJECTED`, not `CONFIRMED`); an illegal state
-transition raises.
+transition raises. **Met** (48 passed).
+
+## Phase 1 — Security Time Machine + build-environment security (done, 2026-08-28)
+
+- `nextgen/timemachine.py` — a probe-agnostic engine that walks the WHOLE
+  history of a security property's defining files and classifies every change
+  as INTRODUCED / MODIFIED / REMOVED / RESTORED. `regression_commit` is the
+  REMOVED that explains why the property is absent NOW (the last one not
+  followed by a RESTORED); it is `None` whenever the property is in force at
+  HEAD. Unmeasurable commits (no file, would not compile) are skipped, never
+  read as "absent". Emits into the evidence graph (§18).
+- `nextgen/timemachine_probes.py` — `AccessControlProbe` and
+  `InitializerOneShotProbe`, built on `src/rules/_shared` (`constrains_msg_sender`,
+  `has_init_guard`) so the Time Machine and the classic rules agree on what a
+  property is. Phase 1 cut, stated in the module: probes compile the defining
+  file in ISOLATION, so a commit whose meaning needs unresolved imports is
+  reported `measurable=False`, not guessed. Per-commit dependency
+  reconstruction is wired in a later phase.
+- `nextgen/buildenv.py` — the five compiler-version-risk patterns (§19):
+  RANGE_PRAGMA, HISTORICAL_MISMATCH (a solc semantic boundary crossed between
+  the pinned and the used version), KNOWN_BUGGY_COMPILER (matches a documented
+  advisory, trigger-gated on `--via-ir` / ABIEncoderV2), EVM_VERSION_DRIFT
+  (Shanghai/PUSH0), OPTIMIZER_DRIFT. `analyze()` returns a `build_environment`
+  gate that is FAIL only for a provable drift, PASS only for an exact build
+  proven identical to the deployed one, UNKNOWN otherwise.
+- `nextgen/gates.py` — `apply_timeline` / `apply_buildenv`: the one place
+  Phase 1 outputs set Phase 0 gates, so every phase does it the same way.
+
+**Acceptance check (Phase 1):**
+`python -m pytest tests/test_nextgen_timemachine.py tests/test_nextgen_buildenv.py tests/test_nextgen_gates.py tests/test_nextgen_timemachine_probes.py -q`
+passes, and includes: introduce→remove→restore over a real synthetic git repo
+(no compiler) yields exactly `[INTRODUCED, REMOVED, RESTORED]` with no live
+regression; a second removal after a restore IS the live regression; a
+semantic-boundary compiler mismatch fails the build-environment gate; a
+property present at HEAD fails the regression gate. **Met** (38 passed; the 4
+`AccessControlProbe` cases run when a working `solc` is present, else skip
+visibly).
+
+## Phase 2 — invariant discovery + regression engine (done, 2026-08-28)
+
+- `nextgen/invariants/model.py` — `CandidateInvariant` with the
+  INFERRED → TESTED → VALIDATED → USED status discipline (one step forward at a
+  time; REJECTED terminal). Only `VALIDATED`/`USED` invariants are `usable` -
+  may influence a verdict. `subject_key` identifies what an invariant is ABOUT
+  (kind, contract, functions, state-variable subject, source) independent of
+  how it is currently phrased, so a shrunk role set reads as WEAKENED, not
+  REMOVED.
+- `nextgen/invariants/discover.py` (§2) — six mechanical inference rules built
+  on `src/rules/_shared`: GUARDED_ACTION / ROLE_GATED (access control),
+  INITIALIZER_ONCE (state machine), UPGRADE_AUTH (deployment),
+  SUPPLY_ACCOUNTING (ERC20 shape), REQUIRE_CONDITION (weak code invariants).
+  Test/mock paths are skipped. Everything produced is `INFERRED`.
+- `nextgen/invariants/validate.py` — the re-check. INFERRED → TESTED when the
+  structural pattern still holds; TESTED → VALIDATED when nothing in the same
+  contract contradicts it (an unguarded sibling that writes the same state
+  holds the invariant at TESTED with the contradiction recorded, rather than
+  discarding it). An upgrade hook with no guard is REJECTED (the classic UUPS
+  empty-`_authorizeUpgrade` footgun). Cross-contract contradiction hunting is
+  Phase 3.
+- `nextgen/invariants/regress.py` (§3) — `diff_invariants(old, new)` over two
+  versions' VALIDATED sets: REMOVED (gone / no longer validated) or WEAKENED
+  (still holds but constrains less). Each regression carries a structured
+  `SearchTarget` — `call_succeeds` / `reinit` / `state_relation_violated` /
+  `unauthorized_upgrade` — the objective a reproducer drives from in Phase 5.
+- `nextgen/gates.py` gains `apply_invariant_regressions`: a validated
+  regression sets `security_invariant` PASS; `invariant_violated` stays PENDING
+  (observing the violation needs execution).
+
+**Acceptance check (Phase 2):**
+`python -m pytest tests/test_nextgen_invariants_model.py tests/test_nextgen_invariants_regress.py tests/test_nextgen_invariants_discover.py -q`
+passes, and includes: only VALIDATED old invariants can regress; a guarded
+action that loses its guard between two real compiled sources produces exactly
+one REMOVED regression with a `call_succeeds` target; an unguarded upgrade hook
+is REJECTED and never `usable`. **Met** (24 passed; the 8 compile-backed cases
+run with `solc` present, else skip visibly).
