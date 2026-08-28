@@ -141,3 +141,72 @@ def apply_deployment(fs: S.FindingState, facts, *,
     not, UNKNOWN when unresolved)."""
     fs.set_gate("target_live", getattr(facts, "gate", S.GATE_UNKNOWN),
                 note=getattr(facts, "rationale", ""), evidence_ref=evidence_ref)
+
+
+_SKEPTIC_MIN_CHECKS = 3
+
+
+def apply_skeptic(fs: S.FindingState, report, *,
+                  evidence_ref: Optional[str] = None) -> None:
+    """Fold a §7 Skeptic sweep into the gates.
+
+    Each DISPROVED challenge FAILS its mapped gate (the Skeptic overrides a
+    Hunter PASS - disproving is the point). `independent_validation` reaches
+    PASS only when the sweep is clean over >= 3 checks AND the blinded
+    reproducer already agrees (`reproducer` == PASS); otherwise it is UNKNOWN.
+    The Skeptic never PASSES any other gate.
+    """
+    from .adversarial import skeptic as SK
+
+    for c in getattr(report, "challenges", []):
+        if c.outcome == SK.DISPROVED and c.gate:
+            fs.set_gate(c.gate, S.FAIL,
+                        note=f"Skeptic: {c.detail or c.name}",
+                        evidence_ref=evidence_ref)
+
+    ran = len(getattr(report, "ran", []))
+    if getattr(report, "disproved", False):
+        fs.set_gate("independent_validation", S.FAIL,
+                    note="Skeptic disproved the candidate", evidence_ref=evidence_ref)
+    elif ran >= _SKEPTIC_MIN_CHECKS and fs.gates.get("reproducer") == S.PASS:
+        fs.set_gate("independent_validation", S.PASS,
+                    note=f"Skeptic sweep clean over {ran} checks; blinded "
+                         f"reproducer agrees", evidence_ref=evidence_ref)
+    elif ran >= _SKEPTIC_MIN_CHECKS:
+        fs.set_gate("independent_validation", S.GATE_UNKNOWN,
+                    note=f"Skeptic sweep clean over {ran} checks; awaiting "
+                         f"independent reproduction")
+    else:
+        fs.set_gate("independent_validation", S.GATE_UNKNOWN,
+                    note=f"insufficient Skeptic coverage: only {ran} check(s) "
+                         f"had inputs")
+
+
+def apply_reproducer(fs: S.FindingState, result, *,
+                     evidence_ref: Optional[str] = None) -> None:
+    """Fold a §8 blinded-Reproducer result into the gates.
+
+    REPRODUCED -> `reproducer` PASS, and (the run observed it) `invariant_violated`
+    and `state_reachable` PASS. NOT_REPRODUCED -> `reproducer` FAIL. PENDING /
+    ERROR -> `reproducer` stays PENDING (the attempt is recorded in history).
+    """
+    from .adversarial import reproducer as RP
+
+    status = getattr(result, "status", RP.PENDING)
+    detail = getattr(result, "detail", "")
+    if status == RP.REPRODUCED:
+        fs.set_gate("reproducer", S.PASS, note=detail, evidence_ref=evidence_ref)
+        fs.set_gate("invariant_violated", S.PASS,
+                    note="observed during the local-fork reproduction",
+                    evidence_ref=evidence_ref)
+        fs.set_gate("state_reachable", S.PASS,
+                    note="the required state was constructed in the reproducer",
+                    evidence_ref=evidence_ref)
+    elif status == RP.NOT_REPRODUCED:
+        fs.set_gate("reproducer", S.FAIL,
+                    note=detail or "the reproduction did not trigger the "
+                                   "invariant violation", evidence_ref=evidence_ref)
+    else:
+        fs.set_gate("reproducer", S.PENDING,
+                    note=f"reproduction {status}: {detail}",
+                    evidence_ref=evidence_ref)

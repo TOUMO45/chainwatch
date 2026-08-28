@@ -376,10 +376,17 @@ class AttackPath:
 
 def find_attack_paths(graph: ProtocolGraph, *, target_contract: str = "",
                       target_function: str = "", max_depth: int = 8,
-                      max_paths: int = 25) -> list[AttackPath]:
+                      max_paths: int = 25, require_sensitive: bool = True
+                      ) -> list[AttackPath]:
     """BFS from the EOA over traversable edges to every sensitive sink (or to a
     specific target function if named). A path is `unprivileged` iff it
-    traversed no guarded edge."""
+    traversed no guarded edge.
+
+    `require_sensitive` (default True): even when a `target_function` is named,
+    only count it as an attack sink if it mutates sensitive state. Reaching a
+    view / non-mutating function is not an attack. Pass False to test bare
+    reachability of any function.
+    """
     want_specific = bool(target_function)
     results: list[AttackPath] = []
     # queue items: (node_id, path_nodes, path_edges, hit_guard, contracts_seen)
@@ -394,9 +401,12 @@ def find_attack_paths(graph: ProtocolGraph, *, target_contract: str = "",
         node = graph.nodes[nid]
 
         if node.kind == FUNCTION and len(pnodes) > 1:
-            is_target = (not want_specific and node.mutates_sensitive) or (
-                want_specific and node.contract == (target_contract or node.contract)
-                and node.function == target_function)
+            named_match = (want_specific
+                           and node.contract == (target_contract or node.contract)
+                           and node.function == target_function)
+            is_target = (
+                (not want_specific and node.mutates_sensitive)
+                or (named_match and (node.mutates_sensitive or not require_sensitive)))
             if is_target:
                 results.append(AttackPath(
                     nodes=list(pnodes), edges=list(pedges),

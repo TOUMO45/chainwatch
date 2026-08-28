@@ -118,23 +118,23 @@ Legend: **done** · **wip** · **planned** · *(extends existing module)*
 | 4  | Attack-path graph | `nextgen/attackgraph.py` | **done (Phase 3a)** |
 | 5  | Stateful multi-transaction reasoning | `nextgen/execground/sequences.py` | planned (Phase 5) |
 | 6  | Symbolic + concrete hybrid validation | `nextgen/execground/hybrid.py` | planned (Phase 5) |
-| 7  | Adversarial false-positive killer | `nextgen/adversarial/hunter.py`, `skeptic.py` | planned (Phase 4) |
-| 8  | Three-agent independent validation | `nextgen/adversarial/reproducer.py` *(extends `agent/`)* | planned (Phase 4) |
+| 7  | Adversarial false-positive killer | `nextgen/adversarial/hunter.py`, `skeptic.py` | **done (Phase 4)** |
+| 8  | Three-agent independent validation | `nextgen/adversarial/reproducer.py` (blinded interface; exec is Phase 5) | **interface done (Phase 4)** |
 | 9  | Git → build → bytecode → deployment provenance | `nextgen/provenance.py` *(composes `liveness.py`, `verified.py`)* | **done (Phase 3b)** |
 | 10 | Deployment-aware security | `nextgen/deployment.py` *(composes `liveness.resolve_implementation`)* | **done (Phase 3b)** |
 | 11 | Compensating-control analysis | `nextgen/compensating.py` *(deepens evidence field 5)* | **done (Phase 3b)** |
 | 12 | Cross-contract security regressions | `nextgen/attackgraph.py` (protocol graph) | **partly done (Phase 3a — cross-contract paths); regression diff Phase 3b** |
 | 13 | Cross-protocol / composability analysis | `nextgen/composability.py` | planned (Phase 3, best-effort) |
-| 14 | Economic exploitability engine | `nextgen/execground/economics.py` | planned (Phase 5) |
-| 15 | Automatic minimal PoC generation | `nextgen/execground/reproducer.py` | planned (Phase 5) |
+| 14 | Economic exploitability engine | `nextgen/execground/economics.py` | **done (Phase 5a)** |
+| 15 | Automatic minimal PoC generation | `nextgen/execground/reproducer.py` + `foundry.py` | **done (Phase 5a — call_succeeds / reinit; upgrade + relation Phase 5b)** |
 | 16 | Proof quality score | `nextgen/proofscore.py` | **wip (Phase 0)** |
 | 17 | Finding state machine | `nextgen/state.py` | **wip (Phase 0)** |
 | 18 | Security evidence graph | `nextgen/evidence_graph.py` | **wip (Phase 0)** |
 | 19 | Compiler / build-environment security | `nextgen/buildenv.py` *(extends `history.py`, `verified.py`)* | **done (Phase 1)** |
-| 20 | Known-exploit replay benchmark | `nextgen/benchmark/` *(extends `backtest.py`)* | planned (Phase 4) |
+| 20 | Known-exploit replay benchmark | `nextgen/benchmark/` *(offline hard-negative suite done; online suite Phase 5/6)* | **done (Phase 4)** |
 | 21 | Regression fuzzing | `nextgen/execground/regfuzz.py` | planned (Phase 5) |
 | 22 | Do not trust the LLM | architecture-wide; enforced by `proofscore` hard gates + `state` | **wip (Phase 0)** |
-| 23 | Reporting mode | `nextgen/report.py` *(extends `agent/templates.py`)* | planned (Phase 4) |
+| 23 | Reporting mode | `nextgen/report.py` | **done (Phase 4)** |
 | 24 | `UNKNOWN` security regression | `nextgen/state.py` (`UNKNOWN` outcome) | **wip (Phase 0)** |
 | 25 | Core principle | this file + `proofscore` hard gates | **wip (Phase 0)** |
 | 26 | Final architecture | integration target — see the diagram in the spec | ongoing |
@@ -310,3 +310,79 @@ DEPLOYMENT_MISMATCH; a proxy now pointing elsewhere → `target_live` FAIL →
 PATCHED; an immutable clone proven LIVE → PASS; a renamed `auth()` modifier
 that still checks msg.sender → `no_compensating_control` FAIL → FALSE_POSITIVE;
 a genuinely open function → PASS. **Met** (20 passed; 5 compile-backed).
+
+## Phase 4 — adversarial validation, benchmark, report mode (done, 2026-08-28)
+
+- `nextgen/adversarial/skeptic.py` (§7) — an independent, deterministic
+  rejection sweep. Each check is DISPROVED / NOT_DISPROVED / INAPPLICABLE; a
+  DISPROVED check FAILS its mapped gate (the Skeptic overrides a Hunter PASS —
+  disproving is the point). The Skeptic never PASSES a gate; "failed to
+  disprove" only lets the positive evidence stand.
+- `nextgen/adversarial/hunter.py` (§8 Agent A) — thin orchestrator that runs
+  the Phase 1–3 `gates.apply_*` helpers in evidence order. No analysis logic
+  of its own, so "the Hunter ran" means the same thing every time.
+- `nextgen/adversarial/reproducer.py` (§8 Agent C) — the BLINDED interface:
+  `BlindTarget` carries only contract / function / invariant statement /
+  objective — never the Hunter's write-up. `attempt()` is PENDING with no
+  runner (execution is Phase 5) and never PASSES on its own.
+- `gates.apply_skeptic` / `apply_reproducer` — `independent_validation`
+  reaches PASS **only** when the Skeptic sweep is clean over ≥3 checks AND the
+  blinded reproducer already agrees. A REPRODUCED result also PASSES
+  `invariant_violated` and `state_reachable` (the run observed them).
+- `nextgen/report.py` (§23) — a deterministic security-research report in
+  three shapes chosen by `state.classify`: CONFIRMED (with a conservative
+  severity), UNKNOWN (naming every unresolved gate, no severity), REJECTED
+  ("NOT A FINDING", with the disproving reason). Every evidence-chain line is
+  pulled from a gate result and its recorded note; an evidence-graph appendix
+  flags any LLM hypothesis as "not evidence".
+- `nextgen/benchmark/` (§20, §27) — `Metrics` (precision, recall,
+  false-positive rate, and the §27 CONFIRMED/FALSE-POSITIVE ratio, which is
+  `None` — the good case — when there are no false positives) plus an OFFLINE
+  suite of synthetic cases that is **hard-negative-heavy**: renamed modifier,
+  modifier→inline check, function-became-view, still-present-at-HEAD (all must
+  REJECT), and one genuine removal (UNKNOWN offline — CONFIRM needs deployment
+  + a reproducer).
+
+**Acceptance check (Phase 4):**
+`python -m pytest tests/test_nextgen_report.py tests/test_nextgen_adversarial.py tests/test_nextgen_benchmark.py -q`
+passes, and includes: a compensating control found → Skeptic DISPROVED → gate
+FAIL → REJECTED; a clean sweep without a reproducer leaves
+`independent_validation` UNKNOWN; the reproducer is PENDING with no runner; the
+offline benchmark runs with **zero false positives** and every case correct.
+**Met** (29 passed with report+adversarial+economics+benchmark).
+
+## Phase 5a — execution grounding: Foundry adapter, reproducer, economics (done, 2026-08-28)
+
+CHARTER carve-out in force: local fork only, no weaponised artifact, no
+broadcast tx, no auto-disclosure. The generated test lives in a throwaway
+`/tmp` project and is deleted after the run.
+
+- `nextgen/execground/foundry.py` — the toolchain adapter. Discovery order:
+  `CHAINWATCH_FORGE` env path → native `forge` on PATH → **WSL**
+  (`wsl.exe -d kali-linux --exec /bin/bash <script>`, PATH set explicitly,
+  argv `_sh_quote`d, files written via base64 to dodge every quoting hazard,
+  all subprocess I/O `utf-8`/`errors=replace` so forge's box-drawing output
+  never crashes a reader thread). `resolve()` returns `None` when nothing is
+  reachable and every caller degrades to PENDING.
+- `nextgen/execground/reproducer.py` (§15) — `generate_and_run(target,
+  source_bundle)`: scaffolds a minimal Foundry project with a vendored
+  `forge-std/Test.sol` shim (no `forge install`, no git, no network),
+  generates a minimal test for the §3 objective (`call_succeeds` → an
+  unprivileged `vm.prank` call that must NOT revert; `reinit` → a second
+  initialise that must NOT revert), runs `forge build` + `forge test`, and
+  returns REPRODUCED on `[PASS] test_invariant_is_violated`, NOT_REPRODUCED on
+  `[FAIL]`. `make_runner` wires this into the §8 blinded interface.
+  `unauthorized_upgrade` / `state_relation_violated` return a clear
+  "Phase 5b" reason.
+- `nextgen/execground/economics.py` (§14) — a documented rough model
+  (gas cost, flash-loan fee, capital ceiling for a lone attacker). The
+  `economically_feasible` gate PASSES only when estimated profit clears a
+  worthwhile threshold, FAILS (→ ECONOMICALLY_INFEASIBLE) on a money-losing or
+  capital-walled attack, UNKNOWN with no extraction estimate. Never confirms.
+
+**Acceptance check (Phase 5a):**
+`python -m pytest tests/test_nextgen_economics.py tests/test_nextgen_execground_foundry.py tests/test_nextgen_execground_reproducer.py -q`
+passes, and includes: a real WSL `forge build` + `forge test` run in which an
+unguarded `setOwner` yields REPRODUCED and an `onlyOwner`-guarded `setOwner`
+yields NOT_REPRODUCED; `$40M`-capital / `$2k`-profit → ECONOMICALLY_INFEASIBLE;
+no toolchain → PENDING. **Met** (20 passed; 8 exercise real forge via WSL).
