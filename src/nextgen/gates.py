@@ -111,3 +111,33 @@ def apply_attackgraph(fs: S.FindingState, paths: list, *,
         fs.set_gate("reachable_path", S.FAIL,
                     note="no path from an unprivileged EOA reaches the "
                          "security-sensitive sink", evidence_ref=evidence_ref)
+
+
+def apply_compensating(fs: S.FindingState, rep, *,
+                       evidence_ref: Optional[str] = None) -> None:
+    """Set `no_compensating_control` from a §11 report.
+
+    A control FOUND fails the gate (FAIL -> the finding is REJECTED as a
+    FALSE_POSITIVE - the removed guard is replaced by an equivalent mechanism).
+    None found -> PASS. `rep.gate` is already S.PASS / S.FAIL / S.GATE_UNKNOWN.
+    """
+    gate = getattr(rep, "gate", S.GATE_UNKNOWN)
+    fs.set_gate("no_compensating_control", gate,
+                note=getattr(rep, "rationale", ""), evidence_ref=evidence_ref)
+
+
+def apply_provenance(fs: S.FindingState, chain, *,
+                     evidence_ref: Optional[str] = None) -> None:
+    """Set `bytecode_provenance` from a §9 provenance chain (PASS on MATCH,
+    FAIL -> DEPLOYMENT_MISMATCH on MISMATCH, UNKNOWN when incomplete)."""
+    fs.set_gate("bytecode_provenance", getattr(chain, "gate", S.GATE_UNKNOWN),
+                note=getattr(chain, "rationale", ""), evidence_ref=evidence_ref)
+
+
+def apply_deployment(fs: S.FindingState, facts, *,
+                     evidence_ref: Optional[str] = None) -> None:
+    """Set `target_live` from a §10 deployment assessment (PASS when the
+    address serves the vulnerable implementation, FAIL -> PATCHED when it does
+    not, UNKNOWN when unresolved)."""
+    fs.set_gate("target_live", getattr(facts, "gate", S.GATE_UNKNOWN),
+                note=getattr(facts, "rationale", ""), evidence_ref=evidence_ref)

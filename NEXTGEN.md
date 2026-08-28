@@ -120,9 +120,9 @@ Legend: **done** · **wip** · **planned** · *(extends existing module)*
 | 6  | Symbolic + concrete hybrid validation | `nextgen/execground/hybrid.py` | planned (Phase 5) |
 | 7  | Adversarial false-positive killer | `nextgen/adversarial/hunter.py`, `skeptic.py` | planned (Phase 4) |
 | 8  | Three-agent independent validation | `nextgen/adversarial/reproducer.py` *(extends `agent/`)* | planned (Phase 4) |
-| 9  | Git → build → bytecode → deployment provenance | `nextgen/provenance.py` *(extends `liveness.py`, `verified.py`)* | planned (Phase 3) |
-| 10 | Deployment-aware security | `nextgen/deployment.py` *(extends `liveness.py`)* | planned (Phase 3) |
-| 11 | Compensating-control analysis | `nextgen/compensating.py` *(deepens evidence field 5)* | planned (Phase 3) |
+| 9  | Git → build → bytecode → deployment provenance | `nextgen/provenance.py` *(composes `liveness.py`, `verified.py`)* | **done (Phase 3b)** |
+| 10 | Deployment-aware security | `nextgen/deployment.py` *(composes `liveness.resolve_implementation`)* | **done (Phase 3b)** |
+| 11 | Compensating-control analysis | `nextgen/compensating.py` *(deepens evidence field 5)* | **done (Phase 3b)** |
 | 12 | Cross-contract security regressions | `nextgen/attackgraph.py` (protocol graph) | **partly done (Phase 3a — cross-contract paths); regression diff Phase 3b** |
 | 13 | Cross-protocol / composability analysis | `nextgen/composability.py` | planned (Phase 3, best-effort) |
 | 14 | Economic exploitability engine | `nextgen/execground/economics.py` | planned (Phase 5) |
@@ -277,3 +277,36 @@ writer; a guard-only path classified `unprivileged=False` → gate FAIL →
 UNREACHABLE; a cross-contract path `EOA → Router.go → Vault.drain` found from
 real compiled sources; a callback-mediated path to an otherwise-unreachable
 sink. **Met** (18 passed; 6 compile-backed).
+
+## Phase 3b — provenance, deployment-aware security, compensating controls (done, 2026-08-28)
+
+- `nextgen/provenance.py` (§9) — `build_chain` assembles
+  `commit → build settings → local runtime bytecode → on-chain runtime
+  bytecode → MATCH`, composing `src/verified.settings_for` and
+  `src/liveness.check_against_artifact`. `bytecode_provenance` gate: PASS on a
+  LIVE match, FAIL → DEPLOYMENT_MISMATCH on PATCHED, UNKNOWN when any link is
+  unestablished. A missing build-settings link never yields a PASS-with-
+  `complete`. `run()` is the thin live wrapper; every failure degrades to
+  INCOMPLETE.
+- `nextgen/deployment.py` (§10) — `assess` turns
+  `liveness.resolve_implementation` output into a `target_live` gate: PASS when
+  the address currently serves the vulnerable implementation (matched impl
+  address, or an immutable EIP-1167 clone proven LIVE), FAIL → PATCHED when the
+  proxy now points elsewhere or there is no code, UNKNOWN when unresolved.
+  Records `upgradeable` from the EIP-1967 admin slot.
+- `nextgen/compensating.py` (§11) — explicit semantic-equivalence search before
+  a "guard removed" claim stands: TRANSITIVE_GUARD (a reachable guard still
+  gates on msg.sender), CALLER_GUARD (every external reacher of an internal
+  target is guarded), STATE_PRECONDITION (reverts unless a state var only a
+  guarded / one-shot path can set), GLOBAL_HALT (an inherited pause/mutex a
+  guarded actor controls). A control found FAILS `no_compensating_control` →
+  the candidate is REJECTED as FALSE_POSITIVE.
+- `gates.py` gains `apply_provenance` / `apply_deployment` / `apply_compensating`.
+
+**Acceptance check (Phase 3b):**
+`python -m pytest tests/test_nextgen_provenance.py tests/test_nextgen_deployment.py tests/test_nextgen_compensating.py -q`
+passes, and includes: PATCHED liveness → `bytecode_provenance` FAIL →
+DEPLOYMENT_MISMATCH; a proxy now pointing elsewhere → `target_live` FAIL →
+PATCHED; an immutable clone proven LIVE → PASS; a renamed `auth()` modifier
+that still checks msg.sender → `no_compensating_control` FAIL → FALSE_POSITIVE;
+a genuinely open function → PASS. **Met** (20 passed; 5 compile-backed).
