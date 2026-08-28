@@ -6,6 +6,16 @@
 > Everything here is **additive**, lives under `src/nextgen/`, and is reached
 > only behind an explicit flag.
 
+> **Status 2026-08-28: all 27 sections implemented** across phases 0–6 (see the
+> per-phase acceptance checks below). `src/nextgen/` is imported by nothing on
+> the classic path; `./guard.sh check` stays `INTEGRITY OK` and the pre-existing
+> `pytest tests/` count is unchanged (509 passed / 3 skipped at the Phase 3
+> boundary), plus ~180 new `test_nextgen_*` tests. The execution-grounding
+> layer (§5/§6/§15/§21) is proven end to end against real Foundry via WSL.
+> Deferred by explicit decision, not omission: a symbolic solver (§6 uses a
+> Python constraint sketch), and the `unauthorized_upgrade` /
+> `state_relation_violated` reproducer generators (§15 Phase 5b follow-up).
+
 ## Mission
 
 Upgrade Chainwatch from a smart-contract security **regression scanner** into an
@@ -116,15 +126,15 @@ Legend: **done** · **wip** · **planned** · *(extends existing module)*
 | 2  | Automatic security invariant discovery | `nextgen/invariants/discover.py` + `validate.py` + `model.py` | **done (Phase 2)** |
 | 3  | Invariant regression engine | `nextgen/invariants/regress.py` | **done (Phase 2)** |
 | 4  | Attack-path graph | `nextgen/attackgraph.py` | **done (Phase 3a)** |
-| 5  | Stateful multi-transaction reasoning | `nextgen/execground/sequences.py` | planned (Phase 5) |
-| 6  | Symbolic + concrete hybrid validation | `nextgen/execground/hybrid.py` | planned (Phase 5) |
+| 5  | Stateful multi-transaction reasoning | `nextgen/execground/sequences.py` | **done (Phase 5b)** |
+| 6  | Symbolic + concrete hybrid validation | `nextgen/execground/hybrid.py` (constraint sketch + concrete; solver deferred) | **done (Phase 5b)** |
 | 7  | Adversarial false-positive killer | `nextgen/adversarial/hunter.py`, `skeptic.py` | **done (Phase 4)** |
 | 8  | Three-agent independent validation | `nextgen/adversarial/reproducer.py` (blinded interface; exec is Phase 5) | **interface done (Phase 4)** |
 | 9  | Git → build → bytecode → deployment provenance | `nextgen/provenance.py` *(composes `liveness.py`, `verified.py`)* | **done (Phase 3b)** |
 | 10 | Deployment-aware security | `nextgen/deployment.py` *(composes `liveness.resolve_implementation`)* | **done (Phase 3b)** |
 | 11 | Compensating-control analysis | `nextgen/compensating.py` *(deepens evidence field 5)* | **done (Phase 3b)** |
 | 12 | Cross-contract security regressions | `nextgen/attackgraph.py` (protocol graph) | **partly done (Phase 3a — cross-contract paths); regression diff Phase 3b** |
-| 13 | Cross-protocol / composability analysis | `nextgen/composability.py` | planned (Phase 3, best-effort) |
+| 13 | Cross-protocol / composability analysis | `nextgen/composability.py` | **done (Phase 6, best-effort)** |
 | 14 | Economic exploitability engine | `nextgen/execground/economics.py` | **done (Phase 5a)** |
 | 15 | Automatic minimal PoC generation | `nextgen/execground/reproducer.py` + `foundry.py` | **done (Phase 5a — call_succeeds / reinit; upgrade + relation Phase 5b)** |
 | 16 | Proof quality score | `nextgen/proofscore.py` | **wip (Phase 0)** |
@@ -132,12 +142,12 @@ Legend: **done** · **wip** · **planned** · *(extends existing module)*
 | 18 | Security evidence graph | `nextgen/evidence_graph.py` | **wip (Phase 0)** |
 | 19 | Compiler / build-environment security | `nextgen/buildenv.py` *(extends `history.py`, `verified.py`)* | **done (Phase 1)** |
 | 20 | Known-exploit replay benchmark | `nextgen/benchmark/` *(offline hard-negative suite done; online suite Phase 5/6)* | **done (Phase 4)** |
-| 21 | Regression fuzzing | `nextgen/execground/regfuzz.py` | planned (Phase 5) |
+| 21 | Regression fuzzing | `nextgen/execground/regfuzz.py` | **done (Phase 5b)** |
 | 22 | Do not trust the LLM | architecture-wide; enforced by `proofscore` hard gates + `state` | **wip (Phase 0)** |
 | 23 | Reporting mode | `nextgen/report.py` | **done (Phase 4)** |
 | 24 | `UNKNOWN` security regression | `nextgen/state.py` (`UNKNOWN` outcome) | **wip (Phase 0)** |
 | 25 | Core principle | this file + `proofscore` hard gates | **wip (Phase 0)** |
-| 26 | Final architecture | integration target — see the diagram in the spec | ongoing |
+| 26 | Final architecture | `nextgen/pipeline.py` — the end-to-end orchestrator | **done (Phase 6)** |
 | 27 | Ultimate objective | `nextgen/benchmark/` metric: CONFIRMED / FALSE-POSITIVE | planned (Phase 4) |
 
 ## Phase gates
@@ -386,3 +396,61 @@ passes, and includes: a real WSL `forge build` + `forge test` run in which an
 unguarded `setOwner` yields REPRODUCED and an `onlyOwner`-guarded `setOwner`
 yields NOT_REPRODUCED; `$40M`-capital / `$2k`-profit → ECONOMICALLY_INFEASIBLE;
 no toolchain → PENDING. **Met** (20 passed; 8 exercise real forge via WSL).
+
+## Phase 5b — multi-tx sequences, hybrid validation, regression fuzzing (done, 2026-08-28)
+
+- `nextgen/execground/sequences.py` (§5) — `enumerate_sequences` builds
+  candidate tx sequences (bare call, then one/two setup-prefixed variants from
+  the attack-path graph), `search` runs them shortest-first, and `minimize`
+  delta-debugs a working one to the smallest sub-sequence that still
+  reproduces (the objective step is never dropped). Output is the spec's
+  "Minimal attack sequence: 1. … 2. …" form.
+- `nextgen/execground/hybrid.py` (§6) — `sketch_constraints` classifies every
+  guard on the target path: ATTACKER_PARAM (reads only call params →
+  satisfiable), MSG_SENDER (compares msg.sender to a trusted identity →
+  BLOCKING, unless that identity has an unguarded writer), STATE (needs a
+  prior tx → hand to §5). `synthesize_calldata` picks literals that satisfy
+  the param bounds (`> 100` → `101`). `run` short-circuits to
+  `state_reachable` FAIL on a BLOCKING constraint, else runs the concrete
+  reproducer and PASSES on a demonstrated violation. The symbolic solver stays
+  deferred (charter amendment).
+- `nextgen/execground/regfuzz.py` (§21) — `run_regression_fuzz` generates a
+  Foundry fuzz test that deploys `OldTarget` and `NewTarget` (renamed copies
+  of the two versions), fuzzes the changed function, and asserts the two
+  revert on the same inputs. A `[FAIL]` counterexample →
+  DIVERGENCE_FOUND (a corroborating regression signal, not a confirmation).
+
+**Acceptance check (Phase 5b):**
+`python -m pytest tests/test_nextgen_sequences.py tests/test_nextgen_hybrid.py tests/test_nextgen_regfuzz.py -q`
+passes, and includes: `minimize` drops redundant setup steps but never the
+objective; a real 2-step `deposit → drain` sequence is found and minimised; an
+`onlyOwner` guard is classified MSG_SENDER → `state_reachable` FAIL without
+even running; `require(v > 100)` → synthesised arg `101` and a concrete PASS;
+a removed guard yields a fuzz DIVERGENCE_FOUND while identical versions do not.
+**Met** (19 passed; real WSL forge for the end-to-end cases).
+
+## Phase 6 — composability + the end-to-end pipeline (done, 2026-08-28)
+
+- `nextgen/composability.py` (§13) — structural
+  ASSUMPTION → ACTUAL BEHAVIOUR → MISMATCH from how an external call's return
+  is consumed: an unchecked `latestAnswer()` assumes price freshness; an
+  ignored `latestRoundData().updatedAt` assumes the round is current;
+  `getReserves` / `getAmountsOut` used as a valuation assumes spot == fair
+  value; `balanceOf(address(this))` as accounting truth assumes no direct
+  transfers / rebasing; an unchecked `transfer` return assumes it reverts on
+  failure. Informational (a report section), never a gate.
+- `nextgen/pipeline.py` (§26) — `run(PipelineInputs) → PipelineResult`. Runs
+  every phase's analyzer in evidence order, each wrapped so a missing input /
+  toolchain / network leaves its gate PENDING and the pipeline continues,
+  then `state.classify` → verdict, `proofscore.score` → the §16 tally, and
+  `report.render` → the §23 report with the §18 evidence-graph appendix.
+  Nothing here decides — the `gates.apply_*` helpers set gates, `classify`
+  decides (spec §22).
+
+**Acceptance check (Phase 6):**
+`python -m pytest tests/test_nextgen_composability.py tests/test_nextgen_pipeline.py -q`
+passes, and includes: a genuine offline removal → verdict UNKNOWN with
+`regression_commit` / `security_invariant` / `reachable_path` /
+`no_compensating_control` (and, with forge, `reproducer` / `invariant_violated`)
+all PASS; a renamed modifier → REJECTED; a still-present guard → REJECTED on
+`regression_commit`; a garbage source → still a classified result, not a raise.

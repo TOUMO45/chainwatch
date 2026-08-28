@@ -133,6 +133,69 @@ def generate_test(target: BlindTarget) -> tuple[Optional[str], str]:
     return src, "generated"
 
 
+def run_test_source(test_src: str, *, source_bundle: str,
+                    match_contract: str = "ReproTest",
+                    pass_marker: str = "[PASS] test_invariant_is_violated",
+                    fail_marker: str = "test_invariant_is_violated",
+                    extra_sources: Optional[dict] = None,
+                    toolchain: Optional[foundry.Toolchain] = None,
+                    keep_project: bool = False) -> ReproResult:
+    """Scaffold a throwaway Foundry project, drop in `source_bundle` (as
+    src/Target.sol), any `extra_sources` (name -> content under src/), and
+    `test_src` (as test/Repro.t.sol), then `forge build` + `forge test`.
+
+    REPRODUCED when `pass_marker` is in the output; NOT_REPRODUCED on a matching
+    `[FAIL`; ERROR/PENDING otherwise. Used by the single-objective generator,
+    the multi-tx sequence runner, and regression fuzzing.
+    """
+    tc = toolchain or foundry.resolve()
+    if tc is None:
+        return ReproResult(PENDING, "no Foundry toolchain reachable "
+                                    "(native or WSL); not attempted")
+    wd = tc.make_tempdir()
+    if not wd:
+        return ReproResult(ERROR, "could not create a working directory")
+    try:
+        writes = [
+            tc.write_file(f"{wd}/foundry.toml", _FOUNDRY_TOML),
+            tc.write_file(f"{wd}/src/Target.sol", source_bundle),
+            tc.write_file(f"{wd}/lib/forge-std/src/Test.sol", _MINIMAL_TEST_SHIM),
+            tc.write_file(f"{wd}/test/Repro.t.sol", test_src),
+        ]
+        for name, content in (extra_sources or {}).items():
+            writes.append(tc.write_file(f"{wd}/src/{name}", content))
+        if not all(writes):
+            return ReproResult(ERROR, "failed to write the project files")
+
+        build = tc.run(["forge", "build"], cwd=wd, timeout=240)
+        if not build.ok:
+            return ReproResult(
+                NOT_REPRODUCED,
+                "the generated test did not compile (insufficient shape hints)",
+                artifacts={"test_source": test_src,
+                           "build_output_tail": build.stdout[-2500:]
+                           + build.stderr[-1500:]})
+
+        run = tc.run(["forge", "test", "--match-contract", match_contract,
+                      "-vv"], cwd=wd, timeout=300)
+        out = run.stdout
+        art = {"test_source": test_src,
+               "forge_output_tail": out[-3500:] + run.stderr[-1000:]}
+        if pass_marker in out:
+            return ReproResult(REPRODUCED,
+                               "the generated local-fork test demonstrated the "
+                               "invariant violation", artifacts=art)
+        if "[FAIL" in out and fail_marker in out:
+            return ReproResult(NOT_REPRODUCED,
+                               "the invariant held under the generated sequence",
+                               artifacts=art)
+        return ReproResult(ERROR, "forge test produced no clear pass/fail",
+                           artifacts=art)
+    finally:
+        if not keep_project:
+            tc.rmtree(wd)
+
+
 def generate_and_run(target: BlindTarget, *, source_bundle: str,
                      toolchain: Optional[foundry.Toolchain] = None,
                      fork_url: Optional[str] = None,
@@ -142,56 +205,11 @@ def generate_and_run(target: BlindTarget, *, source_bundle: str,
     if tc is None:
         return ReproResult(PENDING, "no Foundry toolchain reachable "
                                     "(native or WSL); reproduction not attempted")
-
     test_src, note = generate_test(target)
     if test_src is None:
         return ReproResult(NOT_REPRODUCED, note)
-
-    wd = tc.make_tempdir()
-    if not wd:
-        return ReproResult(ERROR, "could not create a working directory in the "
-                                  "toolchain filesystem")
-    try:
-        # A vendored minimal `forge-std/Test.sol` shim - no `forge install`, no
-        # git, no network. The generated tests use only Test + vm.prank +
-        # assertTrue, all provided by the shim.
-        ok = (tc.write_file(f"{wd}/foundry.toml", _FOUNDRY_TOML)
-              and tc.write_file(f"{wd}/src/Target.sol", source_bundle)
-              and tc.write_file(f"{wd}/lib/forge-std/src/Test.sol", _MINIMAL_TEST_SHIM)
-              and tc.write_file(f"{wd}/test/Repro.t.sol", test_src))
-        if not ok:
-            return ReproResult(ERROR, "failed to write the project files")
-
-        build = tc.run(["forge", "build"], cwd=wd, timeout=240)
-        if not build.ok:
-            return ReproResult(
-                NOT_REPRODUCED,
-                "the generated reproducer did not compile "
-                "(insufficient shape hints for this target)",
-                artifacts={"test_source": test_src,
-                           "build_output_tail": build.stdout[-2500:]
-                           + build.stderr[-1500:]})
-
-        run = tc.run(["forge", "test", "--match-contract", "ReproTest",
-                      "-vv"], cwd=wd, timeout=240)
-        passed = "[PASS] test_invariant_is_violated" in run.stdout
-        failed = "[FAIL" in run.stdout and "test_invariant_is_violated" in run.stdout
-        art = {"test_source": test_src,
-               "forge_output_tail": run.stdout[-3000:] + run.stderr[-1000:]}
-        if passed:
-            return ReproResult(REPRODUCED,
-                               "the generated local-fork test demonstrated the "
-                               "invariant violation", artifacts=art)
-        if failed:
-            return ReproResult(NOT_REPRODUCED,
-                               "the invariant held under the generated sequence "
-                               "(guard still blocks the unprivileged path)",
-                               artifacts=art)
-        return ReproResult(ERROR, "forge test produced no clear pass/fail for "
-                                  "the reproducer", artifacts=art)
-    finally:
-        if not keep_project:
-            tc.rmtree(wd)
+    return run_test_source(test_src, source_bundle=source_bundle,
+                           toolchain=tc, keep_project=keep_project)
 
 
 def make_runner(source_bundle: str, **kw) -> Callable[[BlindTarget], ReproResult]:
