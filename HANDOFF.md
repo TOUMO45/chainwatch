@@ -1,42 +1,93 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `18907d6`** (NEXTGEN Twin commit 1/3). **NOT YET PUSHED** — the
-NEXTGEN Tier-1 + Twin-1 work (`d92b52`.. `18907d6`, roughly 8 commits) is local
-only; run `git push origin master` with a human present. `git status -sb`
-shows `ahead N`.
+**Last commit: `0430fbb`** ("Counterfactual Twin commit 3/3" — Twin commit
+2/3 is `c009873`, immediately before it). **NOT YET PUSHED** — this whole
+NEXTGEN + Twin arc is local only; run `git push origin master` with a human
+present; `git status -sb` shows `ahead N`.
 
-## RESUME HERE — Counterfactual Protocol Twin (a NEW 3-commit build, 1/3 done)
+## Counterfactual Protocol Twin — ALL THREE COMMITS DONE (2026-08-28)
 
 The user asked to build a **Counterfactual Protocol Twin** (a trace-driven
-complement to the NEXTGEN pipeline) per a 10-phase architecture, then said
-"COMPLETE THE WHOLE WORK IN NEW CHAT". **Commit 1/3 is done and committed
-(`18907d6`); commits 2/3 and 3/3 are the remaining work.**
+complement to the NEXTGEN pipeline) per a 10-phase architecture, in three
+commits. Commit 1/3 (Phases 1-2 + the Anvil fork lifecycle) was already done
+when this arc started. **This session finished commits 2/3 (Phases 3-5) and
+3/3 (Phases 6-10 + the orchestrator), tested everything — including a real,
+live end-to-end run against real WETH mainnet data through an actual WSL
+Anvil fork, twice — found and fixed one real bug the test suite itself
+caught, and wired the CLI.**
 
-**The full spec, the phase-by-phase design for commits 2/3 and 3/3, the
-Alchemy/anvil gotcha and its fix, and the acceptance checks are in
-`NEXTGEN.md` → "Counterfactual Protocol Twin" (bottom of the file). Read that
-section first.** Short version:
+**The full spec and the phase-by-phase implementation notes are in
+`NEXTGEN.md` → "Counterfactual Protocol Twin" (bottom of the file).**
+Short version of what shipped this session:
 
-- Done (`18907d6`, under `src/nextgen/twin/` + `execground/foundry.AnvilFork`):
-  `rpc.py` (stdlib JSON-RPC + batching), `model.py`, `collect.py` (Phase 1 —
-  alchemy_getAssetTransfers / eth_getLogs enumeration, transfer decode, impl
-  sampling), `enrich.py` (deep traces by re-executing on a local Anvil fork),
-  `fingerprint.py` (Phase 2). `AnvilFork` starts anvil in WSL behind an
-  embedded JSON-RPC shim that answers `anvil_nodeInfo`/`anvil_metadata` with
-  `-32601` (Alchemy 400s them and anvil aborts otherwise); a persistent
-  `wsl.exe` launcher with an EXIT trap keeps it alive.
-  Tests: `tests/test_nextgen_twin_{model,collect,anvil}.py` → 15 passed.
-- Commit 2/3 (TODO): `twin/boundaries.py` (Phase 3 mining),
-  `twin/diverge.py` (Phase 4 version compare), `twin/mutate.py` (Phase 5
-  counterfactual mutations). Reuse `invariants/model.CandidateInvariant` with a
-  `SOURCE_TRACE` tag.
-- Commit 3/3 (TODO): `twin/replay.py` (Phase 6, uses AnvilFork +
-  `anvil_setStorageAt`/`anvil_impersonate`/`send_tx` — LOCAL only),
-  `twin/checks.py` (Phase 7), Phase 8 reuses `execground/sequences.minimize`,
-  and `twin/twin.py` = the orchestrator wiring Phase 9 to
-  `nextgen/provenance`+`deployment` and Phase 10 to `nextgen/adversarial`
-  (Skeptic sweep + blinded reproducer). Add `chainwatch.py --twin <addr>
-  --blocks lo:hi`.
+- `twin/boundaries.py` (Phase 3) — nine independent boundary miners
+  (authorization, conservation, accounting, replay-protection, state-machine,
+  oracle-freshness, governance, collateral, withdrawal), each conservative:
+  every one needs a concrete, repeated behavioural pattern before it reports
+  anything, and `ORACLE_FRESHNESS` never advances past INFERRED since
+  staleness itself is not observable from a call trace alone.
+- `twin/diverge.py` (Phase 4) — cross-version behavioural comparison, wired
+  automatically off `Collection.upgrades` (a second `collect()` call over the
+  pre-upgrade window when an implementation change was observed).
+- `twin/mutate.py` (Phase 5) — all ten mutation kinds generate real
+  `{from,to,value,data}` calls; two are honestly-documented approximations
+  (`CALLBACK_INSERT` has no contract-deploy step to stage a real callback;
+  `PERMISSION_CHANGE`/`CROSS_CONTRACT_VARIATION` can only touch what a local
+  fork exposes without an ABI) rather than silently overclaiming.
+  `ORACLE_STATE` is genuinely real, not an approximation: a forked oracle's
+  own `updatedAt` does not advance with the fork's local clock.
+- `twin/replay.py` (Phase 6) + Phase 8 `minimize_calls` (the same
+  delta-debugging algorithm as `execground/sequences.minimize`, reimplemented
+  for a `Mutation`'s real RPC calls rather than generated Foundry-test
+  source — see the module docstring for why they aren't literally the same
+  function).
+- `twin/checks.py` (Phase 7) — six conservative violation checks, each
+  needing a concrete signal (a boundary-crossing success, a net ETH gain/loss)
+  never "this merely differs from baseline".
+- `twin/twin.py` — `CounterfactualTwin(address, rpc_url, from_block,
+  to_block).run() -> TwinResult`, wiring all ten phases. Phase 9 calls BOTH
+  `deployment.run` (can reach PASS — the Twin always has a live address) and
+  `provenance.run` (always honestly INCOMPLETE — the Twin never reads a git
+  commit, so it structurally cannot claim a commit-level bytecode match).
+  Phase 10: Skeptic sweep + a genuinely independent blinded reproducer (fresh
+  fork, re-derives the violation without seeing the Hunter-side reasoning).
+  Verdict rule stated directly in `twin.py` (not routed through
+  `nextgen/state.classify`, which is built around gates the Twin structurally
+  can't produce) — CONFIRMED only if a violation reproduced on the fork AND
+  the vulnerable implementation is still live AND the Skeptic can't disprove
+  it AND independent reproduction agrees; each of those failing independently
+  is REJECTED; anything else (most often: nothing found in budget) is
+  UNKNOWN. `chainwatch.py --twin <address> --blocks lo:hi` added.
+
+**The one real bug this arc found, in its own test suite, not from a user
+report**: `ReplayResult.executed` was computed from a trace-entry COUNT, which
+a submission failure (an exception from `send_tx` itself, distinct from an
+on-chain revert) satisfied just as well as a real success — so a call that
+never actually ran could read as "executed". Caught by
+`tests/test_nextgen_twin_replay.py::test_replay_records_send_failure_without_raising`
+on its first run against the real toolchain. Fixed by tracking submission
+success explicitly. Full writeup: `LIMITATIONS.md` → `TWIN-L1`.
+
+**Gates, raw, final:**
+```
+python -m pytest tests/test_nextgen_twin_*.py -q     92 passed  (692.5s,
+                                                       all 9 Twin test files,
+                                                       commits 1-3, run alone)
+python -m pytest tests/ -q                            679 passed, 3 skipped,
+                                                       0 failed  (1823.17s /
+                                                       30m23s, the WHOLE
+                                                       project: classic +
+                                                       NEXTGEN + Twin)
+bash guard.sh check                                    INTEGRITY OK
+```
+Two transient failures were observed during one intermediate run (a stale
+`chainwatch-nextgen/mirror/...` temp git cache corrupted by 3 concurrent
+heavy background test processes sharing it, and one flaky Anvil-fork-block
+timing assertion under that same resource contention) - both vanished on a
+clean, uncontended re-run and are NOT a code issue; see this arc's own
+commit messages and `LIMITATIONS.md` → `TWIN-L1` for the one REAL bug this
+arc did find (in its own test suite, on the first run against the real
+toolchain) and fixed.
 
 **Environment notes for the new chat:**
 - Foundry is in WSL (`kali-linux`, `/home/kali/.foundry/bin`) — see the

@@ -1,5 +1,46 @@
 # Deferred (documented in LIMITATIONS.md, not yet fixed)
 
+## Session 2026-08-28 (continued) — Counterfactual Protocol Twin, commits 2/3 + 3/3 finished
+
+Told to finish the Twin (a trace-driven complement to NEXTGEN: reason from
+real on-chain behaviour, not git history/source), test it, improve it, then
+test how it works together with the rest of the project - no check-ins.
+
+**Commits 2/3 (Phases 3-5) and 3/3 (Phases 6-10 + orchestrator) both done.**
+Full architecture and phase notes: `NEXTGEN.md`. Nine boundary miners
+(Phase 3), cross-version divergence wired automatically off observed
+implementation upgrades (Phase 4), all ten mutation kinds generating real
+`{from,to,value,data}` calls with two honestly-documented approximations
+(Phase 5), real Anvil-fork replay + delta-debug minimisation (Phase 6/8),
+six conservative violation checks (Phase 7), and the orchestrator wiring
+Phase 9 (`deployment.run` + `provenance.run` - the latter deliberately
+always INCOMPLETE for the Twin, since it never reads a git commit) and
+Phase 10 (Skeptic sweep + a genuinely blind fresh-fork reproducer) into a
+verdict rule stated directly in `twin.py`.
+
+**One real bug, caught by the test suite itself, not a user report**:
+`ReplayResult.executed` read `True` for a call whose `send_tx` outright
+raised (a submission failure), because a failed call still appended one
+trace entry, satisfying the buggy `len(traces) == len(calls)` check.
+`tests/test_nextgen_twin_replay.py::test_replay_records_send_failure_without_raising`
+failed on its first run against the real WSL/Anvil toolchain - fixed by
+tracking submission success explicitly rather than inferring it from a
+count. Full writeup: `LIMITATIONS.md` -> `TWIN-L1`.
+
+**Verified real, not just unit-tested**: a full `CounterfactualTwin.run()`
+end-to-end against real WETH mainnet data through an actual WSL Anvil fork
+- collection, enrichment, boundary mining, mutation generation, multi-fork
+replay, minimisation, and Phase 9/10 validation, all for real - completed to
+a valid verdict TWICE (once at a wide 400-block window inside a full suite
+run, once narrowed to 20 blocks standalone after the TWIN-L1 fix).
+`chainwatch.py --twin <address> --blocks lo:hi` wired.
+
+New tests: `tests/test_nextgen_twin_{boundaries,diverge,mutate,replay,checks,twin}.py`
+(75 pure + 2 real Anvil-fork integration tests, one of the two run twice at
+different window sizes). Combined Twin suite (all 9 files, commits 1-3):
+**92 passed, 0 failed**. Whole-project suite: **679 passed, 3 skipped, 0
+failed** (1823s). Committed as `c009873` (2/3) and `0430fbb` (3/3).
+
 ## Session 2026-08-28 — professional security audit: 3 real findings against Chainwatch's OWN infrastructure, all closed
 
 Different question from every prior session: not "does the tool detect a

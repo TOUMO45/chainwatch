@@ -5166,3 +5166,52 @@ verdict logic it drives; noted here as a real gap (no test exercises
 call, only through the deterministic function it eventually calls) rather
 than silently left unfixed. Full suite re-run after the fix; see this
 session's commit for the pass count.
+
+---
+
+### TWIN-L1 — `replay.executed` was True for a call that never actually submitted
+
+**Type: CORRECTNESS BUG, caught by this session's own test suite, not a user
+report. `src/nextgen/twin/replay.py`, Counterfactual Protocol Twin commit
+3/3. FOUND and FIXED 2026-08-28, same session that wrote the file.**
+
+`ReplayResult.executed` is documented as "every call in the mutation was
+submitted" - the signal every downstream Phase 7/8/10 consumer relies on to
+decide whether a replay is even eligible to be checked for a violation.
+The original implementation computed it as
+`len(res.all_traces) == len(mutation.calls)` - but `_one_call()` still
+appends a trace entry when `fork_rpc.send_tx()` itself raises (a genuine
+submission failure - impersonation rejected, malformed request - distinct
+from an on-chain revert, which `send_tx` does NOT raise for: anvil returns a
+real tx hash for a transaction that will revert, captured correctly by
+`tr.tx.status`). For the single-call mutations that make up most of Phase
+5's output (`ACTOR_SUBSTITUTION`, `BOUNDARY_VALUE`, `PERMISSION_CHANGE`,
+`DELAY`, `ORACLE_STATE`, `CROSS_CONTRACT_VARIATION`), a submission failure
+still produced exactly one trace entry against exactly one planned call -
+the count matched, so `executed` was `True` for a mutation that never
+actually ran. Every Phase 7 check gates on `replay_result.executed`, so this
+would have let a call that outright failed to submit silently fall through
+as "nothing to check" rather than "this could not be evaluated" - the wrong
+kind of silence for an evidence-gated pipeline to produce.
+
+**Caught, not missed**: `tests/test_nextgen_twin_replay.py::
+test_replay_records_send_failure_without_raising` asserted `not res.executed`
+for a fake RPC client whose `send_tx` always raises - this is exactly the
+kind of test this project's own discipline calls for (construct the failure
+mode directly, do not wait to observe it against a real fork), and it did
+its job on the first real run against the real WSL/Anvil toolchain.
+
+**Fix**: track submission success explicitly (`all_submitted`, set `False`
+and broken out of the loop the moment a call's `send_tx` raises) rather than
+inferring it from a count that a failed call satisfies just as well as a
+successful one.
+
+**Verified**: the specific regression test passes in isolation; the full
+`tests/test_nextgen_twin_replay.py` pure suite (9 tests, no network) passes;
+both the wide-window (400 blocks) and a narrowed (20 blocks) real, live
+`CounterfactualTwin.run()` end-to-end integration test against real WETH
+mainnet data - genuine collection, enrichment, boundary mining, mutation,
+multi-fork replay, Phase 8 minimisation, and Phase 9/10 validation, all
+against a real Anvil fork in WSL - both completed to a valid verdict after
+the fix, confirming the bug did not silently mask a real result in the one
+path that actually exercises it end to end.

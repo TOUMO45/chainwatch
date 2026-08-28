@@ -533,39 +533,101 @@ Delivery: 3 phased commits under `src/nextgen/twin/`.
 AnvilFork up/serve/down in ~10s; a real router tx re-executed to a depth-8 call
 tree with 41 external calls, 11 state-diff addresses, 12 transfers.
 
-### Twin commit 2/3 — Phases 3–5 (TODO)
+### Twin commit 2/3 — Phases 3–5 (done, 2026-08-28)
 
 - `twin/boundaries.py` (Phase 3) — `mine_boundaries(fingerprints, transfers,
-  traces)`: authorization (from `caller_exclusive`), conservation (token in ==
-  out per successful call across samples), accounting (a supply-like slot delta
-  tracks Σ Transfer), replay (a nonce/hash slot strictly increases; no repeat),
-  oracle-freshness (staleness gap of a read oracle slot), governance. Reuse
-  `invariants/model.CandidateInvariant` with `source=SOURCE_TRACE`; status
-  INFERRED→TESTED→VALIDATED (TESTED = holds across N≥k samples with 0
-  counterexamples).
-- `twin/diverge.py` (Phase 4) — `compare_versions(fp_old, fp_new, b_old,
-  b_new)` → accepted↔rejected flips per selector, asset-flow / state-transition
-  / authorization divergence, invariant weakening, changed external-call
-  behaviour. Version split = the `Collection.upgrades` block ranges (collect
-  two windows around an impl change).
+  traces)`: independent miners for all nine boundary kinds. AUTHORIZATION
+  from `caller_exclusive`; CONSERVATION from one-sided transfer shape;
+  ACCOUNTING from a storage slot written on every call that also moves a
+  token; REPLAY_PROTECTION from a slot that writes a distinct value on every
+  sampled call; STATE_MACHINE from a selector that both succeeds and reverts
+  for the SAME caller (rules out authorization as the explanation);
+  ORACLE_FRESHNESS from a Chainlink-shaped external staticcall (stays
+  INFERRED forever — staleness itself is not observable from a call trace);
+  GOVERNANCE from one caller set gatekeeping MULTIPLE distinct selectors, a
+  stronger signal than any single AUTHORIZATION boundary; COLLATERAL /
+  WITHDRAWAL from outflow-plus-storage-write shape. `Boundary` (already
+  scaffolded in commit 1/3, same INFERRED→TESTED→VALIDATED lifecycle as
+  `invariants.CandidateInvariant`) is the return type directly — a thin
+  `to_candidate_invariant()` bridge was considered and NOT built, since
+  nothing downstream (Phase 9/10 wiring) needed the Twin's own boundaries to
+  pass through the source-pipeline's invariant machinery; `source=SOURCE_TRACE`
+  stays defined in `model.py` for a future caller that does.
+- `twin/diverge.py` (Phase 4) — `compare_versions(fp_old, fp_new, b_old, b_new,
+  old_ref=, new_ref=)` → accept↔reject flips, asset-flow shape changes,
+  external-call target changes, and boundary divergence (a TESTED+ boundary
+  present on the old side with no counterpart on the new one = weakening; an
+  AUTHORIZATION caller set that strictly WIDENED = its own divergence kind).
+  Wired into the orchestrator: `Collection.upgrades` gives the split block: a
+  second `collect()` call over a bounded pre-upgrade window, fingerprinted and
+  mined the same way, feeds `compare_versions` automatically when an
+  implementation change was observed in the sample.
 - `twin/mutate.py` (Phase 5) — `generate_mutations(tx, trace, ctx,
-  changed_selectors)` → one `Mutation` per kind (`model.ACTOR_SUBSTITUTION`
-  …`CROSS_CONTRACT_VARIATION`), each carrying concrete `{from,to,value,data}`
-  calls + `state_overrides` + `fork_block`; weight/order by proximity to
-  `changed_selectors`.
+  changed_selectors)` → every kind fires independently; two are honestly
+  weaker approximations, documented in the module rather than hidden:
+  CALLBACK_INSERT re-issues the same call immediately after itself (no
+  contract-deploy step exists to stage a real callback contract) and
+  PERMISSION_CHANGE/CROSS_CONTRACT_VARIATION can only touch what a local fork
+  actually exposes without an ABI — the standardised EIP-1967 admin slot, an
+  ETH balance — not an arbitrary dependency's own storage layout.
+  ORACLE_STATE is the one worth calling out as genuinely real, not an
+  approximation: a forked oracle's own `updatedAt` does not advance with the
+  fork's local clock, so jumping the fork's time forward reproduces a stale
+  read exactly as it would happen for real.
 
-### Twin commit 3/3 — Phases 6–10 + orchestrator (TODO)
+**Acceptance check (Twin 2/3):**
+`python -m pytest tests/test_nextgen_twin_boundaries.py tests/test_nextgen_twin_diverge.py tests/test_nextgen_twin_mutate.py -q`
+→ 39 passed, all pure (no network/fork needed for Phases 3–5's own logic).
+
+### Twin commit 3/3 — Phases 6–10 + orchestrator (done, 2026-08-28)
 
 - `twin/replay.py` (Phase 6) — `replay(fork_rpc, mutation) → ReplayResult`:
-  apply `state_overrides` via `anvil_setStorageAt`, `anvil_impersonate`(sender),
-  `send_tx` to the LOCAL fork, read receipt + `debug_trace` + prestate diff,
-  compare pre/post balances. `twin/checks.py` (Phase 7) —
-  `check_violations(baseline_trace, replay_result, boundaries) → list[Violation]`.
-  Phase 8 — reuse `execground/sequences.minimize` (ddmin) over a mutation/tx
-  sequence.
-- `twin/twin.py` — `CounterfactualTwin(address, rpc_url, from_block, to_block).
-  run() → TwinResult`. Phase 9 → `provenance.run` / `deployment.run`. Phase 10
-  → `adversarial.skeptic.sweep` + a blinded `adversarial.reproducer` fed the
-  replay. Verdict: CONFIRMED only if a violation reproduced on the fork AND
-  provenance MATCH AND Skeptic clean AND independent reproduction agrees; else
-  REJECTED / UNKNOWN. Add `chainwatch.py --twin <address> --blocks lo:hi`.
+  applies `state_overrides` via `anvil_setStorageAt`, a `delay_seconds` via
+  `evm_increaseTime`, impersonates every sender in `mutation.calls`, submits
+  each via the LOCAL fork's `eth_sendTransaction` (never signed, never
+  broadcast), and reads back the receipt + `debug_trace_call_tree` +
+  prestate diff + before/after balances for every address the calls touch.
+  Reuses `enrich.py`'s own tracer parsers so a replayed trace is
+  structurally identical to an enriched Phase-1 one. Phase 8 —
+  `minimize_calls(mutation, verify)`: the SAME delta-debugging algorithm as
+  `execground/sequences.minimize`, reimplemented (not literally called) to
+  operate on a `Mutation`'s real `calls` list rather than generated
+  Foundry-test source — the two pipelines replay through genuinely different
+  mechanisms (a live RPC fork vs. a compiled `forge test`), so the shared
+  thing is the ddmin ALGORITHM, stated as such in the module docstring
+  rather than forced into a shared function signature that would not fit.
+- `twin/checks.py` (Phase 7) — `check_violations(baseline_trace,
+  replay_result, boundaries) → list[Violation]`: six independent, deliberately
+  conservative checks, each needing a CONCRETE signal (a replay succeeded
+  where a TESTED boundary predicted a revert, a balance moved in the
+  disallowed direction) — never "this differs from baseline" alone.
+  Authorization bypass, a net ETH gain for the calling address, a net ETH
+  loss for the target, an unexpected success against a TESTED
+  state-machine/oracle/conservation boundary, a replay-guard bypass, and a
+  doubled one-sided outflow from a same-tx repetition.
+- `twin/twin.py` — `CounterfactualTwin(address, rpc_url, from_block,
+  to_block).run() → TwinResult`, wiring Phases 1–10. Phase 9 calls BOTH
+  `deployment.run(address, vulnerable_impl=<impl at the violating replay's
+  fork block>)` (CAN reach PASS — the Twin always has a live address) and
+  `provenance.run(address, local_runtime_hex=None, commit=None)` (deliberately,
+  honestly, always reports INCOMPLETE — the Twin never reads a git commit or
+  compiles source, so it structurally cannot claim a commit-level bytecode
+  match the way the source pipeline does; calling it anyway states that gap
+  in the record rather than skipping it). Phase 10: `adversarial.skeptic.sweep`
+  fed the Phase 9 facts, and a blinded `adversarial.reproducer.attempt` whose
+  `runner` independently replays the MINIMISED mutation on a completely fresh
+  fork and re-checks for the same violation KIND — genuinely blind to the
+  Hunter-side reasoning, not a re-run of the same call. Verdict rule (stated
+  directly in `twin.py`, not routed through `nextgen/state.classify` — see
+  the module's own docstring for why): CONFIRMED only if a violation
+  reproduced on the fork AND the vulnerable implementation is still what is
+  currently live AND the Skeptic did not disprove it AND the blinded replay
+  agrees; the Skeptic disproving something, the implementation no longer
+  being live, or the blinded replay disagreeing are each independently
+  REJECTED; anything else (most commonly: no violation found in the sampled
+  budget, or validation could not complete) is UNKNOWN, never silently
+  promoted. `chainwatch.py --twin <address> --blocks lo:hi` added.
+
+**Acceptance check (Twin 3/3):** see the resume file (HANDOFF.md) for the
+exact command and pass count this arc closed with — full suite plus a real,
+live end-to-end `CounterfactualTwin.run()` against a real address.
