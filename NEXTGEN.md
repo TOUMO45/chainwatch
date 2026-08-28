@@ -10,11 +10,29 @@
 > per-phase acceptance checks below). `src/nextgen/` is imported by nothing on
 > the classic path; `./guard.sh check` stays `INTEGRITY OK` and the pre-existing
 > `pytest tests/` count is unchanged (509 passed / 3 skipped at the Phase 3
-> boundary), plus ~180 new `test_nextgen_*` tests. The execution-grounding
+> boundary), plus ~190 new `test_nextgen_*` tests. The execution-grounding
 > layer (§5/§6/§15/§21) is proven end to end against real Foundry via WSL.
 > Deferred by explicit decision, not omission: a symbolic solver (§6 uses a
 > Python constraint sketch), and the `unauthorized_upgrade` /
 > `state_relation_violated` reproducer generators (§15 Phase 5b follow-up).
+
+> **Tier 1 (2026-08-28) — real-repo scanning.** `src/nextgen/repo.py`
+> (`RepoContext`) reconstructs each commit's dependency environment with the
+> classic engine's own machinery (`src/history.py` mirror clone + per-commit
+> worktree + `detect_env`/`install`, `src/rules/_shared` compile with the right
+> solc + remappings), so a next-gen analysis of a real commit sees what the
+> classic scanner sees. `pipeline.run_from_repo(repo, parent, commit, file,
+> contract, function, [address, rpc_url])` and the `chainwatch.py --nextgen
+> FILE:CONTRACT:FUNCTION` flag drive it. **Verified on the real 88mph
+> disclosure**: from `realworld-test/88mph-src` at `a4c48d61` with the live
+> address `0xDe71B24F…`, the pipeline reaches **`CONFIRMED`** — regression
+> commit, dependency-resolved invariant regression, `EOA → NFT.init`
+> unprivileged path, byte-identical on-chain bytecode provenance, `target_live`
+> YES, and a read-only `eth_call` reproduction (the correct method for a 0.5.17
+> pragma; Foundry needs ≥ 0.6.2). On `reserve-protocol` at `e27227b2`
+> (`ActFacet.revenueOverview`, a `try/catch` removed from a non-mutating
+> function) it correctly returns **`NOT A FINDING`** — no validated invariant
+> regressed and no unprivileged path reaches a sensitive sink.
 
 ## Mission
 

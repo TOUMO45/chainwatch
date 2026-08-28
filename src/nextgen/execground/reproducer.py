@@ -196,6 +196,21 @@ def run_test_source(test_src: str, *, source_bundle: str,
             tc.rmtree(wd)
 
 
+_MIN_FORGE_SOLC = (0, 6, 2)   # forge-std / the shim need >= 0.6.2
+
+
+def _solc_floor(*texts: str) -> Optional[tuple[int, int, int]]:
+    """Lowest concrete solc version implied by a pragma string OR a bare
+    version expression (`"0.5.17"`, `"^0.8.0"`, `"pragma solidity 0.6.12;"`)."""
+    for t in texts:
+        t = t or ""
+        m = re.search(r"pragma\s+solidity\s+[^;]*?(\d+)\.(\d+)\.(\d+)", t) \
+            or re.match(r"\s*[\^~>=<]*\s*(\d+)\.(\d+)\.(\d+)", t)
+        if m:
+            return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return None
+
+
 def generate_and_run(target: BlindTarget, *, source_bundle: str,
                      toolchain: Optional[foundry.Toolchain] = None,
                      fork_url: Optional[str] = None,
@@ -205,6 +220,16 @@ def generate_and_run(target: BlindTarget, *, source_bundle: str,
     if tc is None:
         return ReproResult(PENDING, "no Foundry toolchain reachable "
                                     "(native or WSL); reproduction not attempted")
+
+    floor = _solc_floor(target.pragma, source_bundle)
+    if floor is not None and floor < _MIN_FORGE_SOLC:
+        return ReproResult(
+            PENDING,
+            f"target pragma resolves to solc {'.'.join(map(str, floor))}; a "
+            f"Foundry reproducer needs >= 0.6.2. Use the read-only "
+            f"exploitability probe (src/exploit_proof.py) against the deployed "
+            f"bytecode for this pragma.")
+
     test_src, note = generate_test(target)
     if test_src is None:
         return ReproResult(NOT_REPRODUCED, note)

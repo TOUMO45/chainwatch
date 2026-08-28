@@ -298,7 +298,24 @@ def main() -> int:
     ap.add_argument("--rpm", type=int, default=None,
                     help="model requests per minute budget (default 12, sized for the "
                          "Gemini free tier's 15). Raising it is a config change only.")
+    ap.add_argument("--nextgen", metavar="FILE:CONTRACT:FUNCTION",
+                    help="EXPERIMENTAL (src/nextgen/, additive, flag-gated): run the "
+                         "execution-grounded proof pipeline over ONE (parent:commit) "
+                         "pair given by --pairs, on the named target. Reconstructs "
+                         "each side's dependency environment, discovers + diffs "
+                         "security invariants, builds the attack-path graph, checks "
+                         "compensating controls, and - with --address - verifies "
+                         "bytecode provenance, liveness, and reproduces the violation "
+                         "(local fork, or a read-only eth_call for a pre-0.6 pragma). "
+                         "Prints a CONFIRMED / UNKNOWN / REJECTED research report. "
+                         "The classic pipeline above is untouched.")
+    ap.add_argument("--nextgen-rule", default="", metavar="ID",
+                    help="rule id hint for --nextgen (1, 3a, 3b, 10) - sets the "
+                         "report's Type label and the pre-0.6 exploit-probe rule.")
     args = ap.parse_args()
+
+    if args.nextgen:
+        return _run_nextgen(args)
 
     # --from-json: report generation over a completed scan, no repo walk.
     if args.from_json:
@@ -340,6 +357,68 @@ def main() -> int:
     if args.generate_reports:
         _generate_reports(rep, args)
     return 0
+
+
+def _run_nextgen(args) -> int:
+    """`--nextgen FILE:CONTRACT:FUNCTION` over one --pairs prev:cur pair.
+
+    Additive and flag-gated: this touches nothing in the classic pipeline. See
+    NEXTGEN.md.
+    """
+    if not args.repo:
+        sys.exit("--nextgen needs --repo")
+    parts = args.nextgen.split(":")
+    if len(parts) < 3:
+        sys.exit("--nextgen wants FILE:CONTRACT:FUNCTION "
+                 "(e.g. contracts/NFT.sol:NFT:init)")
+    file, contract, function = parts[0], parts[1], ":".join(parts[2:])
+    pairs = [tuple(x.split(":", 1)) for x in args.pairs.split(",") if ":" in x]
+    if len(pairs) != 1:
+        sys.exit("--nextgen wants exactly one --pairs prev:cur pair")
+    parent, commit = pairs[0]
+
+    repo = args.repo
+    if repo.startswith(CLONE_SCHEMES):
+        repo = clone(repo, Path(tempfile.gettempdir()) / "chainwatch-clones")
+    repo = str(Path(repo).resolve())
+
+    rpc = args.rpc_url
+    if rpc is None and args.address:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except Exception:  # noqa: BLE001
+            pass
+        import os
+        rpc = os.environ.get("RPC_URL")
+
+    from src.nextgen import pipeline as PL
+    print(f"nextgen pipeline: {contract}.{function}  "
+          f"{parent[:12]}..{commit[:12]}"
+          + (f"  @ {args.address}" if args.address else "  (repo-only)"))
+    res = PL.run_from_repo(
+        repo=repo, parent=parent, commit=commit, file=file,
+        contract=contract, function=function, rule_id=args.nextgen_rule,
+        address=args.address or "", rpc_url=rpc)
+
+    print("\n" + res.report_text)
+    print(f"\nproof score: {res.proof_score.total}  "
+          f"(permits_confirmed={res.proof_score.permits_confirmed})")
+    notes = res.sub_reports.get("repo_notes") or {}
+    if notes:
+        print("\nrun notes:")
+        for k, v in notes.items():
+            print(f"  {k}: {v}")
+    errs = {k: v for k, v in res.sub_reports.items() if k.endswith("_error")}
+    if errs:
+        print("\nnon-fatal step errors:")
+        for k, v in errs.items():
+            print(f"  {k}: {v}")
+    if args.json:
+        Path(args.json).write_text(json.dumps(res.as_dict(), indent=2, default=str),
+                                   encoding="utf-8")
+        print(f"\nfull result written to {args.json}")
+    return 0 if res.verdict in ("CONFIRMED", "UNKNOWN") else 1
 
 
 def _generate_reports(rep: dict, args) -> None:
