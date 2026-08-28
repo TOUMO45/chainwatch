@@ -115,7 +115,7 @@ Legend: **done** · **wip** · **planned** · *(extends existing module)*
 | 1  | Security Time Machine | `nextgen/timemachine.py` + `timemachine_probes.py` | **done (Phase 1)** |
 | 2  | Automatic security invariant discovery | `nextgen/invariants/discover.py` + `validate.py` + `model.py` | **done (Phase 2)** |
 | 3  | Invariant regression engine | `nextgen/invariants/regress.py` | **done (Phase 2)** |
-| 4  | Attack-path graph | `nextgen/attackgraph.py` | planned (Phase 3) |
+| 4  | Attack-path graph | `nextgen/attackgraph.py` | **done (Phase 3a)** |
 | 5  | Stateful multi-transaction reasoning | `nextgen/execground/sequences.py` | planned (Phase 5) |
 | 6  | Symbolic + concrete hybrid validation | `nextgen/execground/hybrid.py` | planned (Phase 5) |
 | 7  | Adversarial false-positive killer | `nextgen/adversarial/hunter.py`, `skeptic.py` | planned (Phase 4) |
@@ -123,7 +123,7 @@ Legend: **done** · **wip** · **planned** · *(extends existing module)*
 | 9  | Git → build → bytecode → deployment provenance | `nextgen/provenance.py` *(extends `liveness.py`, `verified.py`)* | planned (Phase 3) |
 | 10 | Deployment-aware security | `nextgen/deployment.py` *(extends `liveness.py`)* | planned (Phase 3) |
 | 11 | Compensating-control analysis | `nextgen/compensating.py` *(deepens evidence field 5)* | planned (Phase 3) |
-| 12 | Cross-contract security regressions | `nextgen/attackgraph.py` (protocol graph) | planned (Phase 3) |
+| 12 | Cross-contract security regressions | `nextgen/attackgraph.py` (protocol graph) | **partly done (Phase 3a — cross-contract paths); regression diff Phase 3b** |
 | 13 | Cross-protocol / composability analysis | `nextgen/composability.py` | planned (Phase 3, best-effort) |
 | 14 | Economic exploitability engine | `nextgen/execground/economics.py` | planned (Phase 5) |
 | 15 | Automatic minimal PoC generation | `nextgen/execground/reproducer.py` | planned (Phase 5) |
@@ -244,3 +244,36 @@ action that loses its guard between two real compiled sources produces exactly
 one REMOVED regression with a `call_succeeds` target; an unguarded upgrade hook
 is REJECTED and never `usable`. **Met** (24 passed; the 8 compile-backed cases
 run with `solc` present, else skip visibly).
+
+## Phase 3a — attack-path graph (done, 2026-08-28)
+
+- `nextgen/attackgraph.py` (§4, §12) — a `ProtocolGraph` built from a Slither
+  compilation: nodes are protocol roles (EOA, CONTRACT, PROXY,
+  IMPLEMENTATION, ORACLE, TOKEN, BRIDGE, GOVERNANCE, VAULT, POOL,
+  CALLBACK_SINK, and a FUNCTION node per external entry point); edges are the
+  moves an attacker can make (CALL, DELEGATECALL, STATICCALL, TRANSFER,
+  APPROVE, PERMIT, UPGRADE, INITIALIZE, CALLBACK, ORACLE_READ, BRIDGE_MESSAGE,
+  GOVERNANCE_EXECUTION). Contract shape is classified structurally (a
+  `upgradeTo`/`_authorizeUpgrade` contract is a PROXY, an oracle-method
+  contract is an ORACLE, …). A FUNCTION node carries `guarded`
+  (`constrains_msg_sender`) and `mutates_sensitive` (writes an access-control /
+  supply / impl-slot variable). External `HighLevelCall`s resolve to the
+  concrete callee function when it is in-unit, so cross-contract paths are
+  real edges, not guesses.
+- `find_attack_paths` — BFS from the EOA over traversable edges to every
+  sensitive sink (or a named target function). A path is `unprivileged` iff it
+  crossed no guarded edge; `crosses_contracts` marks a §12 path. Simple-path,
+  depth-capped, deterministic ordering (unprivileged first, then shortest).
+- `gates.apply_attackgraph` — an unprivileged path to the sink sets
+  `reachable_path` PASS; paths that all cross a guard, or no path at all, set
+  it FAIL → UNREACHABLE. `state_reachable` and `invariant_violated` are NOT
+  touched here — proving the preconditions can be met, and that a run violates
+  the invariant, are execution questions (Phase 5).
+
+**Acceptance check (Phase 3a):**
+`python -m pytest tests/test_nextgen_attackgraph.py tests/test_nextgen_attackgraph_build.py -q`
+passes, and includes: an unprivileged direct path to an unguarded sensitive
+writer; a guard-only path classified `unprivileged=False` → gate FAIL →
+UNREACHABLE; a cross-contract path `EOA → Router.go → Vault.drain` found from
+real compiled sources; a callback-mediated path to an otherwise-unreachable
+sink. **Met** (18 passed; 6 compile-backed).

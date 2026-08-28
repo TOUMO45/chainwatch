@@ -80,3 +80,34 @@ def apply_invariant_regressions(fs: S.FindingState, regressions: list, *,
         fs.set_gate("security_invariant", S.GATE_UNKNOWN,
                     note="no validated invariant regressed between the two "
                          "versions examined")
+
+
+def apply_attackgraph(fs: S.FindingState, paths: list, *,
+                      evidence_ref: Optional[str] = None) -> None:
+    """Set `reachable_path` from an attack-path search (spec §4).
+
+      * an UNPRIVILEGED path to the sink exists  -> PASS
+      * paths exist but every one traverses a guard -> FAIL (UNREACHABLE):
+        the sink is reachable only by a trusted role
+      * no path reaches the sink                 -> FAIL (UNREACHABLE)
+
+    `state_reachable` and `invariant_violated` are NOT set here - proving the
+    path's preconditions can be met, and that running it violates the
+    invariant, are execution questions (Phase 5).
+    """
+    unpriv = [p for p in paths if getattr(p, "unprivileged", False)]
+    if unpriv:
+        p = unpriv[0]
+        xc = " (cross-contract)" if getattr(p, "crosses_contracts", False) else ""
+        fs.set_gate("reachable_path", S.PASS,
+                    note=f"unprivileged path{xc} of {len(p.nodes)} node(s), "
+                         f"edges {p.edge_kinds}", evidence_ref=evidence_ref)
+    elif paths:
+        fs.set_gate("reachable_path", S.FAIL,
+                    note="the sink is reachable only via a msg.sender-guarded "
+                         "edge - a trusted role, not an unprivileged attacker",
+                    evidence_ref=evidence_ref)
+    else:
+        fs.set_gate("reachable_path", S.FAIL,
+                    note="no path from an unprivileged EOA reaches the "
+                         "security-sensitive sink", evidence_ref=evidence_ref)
