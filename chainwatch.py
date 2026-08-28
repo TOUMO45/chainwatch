@@ -312,7 +312,28 @@ def main() -> int:
     ap.add_argument("--nextgen-rule", default="", metavar="ID",
                     help="rule id hint for --nextgen (1, 3a, 3b, 10) - sets the "
                          "report's Type label and the pre-0.6 exploit-probe rule.")
+    ap.add_argument("--twin", metavar="ADDRESS",
+                    help="EXPERIMENTAL (src/nextgen/twin/, additive, flag-gated): "
+                         "the Counterfactual Protocol Twin - reason from REAL "
+                         "on-chain behaviour instead of git history. Collects "
+                         "real transactions for ADDRESS over --blocks, "
+                         "fingerprints per-function behaviour, mines candidate "
+                         "boundaries (authorization, conservation, accounting, "
+                         "replay protection, ...), generates and replays "
+                         "counterfactual mutations on an isolated local Anvil "
+                         "fork (never broadcast), checks for a violation, "
+                         "minimises it, then validates with an independent "
+                         "Skeptic sweep + blinded reproduction before allowing "
+                         "CONFIRMED. Needs --blocks and a Foundry toolchain "
+                         "(native forge/anvil, or WSL). Uses --rpc-url / "
+                         "RPC_URL exactly like the classic pipeline's liveness "
+                         "check.")
+    ap.add_argument("--blocks", metavar="LO:HI",
+                    help="block range for --twin, e.g. 21000000:21005000")
     args = ap.parse_args()
+
+    if args.twin:
+        return _run_twin(args)
 
     if args.nextgen:
         return _run_nextgen(args)
@@ -414,6 +435,48 @@ def _run_nextgen(args) -> int:
         print("\nnon-fatal step errors:")
         for k, v in errs.items():
             print(f"  {k}: {v}")
+    if args.json:
+        Path(args.json).write_text(json.dumps(res.as_dict(), indent=2, default=str),
+                                   encoding="utf-8")
+        print(f"\nfull result written to {args.json}")
+    return 0 if res.verdict in ("CONFIRMED", "UNKNOWN") else 1
+
+
+def _run_twin(args) -> int:
+    """`--twin ADDRESS --blocks LO:HI`. Trace-driven; needs no --repo. See
+    NEXTGEN.md - Counterfactual Protocol Twin."""
+    if not args.blocks or ":" not in args.blocks:
+        sys.exit("--twin needs --blocks LO:HI (e.g. --blocks 21000000:21005000)")
+    lo_s, hi_s = args.blocks.split(":", 1)
+    try:
+        lo, hi = int(lo_s), int(hi_s)
+    except ValueError:
+        sys.exit(f"--blocks wants two integers, got {args.blocks!r}")
+    if hi <= lo:
+        sys.exit(f"--blocks: HI ({hi}) must be greater than LO ({lo})")
+
+    rpc = args.rpc_url
+    if rpc is None:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except Exception:  # noqa: BLE001
+            pass
+        import os
+        rpc = os.environ.get("RPC_URL")
+    if not rpc:
+        sys.exit("--twin needs an RPC endpoint: pass --rpc-url or set RPC_URL in .env")
+
+    from src.nextgen.twin.twin import CounterfactualTwin
+
+    def _progress(msg: str) -> None:
+        if not args.quiet:
+            print(f"  ... {msg}")
+
+    print(f"counterfactual twin: {args.twin}  blocks [{lo}, {hi}]")
+    tw = CounterfactualTwin(args.twin, rpc, lo, hi, on_event=_progress)
+    res = tw.run()
+    print("\n" + res.render_text())
     if args.json:
         Path(args.json).write_text(json.dumps(res.as_dict(), indent=2, default=str),
                                    encoding="utf-8")
