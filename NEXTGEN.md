@@ -669,16 +669,29 @@ engine).** Source is fetched keylessly from **Sourcify**, since the benchmark
 repo does not commit its Etherscan cache. Source-only, no fork:
 
 ```
-run 72/90   (18 source unavailable)   model compiled 38/72
-micro recall  0.247   (24/97 reference findings)      novel 82
+run 72/90   (18 source unavailable)   model compiled 65/72
+micro recall  0.443   (43/97 reference findings)      novel 170
 cases CONFIRMED 0     false positives 0
 ```
 
-Recall is gated by the **compile** rate, not by the oracles: an uncompiled
-bundle contributes zero. That is honest coverage, reported, never hidden —
-the same discipline as the classic scanner's coverage block. Zero CONFIRMED is
-the correct outcome for a source-only run: with no deployment and no
-reproducer, the evidence chain cannot close, so every finding stays `UNKNOWN`.
+Recall is gated by the **compile** rate, not by the oracle count: an uncompiled
+bundle contributes zero. Measuring that rather than guessing it produced the
+single largest gain in this arc — resolving verified-bundle import paths
+(`protocolmodel._materialize_imports`) took compile from 38/72 to 65/72 and
+recall from 0.247 to 0.443, **without adding a single detector** and with the
+false-positive count still at zero:
+
+| | before | after |
+|---|---|---|
+| model compiled | 38/72 | **65/72** |
+| micro recall | 0.247 (24/97) | **0.443 (43/97)** |
+| macro recall | 0.236 | **0.451** |
+| CONFIRMED / false positives | 0 / 0 | 0 / 0 |
+
+Zero CONFIRMED is the correct outcome for a source-only run: with no deployment
+and no reproducer the evidence chain cannot close, so every finding stays
+`UNKNOWN`. Coverage is reported, never hidden — the same discipline as the
+classic scanner's coverage block.
 
 ### The signature-SCOPE oracle (§5.H) — a real bug, found blind
 

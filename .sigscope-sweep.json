@@ -1,0 +1,20 @@
+[
+ {
+  "fn": "QuickAccManager.send",
+  "party": "identity",
+  "nonce": "nonces[address(identity)]",
+  "contest": "38"
+ },
+ {
+  "fn": "QuickAccManager.sendTransfer",
+  "party": "identity",
+  "nonce": "nonces[address(identity)]",
+  "contest": "38"
+ },
+ {
+  "fn": "QuickAccManager.sendTxns",
+  "party": "identity",
+  "nonce": "nonces[address(identity)]",
+  "contest": "38"
+ }
+]
