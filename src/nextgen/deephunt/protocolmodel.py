@@ -500,8 +500,11 @@ def _compile_tree(src: Union[dict, str, Path], target: str,
             p = root / str(rel).lstrip("/")
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
+        _materialize_imports(root)
+        bundle = True
     else:
         root = Path(src)
+        bundle = False
     if not root.exists():
         raise RuntimeError(f"source root does not exist: {root}")
 
@@ -547,6 +550,21 @@ def _compile_tree(src: Union[dict, str, Path], target: str,
             pin = ""
     if pin:
         os.environ["SOLC_VERSION"] = pin
+    # `_shared.remaps_for` emits the npm convention as a RELATIVE remap
+    # (`@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/`), which
+    # solc resolves against its working directory. For a bundle WE wrote, run
+    # from inside it so that resolves to the copies `_materialize_imports` just
+    # made. Only for a bundle: a caller-supplied directory already sits in its
+    # own project layout, and moving the cwd would break the relative paths
+    # that layout depends on. Restored in `finally`, like RepoContext does for
+    # the process-global build state.
+    prev_cwd = None
+    if bundle:
+        try:
+            prev_cwd = os.getcwd()
+            os.chdir(root)
+        except OSError:
+            prev_cwd = None
     try:
         last_err: Optional[Exception] = None
         for entry in entries:
@@ -564,6 +582,11 @@ def _compile_tree(src: Union[dict, str, Path], target: str,
                 f"{entry.name} compiled but declares no contract {target!r}")
         raise last_err or RuntimeError("no entry file compiled")
     finally:
+        if prev_cwd is not None:
+            try:
+                os.chdir(prev_cwd)
+            except OSError:
+                pass
         if pin:
             if saved is None:
                 os.environ.pop("SOLC_VERSION", None)
@@ -576,6 +599,101 @@ def _safe_read(p: Path) -> str:
         return p.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
+
+
+_IMPORT_RE = re.compile(
+    r"""import\s+(?:[^"';]*?\s+from\s+)?["']([^"']+)["']""")
+
+
+def _materialize_imports(root: Path, *, max_writes: int = 400) -> int:
+    """Satisfy non-relative imports using the bundle's OWN files.
+
+    A verified-source bundle (Sourcify / Etherscan) keeps each file under the
+    key the verifier chose, but the Solidity inside still imports by the path
+    the ORIGINAL build used. Those two disagree constantly, e.g. veth ships
+
+        lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol
+
+    while its source says
+
+        import "node_modules/@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+    solc then cannot find the file and the whole bundle is unanalysable - which
+    was the single largest cause of "did not compile" on DVBench, bigger than
+    any solc-version issue.
+
+    The fix copies a file the bundle ALREADY CONTAINS to the path its own code
+    asks for, matching on the longest common path suffix. Nothing is downloaded
+    and nothing is substituted from another project: every byte still comes
+    from the verified source of the contract under analysis, so this can only
+    turn "no analysis" into "analysis", never change what the analysis sees.
+    An import with no suffix match in the bundle is left unresolved - the
+    compile then fails honestly rather than against a guessed dependency.
+
+    Returns the number of files written.
+    """
+    import posixpath
+
+    # Index the ORIGINAL bundle by every path suffix, once. Copies made below
+    # are never added, so a copy can never become the source of another copy.
+    by_suffix: dict[str, Path] = {}
+    for p in sorted(root.rglob("*.sol")):
+        parts = p.relative_to(root).as_posix().split("/")
+        for i in range(len(parts)):
+            by_suffix.setdefault("/".join(parts[i:]), p)
+
+    def _find(rel: str):
+        parts = rel.split("/")
+        return next((by_suffix["/".join(parts[i:])]
+                     for i in range(len(parts))
+                     if "/".join(parts[i:]) in by_suffix), None)
+
+    written = 0
+    # Fixed point: a file copied to a new location brings its own imports with
+    # it, and those are usually RELATIVE - so they must resolve at the new
+    # location too. Each round resolves one more level of that closure.
+    for _ in range(8):
+        wanted: set[str] = set()
+        for p in list(root.rglob("*.sol")):
+            base = p.parent.relative_to(root).as_posix()
+            for m in _IMPORT_RE.finditer(_safe_read(p)):
+                tgt = m.group(1)
+                if tgt.startswith("."):
+                    rel = posixpath.normpath(posixpath.join(base, tgt))
+                else:
+                    rel = tgt.lstrip("/")
+                if rel.startswith(".."):
+                    continue                  # escapes the bundle: unresolvable
+                wanted.add(rel)
+        # `_shared.remaps_for` applies the npm convention (`@scope/` ->
+        # `node_modules/@scope/`), so a scoped import reaches solc as
+        # `node_modules/@scope/...`. Provide both spellings.
+        for w in list(wanted):
+            if w.startswith("@"):
+                wanted.add("node_modules/" + w)
+            elif w.startswith("node_modules/"):
+                wanted.add(w[len("node_modules/"):])
+
+        new = 0
+        for want in sorted(wanted):
+            if written >= max_writes:
+                break
+            dest = root / want
+            if dest.exists():
+                continue
+            srcp = _find(want)
+            if srcp is None:
+                continue                      # not in the bundle: leave it
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(_safe_read(srcp), encoding="utf-8")
+                written += 1
+                new += 1
+            except OSError:
+                continue
+        if not new:
+            break
+    return written
 
 
 def _imported_basenames(sols: list[Path]) -> set[str]:
