@@ -1,0 +1,4741 @@
+{
+ "n_cases": 90,
+ "n_run": 72,
+ "n_source_unavailable": 18,
+ "n_compiled": 38,
+ "n_errors": 0,
+ "mean_recall": 0.2361,
+ "recall_micro": 0.2474,
+ "total_matched": 24,
+ "total_reference": 97,
+ "total_novel": 82,
+ "cases_reproduced": 1,
+ "cases_confirmed": 0,
+ "confirmed_false_positive_ratio": null,
+ "results": [
+  {
+   "case_id": "aizpttoken",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: AIZPT314.transfer may violate 'AIZPT314.transfer() must not reduce the protocol's asset reserves by more than t'",
+     "severity": "medium",
+     "description": "AIZPT314.transfer() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "AIZPT314.transfer",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.5,
+    "reference_count": 2,
+    "matched_count": 1,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Incorrect AMM reserve accounting and inconsistent swap math (buy uses post-deposit ETH balance; buy/",
+      "matched": false,
+      "why": "best so far: fn=0, kw=3, focus_ok=True"
+     },
+     {
+      "reference": "Swap logic is implicitly triggered inside ERC20 transfer(to = address(this)), allowing unbounded rep",
+      "matched": true,
+      "why": "fn overlap ['transfer'], kw=1, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 1,
+    "functions_modeled": 20,
+    "functions_explored": 9,
+    "invariants_discovered": 11,
+    "invariants_tested": 11,
+    "invariants_validated": 1,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 7,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 17,
+    "roles": 2,
+    "assets": 3,
+    "dependencies": 0,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 16.8,
+   "error": null
+  },
+  {
+   "case_id": "firetoken",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: FireToken.transfer may violate 'the price FireToken.transfer() relies on must be manipulation-resistant (a TWAP,'",
+     "severity": "medium",
+     "description": "the price FireToken.transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensforethsupportingfeeontransfertokens() | AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "FireToken.transfer",
+     "recommendation": "AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: FireToken.transferFrom may violate 'the price FireToken.transferFrom() relies on must be manipulation-resistant (a T'",
+     "severity": "medium",
+     "description": "the price FireToken.transferFrom() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensforethsupportingfeeontransfertokens() | AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "FireToken.transferFrom",
+     "recommendation": "AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: FireToken.transfer may violate 'FireToken.transfer() moves balances only - an ERC20 transfer must not run swap l'",
+     "severity": "medium",
+     "description": "FireToken.transfer() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "FireToken.transfer",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: FireToken.transferFrom may violate 'FireToken.transferFrom() moves balances only - an ERC20 transfer must not run sw'",
+     "severity": "medium",
+     "description": "FireToken.transferFrom() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "FireToken.transferFrom",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: FireToken.manualSwap may violate 'the price FireToken.manualSwap() relies on must be manipulation-resistant (a TWA'",
+     "severity": "medium",
+     "description": "the price FireToken.manualSwap() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensforethsupportingfeeontransfertokens() | AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "FireToken.manualSwap",
+     "recommendation": "AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.5,
+    "reference_count": 2,
+    "matched_count": 1,
+    "novel_findings_count": 4,
+    "match_details": [
+     {
+      "reference": "Sell path illegally burns tokens from the Uniswap pair balance and forcibly syncs reserves",
+      "matched": true,
+      "why": "fn overlap ['burn', 'mint', 'swap', 'sync', 'transfer'], kw=11, focus_ok=False"
+     },
+     {
+      "reference": "Anti-contract buy restriction relies on extcodesize and is bypassable during contract construction",
+      "matched": false,
+      "why": "best so far: fn=0, kw=2, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 5,
+    "functions_modeled": 32,
+    "functions_explored": 12,
+    "invariants_discovered": 37,
+    "invariants_tested": 37,
+    "invariants_validated": 4,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 3,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 19,
+    "roles": 1,
+    "assets": 2,
+    "dependencies": 7,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 9.3,
+   "error": null
+  },
+  {
+   "case_id": "hydt",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: InitialMintV2.initialMint may violate 'the price InitialMintV2.initialMint() relies on must be manipulation-resistant ('",
+     "severity": "medium",
+     "description": "the price InitialMintV2.initialMint() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getreserves() | AMM dependency (getreserves) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "InitialMintV2.initialMint",
+     "recommendation": "AMM dependency (getreserves) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "State Machine: InitialMintV2.initialMint may violate 'InitialMintV2.initialMint() performs a one-way transition; a second successful c'",
+     "severity": "medium",
+     "description": "InitialMintV2.initialMint() performs a one-way transition; a second successful call must be impossible | initializer / one-way flag write | deep invariant discovery (deep:state-machine); not reproduced",
+     "location": "InitialMintV2.initialMint",
+     "recommendation": "initializer / one-way flag write",
+     "_confidence": "UNKNOWN",
+     "_type": "STATE_MACHINE",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: InitialMintV2.initialMint may violate 'InitialMintV2.initialMint() must not reduce the protocol's asset reserves by mor'",
+     "severity": "medium",
+     "description": "InitialMintV2.initialMint() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "InitialMintV2.initialMint",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: InitialMintV2.initialMint may violate 'the price InitialMintV2.initialMint() relies on must be manipulation-resistant ('",
+     "severity": "medium",
+     "description": "the price InitialMintV2.initialMint() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via quote() | AMM dependency (quote) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "InitialMintV2.initialMint",
+     "recommendation": "AMM dependency (quote) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 3,
+    "match_details": [
+     {
+      "reference": "Mint pricing relies on AMM spot reserves as an oracle (no TWAP / manipulation resistance)",
+      "matched": true,
+      "why": "fn overlap ['initialmint'], kw=9, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 10,
+    "functions_modeled": 34,
+    "functions_explored": 2,
+    "invariants_discovered": 5,
+    "invariants_tested": 5,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 5,
+    "candidates_rejected": 1,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 5,
+    "roles": 0,
+    "assets": 2,
+    "dependencies": 11,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 2.4,
+   "error": null
+  },
+  {
+   "case_id": "sashatoken",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: SASHA.transfer may violate 'the price SASHA.transfer() relies on must be manipulation-resistant (a TWAP, or '",
+     "severity": "medium",
+     "description": "the price SASHA.transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensforethsupportingfeeontransfertokens() | AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "SASHA.transfer",
+     "recommendation": "AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: SASHA.transferFrom may violate 'the price SASHA.transferFrom() relies on must be manipulation-resistant (a TWAP,'",
+     "severity": "medium",
+     "description": "the price SASHA.transferFrom() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensforethsupportingfeeontransfertokens() | AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "SASHA.transferFrom",
+     "recommendation": "AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: SASHA.transfer may violate 'SASHA.transfer() moves balances only - an ERC20 transfer must not run swap logic'",
+     "severity": "medium",
+     "description": "SASHA.transfer() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "SASHA.transfer",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: SASHA.transferFrom may violate 'SASHA.transferFrom() moves balances only - an ERC20 transfer must not run swap l'",
+     "severity": "medium",
+     "description": "SASHA.transferFrom() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "SASHA.transferFrom",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: SASHA._transfer may violate 'the price SASHA._transfer() relies on must be manipulation-resistant (a TWAP, or'",
+     "severity": "medium",
+     "description": "the price SASHA._transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensforethsupportingfeeontransfertokens() | AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "SASHA._transfer",
+     "recommendation": "AMM dependency (swapexacttokensforethsupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: SASHA._transfer may violate 'SASHA._transfer() moves balances only - an ERC20 transfer must not run swap logi'",
+     "severity": "medium",
+     "description": "SASHA._transfer() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "SASHA._transfer",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 2,
+    "matched_count": 2,
+    "novel_findings_count": 4,
+    "match_details": [
+     {
+      "reference": "swapTokensAtAmount is never initialized (defaults to 0), making swapBack trigger on essentially ever",
+      "matched": true,
+      "why": "fn overlap ['transfer'], kw=2, focus_ok=False"
+     },
+     {
+      "reference": "Fee branching uses inconsistent if/else structure, allowing incorrect buy/sell classification and un",
+      "matched": true,
+      "why": "fn overlap ['transfer'], kw=2, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 5,
+    "functions_modeled": 49,
+    "functions_explored": 9,
+    "invariants_discovered": 16,
+    "invariants_tested": 16,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 2,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 20,
+    "roles": 1,
+    "assets": 2,
+    "dependencies": 3,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 4.6,
+   "error": null
+  },
+  {
+   "case_id": "morphoblue",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Access Control: Morpho.liquidate may violate 'the privileged state ['market', 'position'] may only be changed by an authorized'",
+     "severity": "medium",
+     "description": "the privileged state ['market', 'position'] may only be changed by an authorized caller - yet Morpho.liquidate() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Morpho.liquidate",
+     "recommendation": "the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Access Control: Morpho.repay may violate 'the privileged state ['market', 'position'] may only be changed by an authorized'",
+     "severity": "medium",
+     "description": "the privileged state ['market', 'position'] may only be changed by an authorized caller - yet Morpho.repay() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Morpho.repay",
+     "recommendation": "the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Access Control: Morpho.supply may violate 'the privileged state ['market', 'position'] may only be changed by an authorized'",
+     "severity": "medium",
+     "description": "the privileged state ['market', 'position'] may only be changed by an authorized caller - yet Morpho.supply() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Morpho.supply",
+     "recommendation": "the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Access Control: Morpho.supplyCollateral may violate 'the privileged state ['position'] may only be changed by an authorized caller - '",
+     "severity": "medium",
+     "description": "the privileged state ['position'] may only be changed by an authorized caller - yet Morpho.supplyCollateral() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Morpho.supplyCollateral",
+     "recommendation": "the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Economic: Morpho.liquidate may violate 'Morpho liquidation may only seize collateral from a position that is actually be'",
+     "severity": "medium",
+     "description": "Morpho liquidation may only seize collateral from a position that is actually below the liquidation threshold | liquidation relation present | deep invariant discovery (deep:debt-collateral); not reproduced",
+     "location": "Morpho.liquidate",
+     "recommendation": "liquidation relation present",
+     "_confidence": "UNKNOWN",
+     "_type": "ECONOMIC",
+     "_reproduced": false
+    },
+    {
+     "title": "Access Control: Morpho.setAuthorizationWithSig may violate 'the privileged state ['isAuthorized'] may only be changed by an authorized calle'",
+     "severity": "medium",
+     "description": "the privileged state ['isAuthorized'] may only be changed by an authorized caller - yet Morpho.setAuthorizationWithSig() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Morpho.setAuthorization'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Morpho.setAuthorizationWithSig",
+     "recommendation": "the same state is guarded elsewhere by ['Morpho.setAuthorization']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "State Machine: Morpho.setAuthorizationWithSig may violate 'each authorization consumed by Morpho.setAuthorizationWithSig() (nonce / signatu'",
+     "severity": "medium",
+     "description": "each authorization consumed by Morpho.setAuthorizationWithSig() (nonce / signature / message id) can be used at most once | nonce slot / signature-verifying entry point | deep invariant discovery (deep:replay-nonce); not reproduced",
+     "location": "Morpho.setAuthorizationWithSig",
+     "recommendation": "nonce slot / signature-verifying entry point",
+     "_confidence": "UNKNOWN",
+     "_type": "STATE_MACHINE",
+     "_reproduced": false
+    },
+    {
+     "title": "Access Control: Morpho.accrueInterest may violate 'the privileged state ['market', 'position'] may only be changed by an authorized'",
+     "severity": "medium",
+     "description": "the privileged state ['market', 'position'] may only be changed by an authorized caller - yet Morpho.accrueInterest() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Morpho.accrueInterest",
+     "recommendation": "the same state is guarded elsewhere by ['Morpho.borrow', 'Morpho.setFee', 'Morpho.withdraw', 'Morpho.withdrawCollateral']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.5,
+    "reference_count": 2,
+    "matched_count": 1,
+    "novel_findings_count": 7,
+    "match_details": [
+     {
+      "reference": "Market state keyed by `id` but calldata `MarketParams` are not validated against the stored market c",
+      "matched": false,
+      "why": "best so far: fn=0, kw=2, focus_ok=False"
+     },
+     {
+      "reference": "Reentrancy via user-controlled callbacks can manipulate positions before funds are pulled/pushed",
+      "matched": true,
+      "why": "fn overlap ['liquidate'], kw=4, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 18,
+    "functions_modeled": 39,
+    "functions_explored": 16,
+    "invariants_discovered": 21,
+    "invariants_tested": 21,
+    "invariants_validated": 7,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 18,
+    "roles": 2,
+    "assets": 1,
+    "dependencies": 4,
+    "state_relations": 5
+   },
+   "execution_time_seconds": 3.0,
+   "error": null
+  },
+  {
+   "case_id": "vista",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: VistaFinance.delegateBySig may violate 'the price VistaFinance.delegateBySig() relies on must be manipulation-resistant '",
+     "severity": "medium",
+     "description": "the price VistaFinance.delegateBySig() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via current() | ORACLE dependency (current) feeds a state transition; return_checked=False | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "VistaFinance.delegateBySig",
+     "recommendation": "ORACLE dependency (current) feeds a state transition; return_checked=False",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "State Machine: VistaFinance.delegateBySig may violate 'each authorization consumed by VistaFinance.delegateBySig() (nonce / signature /'",
+     "severity": "medium",
+     "description": "each authorization consumed by VistaFinance.delegateBySig() (nonce / signature / message id) can be used at most once | nonce slot / signature-verifying entry point | deep invariant discovery (deep:replay-nonce); not reproduced",
+     "location": "VistaFinance.delegateBySig",
+     "recommendation": "nonce slot / signature-verifying entry point",
+     "_confidence": "UNKNOWN",
+     "_type": "STATE_MACHINE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: VistaFinance.permit may violate 'the price VistaFinance.permit() relies on must be manipulation-resistant (a TWAP'",
+     "severity": "medium",
+     "description": "the price VistaFinance.permit() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via current() | ORACLE dependency (current) feeds a state transition; return_checked=False | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "VistaFinance.permit",
+     "recommendation": "ORACLE dependency (current) feeds a state transition; return_checked=False",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "State Machine: VistaFinance.permit may violate 'each authorization consumed by VistaFinance.permit() (nonce / signature / messag'",
+     "severity": "medium",
+     "description": "each authorization consumed by VistaFinance.permit() (nonce / signature / message id) can be used at most once | nonce slot / signature-verifying entry point | deep invariant discovery (deep:replay-nonce); not reproduced",
+     "location": "VistaFinance.permit",
+     "recommendation": "nonce slot / signature-verifying entry point",
+     "_confidence": "UNKNOWN",
+     "_type": "STATE_MACHINE",
+     "_reproduced": false
+    },
+    {
+     "title": "State Machine: VistaFinance.nonces may violate 'each authorization consumed by VistaFinance.nonces() (nonce / signature / messag'",
+     "severity": "medium",
+     "description": "each authorization consumed by VistaFinance.nonces() (nonce / signature / message id) can be used at most once | nonce slot / signature-verifying entry point | deep invariant discovery (deep:replay-nonce); not reproduced",
+     "location": "VistaFinance.nonces",
+     "recommendation": "nonce slot / signature-verifying entry point",
+     "_confidence": "UNKNOWN",
+     "_type": "STATE_MACHINE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 5,
+    "match_details": [
+     {
+      "reference": "Flash-mint/flash-burn flow is not covered by transfer restriction hooks (freeze/lock checks only app",
+      "matched": false,
+      "why": "best so far: fn=0, kw=1, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 10,
+    "functions_modeled": 185,
+    "functions_explored": 7,
+    "invariants_discovered": 10,
+    "invariants_tested": 10,
+    "invariants_validated": 1,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 3,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 39,
+    "roles": 2,
+    "assets": 1,
+    "dependencies": 2,
+    "state_relations": 2
+   },
+   "execution_time_seconds": 7.7,
+   "error": null
+  },
+  {
+   "case_id": "labubu",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: LABUBU.? may violate 'in LABUBU, the sum of all balances equals totalSupply at all times'",
+     "severity": "medium",
+     "description": "in LABUBU, the sum of all balances equals totalSupply at all times | ERC20 supply/balance shape | deep invariant discovery (deep:supply-consistency); not reproduced",
+     "location": "LABUBU",
+     "recommendation": "ERC20 supply/balance shape",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 1,
+    "match_details": [
+     {
+      "reference": "Non-standard balance top-up when balance hits zero enables unbounded inflation",
+      "matched": false,
+      "why": "best so far: fn=0, kw=4, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 2,
+    "functions_modeled": 20,
+    "functions_explored": 0,
+    "invariants_discovered": 1,
+    "invariants_tested": 1,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 1,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 12,
+    "roles": 0,
+    "assets": 1,
+    "dependencies": 0,
+    "state_relations": 1
+   },
+   "execution_time_seconds": 2.0,
+   "error": null
+  },
+  {
+   "case_id": "pledge",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: Pledge.swapTokenForFund may violate 'the price Pledge.swapTokenForFund() relies on must be manipulation-resistant (a '",
+     "severity": "medium",
+     "description": "the price Pledge.swapTokenForFund() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via addliquidity() | AMM dependency (addliquidity) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "Pledge.swapTokenForFund",
+     "recommendation": "AMM dependency (addliquidity) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Pledge.withdrawTokens may violate 'the value Pledge.withdrawTokens() pays msg.sender is at most msg.sender's record'",
+     "severity": "medium",
+     "description": "the value Pledge.withdrawTokens() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | WITHDRAW_ASSET relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Pledge.withdrawTokens",
+     "recommendation": "WITHDRAW_ASSET relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Pledge.withdrawTokens2000 may violate 'the value Pledge.withdrawTokens2000() pays msg.sender is at most msg.sender's re'",
+     "severity": "medium",
+     "description": "the value Pledge.withdrawTokens2000() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | WITHDRAW_ASSET relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Pledge.withdrawTokens2000",
+     "recommendation": "WITHDRAW_ASSET relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 3,
+    "match_details": [
+     {
+      "reference": "Treasury swap and liquidity management functions are publicly callable and allow arbitrary recipient",
+      "matched": false,
+      "why": "best so far: fn=0, kw=2, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 9,
+    "functions_modeled": 101,
+    "functions_explored": 14,
+    "invariants_discovered": 16,
+    "invariants_tested": 16,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 17,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 5,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 74,
+    "roles": 2,
+    "assets": 1,
+    "dependencies": 4,
+    "state_relations": 3
+   },
+   "execution_time_seconds": 17.5,
+   "error": null
+  },
+  {
+   "case_id": "veth",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "`takeLoan` allows unbacked minting based solely on `validFactories` trust (no collateral/reserve inv",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Debt/transfer restriction is not a sound solvency control and can be bypassed by minting to unconstr",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 36.0,
+   "error": null
+  },
+  {
+   "case_id": "cloberdex",
+   "chain_id": 8453,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "burn() performs external hook/callback before finalizing internal accounting (CEI violation)",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Permissionless open() allows untrusted strategy/hook addresses, enabling attacker-controlled externa",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 20.0,
+   "error": null
+  },
+  {
+   "case_id": "ast",
+   "chain_id": 56,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Liquidity add/remove inference uses attacker-influenceable balance heuristics and can burn tokens fr",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 3,
+    "functions_modeled": 37,
+    "functions_explored": 11,
+    "invariants_discovered": 13,
+    "invariants_tested": 13,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 14,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 8,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 24,
+    "roles": 2,
+    "assets": 2,
+    "dependencies": 0,
+    "state_relations": 1
+   },
+   "execution_time_seconds": 16.4,
+   "error": null
+  },
+  {
+   "case_id": "ipc",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: Token.transfer may violate 'the price Token.transfer() relies on must be manipulation-resistant (a TWAP, or '",
+     "severity": "medium",
+     "description": "the price Token.transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getreserves() | AMM dependency (getreserves) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "Token.transfer",
+     "recommendation": "AMM dependency (getreserves) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: Token.transferFrom may violate 'the price Token.transferFrom() relies on must be manipulation-resistant (a TWAP,'",
+     "severity": "medium",
+     "description": "the price Token.transferFrom() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getreserves() | AMM dependency (getreserves) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "Token.transferFrom",
+     "recommendation": "AMM dependency (getreserves) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: Token.transfer may violate 'Token.transfer() moves balances only - an ERC20 transfer must not run swap logic'",
+     "severity": "medium",
+     "description": "Token.transfer() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "Token.transfer",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: Token.transferFrom may violate 'Token.transferFrom() moves balances only - an ERC20 transfer must not run swap l'",
+     "severity": "medium",
+     "description": "Token.transferFrom() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "Token.transferFrom",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: Token._destroy may violate 'the price Token._destroy() relies on must be manipulation-resistant (a TWAP, or '",
+     "severity": "medium",
+     "description": "the price Token._destroy() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via sync() | AMM dependency (sync) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "Token._destroy",
+     "recommendation": "AMM dependency (sync) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: Token._transfer may violate 'the price Token._transfer() relies on must be manipulation-resistant (a TWAP, or'",
+     "severity": "medium",
+     "description": "the price Token._transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getreserves() | AMM dependency (getreserves) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "Token._transfer",
+     "recommendation": "AMM dependency (getreserves) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: Token._transfer may violate 'Token._transfer() moves balances only - an ERC20 transfer must not run swap logi'",
+     "severity": "medium",
+     "description": "Token._transfer() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "Token._transfer",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 2,
+    "matched_count": 2,
+    "novel_findings_count": 5,
+    "match_details": [
+     {
+      "reference": "Token transfer logic mutates AMM pair balance and forcibly calls `sync()`, enabling reserve/price de",
+      "matched": true,
+      "why": "fn overlap ['transfer'], kw=3, focus_ok=False"
+     },
+     {
+      "reference": "Anti-bot transfer timelock is sender-only and directionally applied, allowing easy bypass of intende",
+      "matched": true,
+      "why": "fn overlap ['swap', 'sync', 'transfer'], kw=7, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 4,
+    "functions_modeled": 20,
+    "functions_explored": 8,
+    "invariants_discovered": 19,
+    "invariants_tested": 19,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 1,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 13,
+    "roles": 1,
+    "assets": 1,
+    "dependencies": 3,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 2.5,
+   "error": null
+  },
+  {
+   "case_id": "laura_token",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "mosca2",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: Mosca.withdrawFiat may violate 'the value Mosca.withdrawFiat() pays msg.sender is at most msg.sender's recorded '",
+     "severity": "medium",
+     "description": "the value Mosca.withdrawFiat() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | WITHDRAW_ASSET relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Mosca.withdrawFiat",
+     "recommendation": "WITHDRAW_ASSET relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.5,
+    "reference_count": 2,
+    "matched_count": 1,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "withdrawFiat() redeems internal \u201ccredits\u201d for real stablecoins (asset/unit mismatch)",
+      "matched": true,
+      "why": "fn overlap ['withdrawfiat'], kw=5, focus_ok=True"
+     },
+     {
+      "reference": "Fee/referral distribution credits balances based on user-supplied amounts and can run with invalid u",
+      "matched": false,
+      "why": "best so far: fn=0, kw=2, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 2,
+    "functions_modeled": 34,
+    "functions_explored": 19,
+    "invariants_discovered": 20,
+    "invariants_tested": 20,
+    "invariants_validated": 4,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 20,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 7,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 26,
+    "roles": 5,
+    "assets": 0,
+    "dependencies": 0,
+    "state_relations": 1
+   },
+   "execution_time_seconds": 21.2,
+   "error": null
+  },
+  {
+   "case_id": "mosca",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: Mosca.withdrawFiat may violate 'the value Mosca.withdrawFiat() pays msg.sender is at most msg.sender's recorded '",
+     "severity": "medium",
+     "description": "the value Mosca.withdrawFiat() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | WITHDRAW_ASSET relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Mosca.withdrawFiat",
+     "recommendation": "WITHDRAW_ASSET relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "withdrawAll() pays out internal ledgers without consistently debiting them and mixes multiple asset ",
+      "matched": true,
+      "why": "kw overlap 6 + focus_ok"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 2,
+    "functions_modeled": 34,
+    "functions_explored": 18,
+    "invariants_discovered": 19,
+    "invariants_tested": 19,
+    "invariants_validated": 5,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 20,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 7,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 25,
+    "roles": 5,
+    "assets": 0,
+    "dependencies": 0,
+    "state_relations": 1
+   },
+   "execution_time_seconds": 20.6,
+   "error": null
+  },
+  {
+   "case_id": "unilend",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "alkimiya_io",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Unsafe narrowing cast truncates share supply accounting (uint256 -> uint128) causing ERC1155 balance",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 38.1,
+   "error": null
+  },
+  {
+   "case_id": "h2o",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Access Control: Token.transferFrom may violate 'the privileged state ['_allowances', '_balances'] may only be changed by an auth'",
+     "severity": "medium",
+     "description": "the privileged state ['_allowances', '_balances'] may only be changed by an authorized caller - yet Token.transferFrom() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Token.transfer'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Token.transferFrom",
+     "recommendation": "the same state is guarded elsewhere by ['Token.transfer']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Access Control: Token.approve may violate 'the privileged state ['_allowances'] may only be changed by an authorized caller'",
+     "severity": "medium",
+     "description": "the privileged state ['_allowances'] may only be changed by an authorized caller - yet Token.approve() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Token.transfer'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Token.approve",
+     "recommendation": "the same state is guarded elsewhere by ['Token.transfer']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Token.? may violate 'in Token, the sum of all balances equals totalSupply at all times'",
+     "severity": "medium",
+     "description": "in Token, the sum of all balances equals totalSupply at all times | ERC20 supply/balance shape | deep invariant discovery (deep:supply-consistency); not reproduced",
+     "location": "Token",
+     "recommendation": "ERC20 supply/balance shape",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 3,
+    "match_details": [
+     {
+      "reference": "Balance inflation bug: subtracts `toSub` but credits full `amount`",
+      "matched": false,
+      "why": "best so far: fn=0, kw=6, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 6,
+    "functions_modeled": 27,
+    "functions_explored": 5,
+    "invariants_discovered": 7,
+    "invariants_tested": 7,
+    "invariants_validated": 2,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 13,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 7,
+    "candidates_rejected": 4,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 14,
+    "roles": 2,
+    "assets": 2,
+    "dependencies": 1,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 16.0,
+   "error": null
+  },
+  {
+   "case_id": "uni",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "pump",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "btnft",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Access Control: BTNFT.safeTransferFrom may violate 'the privileged state ['_allTokens', '_allTokensIndex', '_balances', '_ownedToken'",
+     "severity": "medium",
+     "description": "the privileged state ['_allTokens', '_allTokensIndex', '_balances', '_ownedTokens', '_ownedTokensIndex', '_owners', '_tokenApprovals', 'vestingSchedules'] may only be changed by an authorized caller - yet BTNFT.safeTransferFrom() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['BTNFT.batchMintNFT', 'BTNFT.mintNFT'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "BTNFT.safeTransferFrom",
+     "recommendation": "the same state is guarded elsewhere by ['BTNFT.batchMintNFT', 'BTNFT.mintNFT']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Access Control: BTNFT.transferFrom may violate 'the privileged state ['_allTokens', '_allTokensIndex', '_balances', '_ownedToken'",
+     "severity": "medium",
+     "description": "the privileged state ['_allTokens', '_allTokensIndex', '_balances', '_ownedTokens', '_ownedTokensIndex', '_owners', '_tokenApprovals', 'vestingSchedules'] may only be changed by an authorized caller - yet BTNFT.transferFrom() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['BTNFT.batchMintNFT', 'BTNFT.mintNFT'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "BTNFT.transferFrom",
+     "recommendation": "the same state is guarded elsewhere by ['BTNFT.batchMintNFT', 'BTNFT.mintNFT']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: BTNFT.buyNft may violate 'BTNFT.buyNft() must not reduce the protocol's asset reserves by more than the va'",
+     "severity": "medium",
+     "description": "BTNFT.buyNft() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "BTNFT.buyNft",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: BTNFT.safeTransferFrom may violate 'BTNFT.safeTransferFrom() must not reduce the protocol's asset reserves by more t'",
+     "severity": "medium",
+     "description": "BTNFT.safeTransferFrom() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "BTNFT.safeTransferFrom",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: BTNFT.transferFrom may violate 'BTNFT.transferFrom() must not reduce the protocol's asset reserves by more than '",
+     "severity": "medium",
+     "description": "BTNFT.transferFrom() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "BTNFT.transferFrom",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.5,
+    "reference_count": 2,
+    "matched_count": 1,
+    "novel_findings_count": 4,
+    "match_details": [
+     {
+      "reference": "ERC721 transferFrom override breaks standard authorization checks",
+      "matched": true,
+      "why": "fn overlap ['transferfrom'], kw=5, focus_ok=True"
+     },
+     {
+      "reference": "Reward/settlement logic improperly relies on contract-held NFT ownership without authenticated depos",
+      "matched": false,
+      "why": "best so far: fn=0, kw=3, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 15,
+    "functions_modeled": 187,
+    "functions_explored": 10,
+    "invariants_discovered": 15,
+    "invariants_tested": 15,
+    "invariants_validated": 4,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 3,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 28,
+    "roles": 2,
+    "assets": 2,
+    "dependencies": 1,
+    "state_relations": 1
+   },
+   "execution_time_seconds": 12.7,
+   "error": null
+  },
+  {
+   "case_id": "lifeprotocol",
+   "chain_id": 56,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Buy/sell pricing is not derived from a consistent reserve/supply invariant (manual price ratchet ena",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 5,
+    "functions_modeled": 81,
+    "functions_explored": 10,
+    "invariants_discovered": 13,
+    "invariants_tested": 13,
+    "invariants_validated": 3,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 17,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 8,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 38,
+    "roles": 4,
+    "assets": 1,
+    "dependencies": 0,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 18.5,
+   "error": null
+  },
+  {
+   "case_id": "krc_token_pair",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "bankroll_network",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "bankroll_stack",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "gangsterfinance",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "resupply_fi",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Collateral valuation trusts manipulable ERC4626/share-token spot price without anti-manipulation gua",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 3.5,
+   "error": null
+  },
+  {
+   "case_id": "fpc",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Token transfer hook moves assets out of the AMM pair (direct pair-balance mutation + sync) during se",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Liquidity add/remove detection based on pair balances vs reserves is manipulable and changes sell/bu",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 36.1,
+   "error": null
+  },
+  {
+   "case_id": "multicall_with_eth",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: MulticallWithETH.aggregate may violate 'MulticallWithETH.aggregate() must not reduce the protocol's asset reserves by mo'",
+     "severity": "medium",
+     "description": "MulticallWithETH.aggregate() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "MulticallWithETH.aggregate",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "aggregate() allows unrestricted arbitrary external calls using this contract as msg.sender",
+      "matched": true,
+      "why": "fn overlap ['aggregate'], kw=2, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 1,
+    "functions_modeled": 4,
+    "functions_explored": 1,
+    "invariants_discovered": 1,
+    "invariants_tested": 1,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 1,
+    "counterfactual_mutations": 3,
+    "mutations_executed": 4,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 1,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 3,
+    "roles": 0,
+    "assets": 1,
+    "dependencies": 2,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 8.0,
+   "error": null
+  },
+  {
+   "case_id": "stepp2p",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Sale cancellation does not clear remaining balance and modifySaleOrder lacks active-state check",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 35.9,
+   "error": null
+  },
+  {
+   "case_id": "grizzifi",
+   "chain_id": 56,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Milestone qualification uses lifetime `totalInvested` instead of active stake, allowing permanent el",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 2,
+    "functions_modeled": 25,
+    "functions_explored": 5,
+    "invariants_discovered": 5,
+    "invariants_tested": 5,
+    "invariants_validated": 3,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 5,
+    "counterfactual_mutations": 31,
+    "mutations_executed": 20,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 5,
+    "candidates_rejected": 5,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 21,
+    "roles": 2,
+    "assets": 0,
+    "dependencies": 0,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 61.1,
+   "error": null
+  },
+  {
+   "case_id": "hexotic",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Offer creation bug: offer ID is never propagated to caller due to pass-by-value parameter in newOffe",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 54.9,
+   "error": null
+  },
+  {
+   "case_id": "multicall_with_xera",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: LUXERA.burn may violate 'the price LUXERA.burn() relies on must be manipulation-resistant (a TWAP, or a s'",
+     "severity": "medium",
+     "description": "the price LUXERA.burn() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensfortokenssupportingfeeontransfertokens() | AMM dependency (swapexacttokensfortokenssupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "LUXERA.burn",
+     "recommendation": "AMM dependency (swapexacttokensfortokenssupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: LUXERA.burnFrom may violate 'the price LUXERA.burnFrom() relies on must be manipulation-resistant (a TWAP, or'",
+     "severity": "medium",
+     "description": "the price LUXERA.burnFrom() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensfortokenssupportingfeeontransfertokens() | AMM dependency (swapexacttokensfortokenssupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "LUXERA.burnFrom",
+     "recommendation": "AMM dependency (swapexacttokensfortokenssupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: LUXERA.transfer may violate 'the price LUXERA.transfer() relies on must be manipulation-resistant (a TWAP, or'",
+     "severity": "medium",
+     "description": "the price LUXERA.transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensfortokenssupportingfeeontransfertokens() | AMM dependency (swapexacttokensfortokenssupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "LUXERA.transfer",
+     "recommendation": "AMM dependency (swapexacttokensfortokenssupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: LUXERA.transferFrom may violate 'the price LUXERA.transferFrom() relies on must be manipulation-resistant (a TWAP'",
+     "severity": "medium",
+     "description": "the price LUXERA.transferFrom() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexacttokensfortokenssupportingfeeontransfertokens() | AMM dependency (swapexacttokensfortokenssupportingfeeontransfertokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "LUXERA.transferFrom",
+     "recommendation": "AMM dependency (swapexacttokensfortokenssupportingfeeontransfertokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 4,
+    "match_details": [
+     {
+      "reference": "Unprotected one-time initializer lets anyone set reward token and router/pair",
+      "matched": false,
+      "why": "best so far: fn=0, kw=2, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 12,
+    "functions_modeled": 123,
+    "functions_explored": 34,
+    "invariants_discovered": 53,
+    "invariants_tested": 53,
+    "invariants_validated": 6,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 4,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 73,
+    "roles": 1,
+    "assets": 3,
+    "dependencies": 5,
+    "state_relations": 3
+   },
+   "execution_time_seconds": 5.4,
+   "error": null
+  },
+  {
+   "case_id": "pdz",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 1,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: TOKENbnb.burnToHolder may violate 'the price TOKENbnb.burnToHolder() relies on must be manipulation-resistant (a TW'",
+     "severity": "medium",
+     "description": "the price TOKENbnb.burnToHolder() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getamountsout() | AMM dependency (getamountsout) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "TOKENbnb.burnToHolder",
+     "recommendation": "AMM dependency (getamountsout) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: TOKENbnb.burnToHolder may violate 'TOKENbnb.burnToHolder() must not reduce the protocol's asset reserves by more th'",
+     "severity": "medium",
+     "description": "TOKENbnb.burnToHolder() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "TOKENbnb.burnToHolder",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: TOKENbnb.receiveRewards may violate 'TOKENbnb.receiveRewards() must not reduce the protocol's asset reserves by more '",
+     "severity": "medium",
+     "description": "TOKENbnb.receiveRewards() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "TOKENbnb.receiveRewards",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 2,
+    "match_details": [
+     {
+      "reference": "burnToHolder() derives reward value from AMM spot quote (getAmountsOut) without manipulation resista",
+      "matched": true,
+      "why": "fn overlap ['burntoholder', 'getamountsout'], kw=9, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 8,
+    "functions_modeled": 92,
+    "functions_explored": 21,
+    "invariants_discovered": 27,
+    "invariants_tested": 27,
+    "invariants_validated": 5,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 5,
+    "candidates_reproduced": 1,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 42,
+    "roles": 3,
+    "assets": 2,
+    "dependencies": 4,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 18.8,
+   "error": null
+  },
+  {
+   "case_id": "size_credit",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "GenericRoute swap executes arbitrary external call with attacker-controlled target and calldata (no ",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 3.8,
+   "error": null
+  },
+  {
+   "case_id": "98_token",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: Main.withdraw may violate 'the value Main.withdraw() pays msg.sender is at most msg.sender's recorded entit'",
+     "severity": "medium",
+     "description": "the value Main.withdraw() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | WITHDRAW_ASSET relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Main.withdraw",
+     "recommendation": "WITHDRAW_ASSET relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Main.withdrawToken may violate 'the value Main.withdrawToken() pays msg.sender is at most msg.sender's recorded '",
+     "severity": "medium",
+     "description": "the value Main.withdrawToken() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | WITHDRAW_ASSET relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Main.withdrawToken",
+     "recommendation": "WITHDRAW_ASSET relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 2,
+    "match_details": [
+     {
+      "reference": "Public DEX router wrapper functions lack access control and allow arbitrary swap recipients",
+      "matched": false,
+      "why": "best so far: fn=0, kw=1, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 4,
+    "functions_modeled": 43,
+    "functions_explored": 19,
+    "invariants_discovered": 21,
+    "invariants_tested": 21,
+    "invariants_validated": 1,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 6,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 25,
+    "roles": 5,
+    "assets": 0,
+    "dependencies": 6,
+    "state_relations": 2
+   },
+   "execution_time_seconds": 2.6,
+   "error": null
+  },
+  {
+   "case_id": "idols_nft",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "ERC721 transfer hook triggers reward claiming twice without guarding self-transfers",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Contract interaction restrictions rely on Address.isContract, which is bypassable during contract co",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 48.5,
+   "error": null
+  },
+  {
+   "case_id": "j_pulsepot",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "swapProfitFees() is permissionless and relies on AMM spot quotes as a price oracle for LINK fee swap",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 29.7,
+   "error": null
+  },
+  {
+   "case_id": "lp_mine",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: LPMine.partakeAddLp may violate 'the price LPMine.partakeAddLp() relies on must be manipulation-resistant (a TWAP'",
+     "severity": "medium",
+     "description": "the price LPMine.partakeAddLp() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via addliquidity() | AMM dependency (addliquidity) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "LPMine.partakeAddLp",
+     "recommendation": "AMM dependency (addliquidity) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: LPMine.extractReward may violate 'the price LPMine.extractReward() relies on must be manipulation-resistant (a TWA'",
+     "severity": "medium",
+     "description": "the price LPMine.extractReward() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via factory() | AMM dependency (factory) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "LPMine.extractReward",
+     "recommendation": "AMM dependency (factory) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: LPMine.takeLp may violate 'the price LPMine.takeLp() relies on must be manipulation-resistant (a TWAP, or a'",
+     "severity": "medium",
+     "description": "the price LPMine.takeLp() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via removeliquidity() | AMM dependency (removeliquidity) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "LPMine.takeLp",
+     "recommendation": "AMM dependency (removeliquidity) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: LPMine.partakeAddLp may violate 'LPMine.partakeAddLp() must not reduce the protocol's asset reserves by more than'",
+     "severity": "medium",
+     "description": "LPMine.partakeAddLp() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "LPMine.partakeAddLp",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: LPMine.takeLp may violate 'LPMine.takeLp() must not reduce the protocol's asset reserves by more than the v'",
+     "severity": "medium",
+     "description": "LPMine.takeLp() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "LPMine.takeLp",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 4,
+    "match_details": [
+     {
+      "reference": "Reward accrual uses manipulable AMM spot state (pair balances/router quotes) as a value oracle",
+      "matched": true,
+      "why": "kw overlap 7 + focus_ok"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 7,
+    "functions_modeled": 40,
+    "functions_explored": 17,
+    "invariants_discovered": 29,
+    "invariants_tested": 29,
+    "invariants_validated": 3,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 17,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 3,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 23,
+    "roles": 2,
+    "assets": 1,
+    "dependencies": 7,
+    "state_relations": 2
+   },
+   "execution_time_seconds": 16.3,
+   "error": null
+  },
+  {
+   "case_id": "roulette_pot_v2",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "swapProfitFees() is permissionless and executes AMM swaps using spot quotes and amountOutMin=0",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 31.6,
+   "error": null
+  },
+  {
+   "case_id": "sorra_staking",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Rewards are not checkpointed, allowing already-paid rewards to remain claimable",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 52.4,
+   "error": null
+  },
+  {
+   "case_id": "hegic_options",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "withdrawWithoutHedge does not invalidate tranche claims after withdrawal (missing state/accounting u",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 3.3,
+   "error": null
+  },
+  {
+   "case_id": "bbx_token",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: BBXToken.transfer may violate 'the price BBXToken.transfer() relies on must be manipulation-resistant (a TWAP, '",
+     "severity": "medium",
+     "description": "the price BBXToken.transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via sync() | AMM dependency (sync) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "BBXToken.transfer",
+     "recommendation": "AMM dependency (sync) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: BBXToken.transferFrom may violate 'the price BBXToken.transferFrom() relies on must be manipulation-resistant (a TW'",
+     "severity": "medium",
+     "description": "the price BBXToken.transferFrom() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via sync() | AMM dependency (sync) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "BBXToken.transferFrom",
+     "recommendation": "AMM dependency (sync) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: BBXToken.transfer may violate 'BBXToken.transfer() moves balances only - an ERC20 transfer must not run swap lo'",
+     "severity": "medium",
+     "description": "BBXToken.transfer() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "BBXToken.transfer",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: BBXToken.transferFrom may violate 'BBXToken.transferFrom() moves balances only - an ERC20 transfer must not run swa'",
+     "severity": "medium",
+     "description": "BBXToken.transferFrom() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "BBXToken.transferFrom",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: BBXToken.receive may violate 'BBXToken.receive() must not reduce the protocol's asset reserves by more than th'",
+     "severity": "medium",
+     "description": "BBXToken.receive() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "BBXToken.receive",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 4,
+    "match_details": [
+     {
+      "reference": "AMM pair reserve burn + sync is executed inside _transfer and is publicly triggerable without updati",
+      "matched": true,
+      "why": "fn overlap ['sync', 'transfer'], kw=4, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 9,
+    "functions_modeled": 45,
+    "functions_explored": 16,
+    "invariants_discovered": 25,
+    "invariants_tested": 25,
+    "invariants_validated": 3,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 3,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 22,
+    "roles": 2,
+    "assets": 2,
+    "dependencies": 4,
+    "state_relations": 1
+   },
+   "execution_time_seconds": 13.9,
+   "error": null
+  },
+  {
+   "case_id": "dcf_token",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Token transfer logic burns tokens directly from the AMM pair balance and forces reserve updates via ",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 29.6,
+   "error": null
+  },
+  {
+   "case_id": "one_inch_fusion_v1_settlement_hack",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Unsafe manual ABI parsing/patching of dynamic bytes allows out-of-bounds reads/writes and arithmetic",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 13.1,
+   "error": null
+  },
+  {
+   "case_id": "yzi_ai_token",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "ERC20 transferFrom contains a privileged magic-value branch that mints and swaps tokens",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 40.6,
+   "error": null
+  },
+  {
+   "case_id": "w_key_dao",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "irys_ai",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "ydt_token",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "`proxyTransfer()` authorizes using a user-controlled parameter instead of `msg.sender`",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 55.2,
+   "error": null
+  },
+  {
+   "case_id": "aave_boost",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: AaveBoost.proxyDeposit may violate 'AaveBoost.proxyDeposit() must not reduce the protocol's asset reserves by more t'",
+     "severity": "medium",
+     "description": "AaveBoost.proxyDeposit() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "AaveBoost.proxyDeposit",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 2,
+    "matched_count": 2,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "proxyDeposit credits a boosted deposit amount without sourcing/transferring the boost tokens",
+      "matched": true,
+      "why": "fn overlap ['proxydeposit'], kw=4, focus_ok=True"
+     },
+     {
+      "reference": "proxyDeposit does not validate `asset` and transfers AAVE regardless of the asset being deposited",
+      "matched": true,
+      "why": "fn overlap ['proxydeposit'], kw=4, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 6,
+    "functions_modeled": 32,
+    "functions_explored": 4,
+    "invariants_discovered": 5,
+    "invariants_tested": 5,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 9,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 5,
+    "candidates_rejected": 4,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 5,
+    "roles": 1,
+    "assets": 1,
+    "dependencies": 3,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 1.9,
+   "error": null
+  },
+  {
+   "case_id": "gradient_maker_pool",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Reward accounting uses inconsistent share basis (lpShares vs token+eth), enabling reward overpayment",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Internal pool totals are not tightly coupled to actual reserves, allowing withdrawals/rewards to be ",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 35.5,
+   "error": null
+  },
+  {
+   "case_id": "meta_pool",
+   "chain_id": 1,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "ERC4626 share pricing relies on manipulable spot `totalAssets()` (raw vault balance) allowing incorr",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 6,
+    "functions_modeled": 41,
+    "functions_explored": 2,
+    "invariants_discovered": 2,
+    "invariants_tested": 2,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 2,
+    "counterfactual_mutations": 6,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 2,
+    "candidates_rejected": 2,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 2,
+    "roles": 1,
+    "assets": 1,
+    "dependencies": 3,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 20.9,
+   "error": null
+  },
+  {
+   "case_id": "rant_token",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: RANTToken.transfer may violate 'the price RANTToken.transfer() relies on must be manipulation-resistant (a TWAP,'",
+     "severity": "medium",
+     "description": "the price RANTToken.transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getreserves() | AMM dependency (getreserves) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "RANTToken.transfer",
+     "recommendation": "AMM dependency (getreserves) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: RANTToken.transferFrom may violate 'the price RANTToken.transferFrom() relies on must be manipulation-resistant (a T'",
+     "severity": "medium",
+     "description": "the price RANTToken.transferFrom() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getreserves() | AMM dependency (getreserves) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "RANTToken.transferFrom",
+     "recommendation": "AMM dependency (getreserves) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: RANTToken.transfer may violate 'RANTToken.transfer() moves balances only - an ERC20 transfer must not run swap l'",
+     "severity": "medium",
+     "description": "RANTToken.transfer() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "RANTToken.transfer",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: RANTToken.transferFrom may violate 'RANTToken.transferFrom() moves balances only - an ERC20 transfer must not run sw'",
+     "severity": "medium",
+     "description": "RANTToken.transferFrom() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "RANTToken.transferFrom",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: RANTToken.receive may violate 'RANTToken.receive() must not reduce the protocol's asset reserves by more than t'",
+     "severity": "medium",
+     "description": "RANTToken.receive() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "RANTToken.receive",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 2,
+    "matched_count": 2,
+    "novel_findings_count": 3,
+    "match_details": [
+     {
+      "reference": "Token transfer logic can arbitrarily reduce AMM pair token balance and force reserve updates (unauth",
+      "matched": true,
+      "why": "fn overlap ['transfer'], kw=3, focus_ok=False"
+     },
+     {
+      "reference": "Liquidity add/remove detection relies on manipulable pair balances/reserves, causing unsafe branchin",
+      "matched": true,
+      "why": "fn overlap ['transfer'], kw=4, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 10,
+    "functions_modeled": 99,
+    "functions_explored": 17,
+    "invariants_discovered": 36,
+    "invariants_tested": 36,
+    "invariants_validated": 2,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 3,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 31,
+    "roles": 1,
+    "assets": 2,
+    "dependencies": 7,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 14.4,
+   "error": null
+  },
+  {
+   "case_id": "swapp_staking",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Access Control: Staking.getInterest may violate 'the privileged state ['_status'] may only be changed by an authorized caller - y'",
+     "severity": "medium",
+     "description": "the privileged state ['_status'] may only be changed by an authorized caller - yet Staking.getInterest() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Staking.deposit'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Staking.getInterest",
+     "recommendation": "the same state is guarded elsewhere by ['Staking.deposit']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Staking.withdraw may violate 'the value Staking.withdraw() pays msg.sender is at most msg.sender's recorded en'",
+     "severity": "medium",
+     "description": "the value Staking.withdraw() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | WITHDRAW_ASSET relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Staking.withdraw",
+     "recommendation": "WITHDRAW_ASSET relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Access Control: Staking.getInterestFromCompound may violate 'the privileged state ['_status'] may only be changed by an authorized caller - y'",
+     "severity": "medium",
+     "description": "the privileged state ['_status'] may only be changed by an authorized caller - yet Staking.getInterestFromCompound() reaches it with no caller-identity guard | the same state is guarded elsewhere by ['Staking.deposit'] | deep invariant discovery (deep:authorization-reachability); not reproduced",
+     "location": "Staking.getInterestFromCompound",
+     "recommendation": "the same state is guarded elsewhere by ['Staking.deposit']",
+     "_confidence": "CANDIDATE",
+     "_type": "ACCESS_CONTROL",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Staking.getInterest may violate 'Staking.getInterest() must not reduce the protocol's asset reserves by more than'",
+     "severity": "medium",
+     "description": "Staking.getInterest() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "Staking.getInterest",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Staking.withdraw may violate 'Staking.withdraw() must not reduce the protocol's asset reserves by more than th'",
+     "severity": "medium",
+     "description": "Staking.withdraw() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "Staking.withdraw",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Staking.emergencyWithdraw may violate 'Staking.emergencyWithdraw() must not reduce the protocol's asset reserves by mor'",
+     "severity": "medium",
+     "description": "Staking.emergencyWithdraw() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "Staking.emergencyWithdraw",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 5,
+    "match_details": [
+     {
+      "reference": "Staking/withdrawal accepts arbitrary ERC20 token addresses (missing token whitelist), enabling withd",
+      "matched": true,
+      "why": "fn overlap ['deposit'], kw=3, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 7,
+    "functions_modeled": 50,
+    "functions_explored": 7,
+    "invariants_discovered": 13,
+    "invariants_tested": 13,
+    "invariants_validated": 5,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 2,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 18,
+    "roles": 2,
+    "assets": 1,
+    "dependencies": 6,
+    "state_relations": 2
+   },
+   "execution_time_seconds": 3.3,
+   "error": null
+  },
+  {
+   "case_id": "abcc_app",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Public addFixedDay allows arbitrary modification of global time offset used in reward accrual",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 19.4,
+   "error": null
+  },
+  {
+   "case_id": "mim_spell3",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "lavalending_202410",
+   "chain_id": 42161,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "State Machine: InitializableImmutableAdminUpgradeabilityProxy.initialize may violate 'InitializableImmutableAdminUpgradeabilityProxy.initialize() performs a one-way t'",
+     "severity": "medium",
+     "description": "InitializableImmutableAdminUpgradeabilityProxy.initialize() performs a one-way transition; a second successful call must be impossible | initializer / one-way flag write | deep invariant discovery (deep:state-machine); not reproduced",
+     "location": "InitializableImmutableAdminUpgradeabilityProxy.initialize",
+     "recommendation": "initializer / one-way flag write",
+     "_confidence": "UNKNOWN",
+     "_type": "STATE_MACHINE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 1,
+    "match_details": [
+     {
+      "reference": "Collateral valuation relies on manipulable LP token on-chain state instead of a manipulation-resista",
+      "matched": false,
+      "why": "best so far: fn=0, kw=1, focus_ok=False"
+     },
+     {
+      "reference": "Missing isolation controls (caps/debt ceilings) allow recursive collateral amplification using depos",
+      "matched": false,
+      "why": "best so far: fn=0, kw=0, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 2,
+    "functions_modeled": 14,
+    "functions_explored": 3,
+    "invariants_discovered": 3,
+    "invariants_tested": 3,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 3,
+    "counterfactual_mutations": 9,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 3,
+    "candidates_rejected": 2,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 6,
+    "roles": 1,
+    "assets": 1,
+    "dependencies": 2,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 3.6,
+   "error": null
+  },
+  {
+   "case_id": "ak",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "chisale",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Constructor never sets maxBonusThreshold due to unreachable condition (broken sale cap initializatio",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "calculateBonusTokens() can increment bonusIndex out of bounds due to incorrect boundary check",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 17.4,
+   "error": null
+  },
+  {
+   "case_id": "cow",
+   "chain_id": 1,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Public simulation helper performs unrestricted DELEGATECALL in the settlement contract context",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 15,
+    "functions_modeled": 49,
+    "functions_explored": 5,
+    "invariants_discovered": 10,
+    "invariants_tested": 10,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 10,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 8,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 12,
+    "roles": 4,
+    "assets": 1,
+    "dependencies": 4,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 3.3,
+   "error": null
+  },
+  {
+   "case_id": "mft",
+   "chain_id": 56,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Token contract can arbitrarily mutate AMM pair balance and force reserve updates (direct pair-balanc",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "ERC20 transfer hook performs external AMM swaps during sells, coupling transfers to mutable pool sta",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 7,
+    "functions_modeled": 33,
+    "functions_explored": 15,
+    "invariants_discovered": 40,
+    "invariants_tested": 40,
+    "invariants_validated": 1,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 17,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 8,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 16,
+    "roles": 4,
+    "assets": 2,
+    "dependencies": 7,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 9.0,
+   "error": null
+  },
+  {
+   "case_id": "mainnetsettler",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Permissionless action allows arbitrary external call with user-controlled calldata (BASIC), enabling",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 85.2,
+   "error": null
+  },
+  {
+   "case_id": "matez",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: MatezStakingProgram.claim may violate 'the price MatezStakingProgram.claim() relies on must be manipulation-resistant ('",
+     "severity": "medium",
+     "description": "the price MatezStakingProgram.claim() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getquoteattick() | AMM dependency (getquoteattick) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "MatezStakingProgram.claim",
+     "recommendation": "AMM dependency (getquoteattick) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: MatezStakingProgram.claim may violate 'the value MatezStakingProgram.claim() pays msg.sender is at most msg.sender's re'",
+     "severity": "medium",
+     "description": "the value MatezStakingProgram.claim() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | CLAIM_REWARD relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "MatezStakingProgram.claim",
+     "recommendation": "CLAIM_REWARD relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: MatezStakingProgram.stake may violate 'the price MatezStakingProgram.stake() relies on must be manipulation-resistant ('",
+     "severity": "medium",
+     "description": "the price MatezStakingProgram.stake() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getquoteattick() | AMM dependency (getquoteattick) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "MatezStakingProgram.stake",
+     "recommendation": "AMM dependency (getquoteattick) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 2,
+    "match_details": [
+     {
+      "reference": "Unsafe downcast of user-supplied stake amount (uint256\u2192uint128) breaks payment enforcement and decou",
+      "matched": true,
+      "why": "fn overlap ['claim'], kw=3, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 8,
+    "functions_modeled": 24,
+    "functions_explored": 5,
+    "invariants_discovered": 9,
+    "invariants_tested": 9,
+    "invariants_validated": 3,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 5,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 6,
+    "roles": 1,
+    "assets": 0,
+    "dependencies": 2,
+    "state_relations": 2
+   },
+   "execution_time_seconds": 4.2,
+   "error": null
+  },
+  {
+   "case_id": "rpp",
+   "chain_id": 56,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Token burns directly from the UniswapV2 pair address and calls sync(), breaking AMM reserve invarian",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 5,
+    "functions_modeled": 56,
+    "functions_explored": 31,
+    "invariants_discovered": 61,
+    "invariants_tested": 61,
+    "invariants_validated": 5,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 8,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 35,
+    "roles": 3,
+    "assets": 2,
+    "dependencies": 12,
+    "state_relations": 1
+   },
+   "execution_time_seconds": 3.0,
+   "error": null
+  },
+  {
+   "case_id": "btc24h",
+   "chain_id": 137,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: Lock.claim may violate 'the value Lock.claim() pays msg.sender is at most msg.sender's recorded entitlem'",
+     "severity": "medium",
+     "description": "the value Lock.claim() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | CLAIM_REWARD relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Lock.claim",
+     "recommendation": "CLAIM_REWARD relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Lock.claim may violate 'Lock.claim() must not reduce the protocol's asset reserves by more than the valu'",
+     "severity": "medium",
+     "description": "Lock.claim() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "Lock.claim",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Lock.deposit may violate 'Lock.deposit() must not reduce the protocol's asset reserves by more than the va'",
+     "severity": "medium",
+     "description": "Lock.deposit() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "Lock.deposit",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 2,
+    "match_details": [
+     {
+      "reference": "claim() transfers locked tokens to msg.sender without beneficiary/owner authorization",
+      "matched": true,
+      "why": "fn overlap ['claim'], kw=4, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 5,
+    "functions_modeled": 26,
+    "functions_explored": 2,
+    "invariants_discovered": 3,
+    "invariants_tested": 3,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 5,
+    "counterfactual_mutations": 15,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 3,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 4,
+    "roles": 0,
+    "assets": 1,
+    "dependencies": 3,
+    "state_relations": 2
+   },
+   "execution_time_seconds": 2.2,
+   "error": null
+  },
+  {
+   "case_id": "bizness",
+   "chain_id": 8453,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "moonhacker",
+   "chain_id": 10,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Flash-loan callback executeOperation() lacks Aave Pool/initiator authentication",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Unvalidated mToken/spender address from calldata is used for ERC20 approvals and external calls",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 28.7,
+   "error": null
+  },
+  {
+   "case_id": "slurpycoin",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: SlurpyCoin.transfer may violate 'the price SlurpyCoin.transfer() relies on must be manipulation-resistant (a TWAP'",
+     "severity": "medium",
+     "description": "the price SlurpyCoin.transfer() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexactethfortokens() | AMM dependency (swapexactethfortokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "SlurpyCoin.transfer",
+     "recommendation": "AMM dependency (swapexactethfortokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: SlurpyCoin.transferFrom may violate 'the price SlurpyCoin.transferFrom() relies on must be manipulation-resistant (a '",
+     "severity": "medium",
+     "description": "the price SlurpyCoin.transferFrom() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via swapexactethfortokens() | AMM dependency (swapexactethfortokens) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "SlurpyCoin.transferFrom",
+     "recommendation": "AMM dependency (swapexactethfortokens) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: SlurpyCoin.transfer may violate 'SlurpyCoin.transfer() moves balances only - an ERC20 transfer must not run swap '",
+     "severity": "medium",
+     "description": "SlurpyCoin.transfer() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "SlurpyCoin.transfer",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Protocol Invariant: SlurpyCoin.transferFrom may violate 'SlurpyCoin.transferFrom() moves balances only - an ERC20 transfer must not run s'",
+     "severity": "medium",
+     "description": "SlurpyCoin.transferFrom() moves balances only - an ERC20 transfer must not run swap logic, resync an AMM pair, or mint/burn a third party's balance | swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class) | deep invariant discovery (deep:protocol-specific); not reproduced",
+     "location": "SlurpyCoin.transferFrom",
+     "recommendation": "swap / pair.sync side effects inside a transfer path (FireToken / AIZPT class)",
+     "_confidence": "UNKNOWN",
+     "_type": "PROTOCOL_INVARIANT",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: SlurpyPresale.endPresale may violate 'the price SlurpyPresale.endPresale() relies on must be manipulation-resistant (a'",
+     "severity": "medium",
+     "description": "the price SlurpyPresale.endPresale() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via addliquidityeth() | AMM dependency (addliquidityeth) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "SlurpyPresale.endPresale",
+     "recommendation": "AMM dependency (addliquidityeth) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 1.0,
+    "reference_count": 1,
+    "matched_count": 1,
+    "novel_findings_count": 4,
+    "match_details": [
+     {
+      "reference": "Auto buyback is externally triggerable and executes swaps with amountOutMin = 0 using the contract\u2019s",
+      "matched": true,
+      "why": "fn overlap ['transfer'], kw=5, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 7,
+    "functions_modeled": 78,
+    "functions_explored": 21,
+    "invariants_discovered": 41,
+    "invariants_tested": 41,
+    "invariants_validated": 3,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 3,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 38,
+    "roles": 2,
+    "assets": 2,
+    "dependencies": 7,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 12.8,
+   "error": null
+  },
+  {
+   "case_id": "odos",
+   "chain_id": 8453,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: OdosLimitOrderRouter.fillLimitOrder may violate 'OdosLimitOrderRouter.fillLimitOrder() must not reduce the protocol's asset reser'",
+     "severity": "medium",
+     "description": "OdosLimitOrderRouter.fillLimitOrder() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "OdosLimitOrderRouter.fillLimitOrder",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: OdosLimitOrderRouter.fillLimitOrderPermit2 may violate 'OdosLimitOrderRouter.fillLimitOrderPermit2() must not reduce the protocol's asse'",
+     "severity": "medium",
+     "description": "OdosLimitOrderRouter.fillLimitOrderPermit2() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "OdosLimitOrderRouter.fillLimitOrderPermit2",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: OdosLimitOrderRouter.fillMultiLimitOrder may violate 'OdosLimitOrderRouter.fillMultiLimitOrder() must not reduce the protocol's asset '",
+     "severity": "medium",
+     "description": "OdosLimitOrderRouter.fillMultiLimitOrder() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "OdosLimitOrderRouter.fillMultiLimitOrder",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: OdosLimitOrderRouter.fillMultiLimitOrderPermit2 may violate 'OdosLimitOrderRouter.fillMultiLimitOrderPermit2() must not reduce the protocol's'",
+     "severity": "medium",
+     "description": "OdosLimitOrderRouter.fillMultiLimitOrderPermit2() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "OdosLimitOrderRouter.fillMultiLimitOrderPermit2",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "State Machine: OdosLimitOrderRouter.fillLimitOrder may violate 'each authorization consumed by OdosLimitOrderRouter.fillLimitOrder() (nonce / si'",
+     "severity": "medium",
+     "description": "each authorization consumed by OdosLimitOrderRouter.fillLimitOrder() (nonce / signature / message id) can be used at most once | nonce slot / signature-verifying entry point | deep invariant discovery (deep:replay-nonce); not reproduced",
+     "location": "OdosLimitOrderRouter.fillLimitOrder",
+     "recommendation": "nonce slot / signature-verifying entry point",
+     "_confidence": "UNKNOWN",
+     "_type": "STATE_MACHINE",
+     "_reproduced": false
+    },
+    {
+     "title": "State Machine: OdosLimitOrderRouter.fillMultiLimitOrder may violate 'each authorization consumed by OdosLimitOrderRouter.fillMultiLimitOrder() (nonce'",
+     "severity": "medium",
+     "description": "each authorization consumed by OdosLimitOrderRouter.fillMultiLimitOrder() (nonce / signature / message id) can be used at most once | nonce slot / signature-verifying entry point | deep invariant discovery (deep:replay-nonce); not reproduced",
+     "location": "OdosLimitOrderRouter.fillMultiLimitOrder",
+     "recommendation": "nonce slot / signature-verifying entry point",
+     "_confidence": "UNKNOWN",
+     "_type": "STATE_MACHINE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 6,
+    "match_details": [
+     {
+      "reference": "Public signature-validation helper performs attacker-controlled external calls when parsing ERC-6492",
+      "matched": false,
+      "why": "best so far: fn=0, kw=3, focus_ok=True"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 16,
+    "functions_modeled": 129,
+    "functions_explored": 12,
+    "invariants_discovered": 18,
+    "invariants_tested": 18,
+    "invariants_validated": 1,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 32,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 2,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 27,
+    "roles": 2,
+    "assets": 1,
+    "dependencies": 3,
+    "state_relations": 1
+   },
+   "execution_time_seconds": 22.6,
+   "error": null
+  },
+  {
+   "case_id": "duckvader",
+   "chain_id": 8453,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Shadowed `_balances` mapping breaks ERC20 accounting and invalidates `buyTokens()` eligibility logic",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 2,
+    "functions_modeled": 32,
+    "functions_explored": 11,
+    "invariants_discovered": 12,
+    "invariants_tested": 12,
+    "invariants_validated": 3,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 8,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 21,
+    "roles": 2,
+    "assets": 2,
+    "dependencies": 0,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 2.6,
+   "error": null
+  },
+  {
+   "case_id": "leveragesir",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Uniswap V3 swap callback lacks strict pool authentication and trusts unvalidated callback data",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Callback authorization relies on mutable attacker-influenceable state (including transient storage) ",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 54.4,
+   "error": null
+  },
+  {
+   "case_id": "impermaxv",
+   "chain_id": 8453,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "laundromat",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "deposit() does not enforce exact payment amount (commented-out msg.value check)",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "deposit() allows non-unique/unbound participant registration (no ownership or uniqueness checks for ",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 17.6,
+   "error": null
+  },
+  {
+   "case_id": "corkprotocol",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "CorkConfig.initializeModuleCore() lacks access control (permissionless market initialization)",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "CorkConfig.issueNewDs() is callable by anyone (missing role check on issuance/epoch progression)",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 37.2,
+   "error": null
+  },
+  {
+   "case_id": "unwarp",
+   "chain_id": 8453,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "WETH unwrap/ETH payout helper is externally callable without authorization or reward accounting",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 21.4,
+   "error": null
+  },
+  {
+   "case_id": "superrare",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "wetc_token",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "bebop_dex",
+   "chain_id": 42161,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Settlement executes solver-supplied arbitrary external calls without constraining spend sources or o",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Order validation skips signature checks for self-settlement, enabling signatureless access to privil",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 70.5,
+   "error": null
+  },
+  {
+   "case_id": "evervaluecoin",
+   "chain_id": 42161,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Order settlement pays takers from global contract balances instead of debiting the matched maker esc",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 4.0,
+   "error": null
+  },
+  {
+   "case_id": "ngp",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Token transfer logic debits the AMM pair balance and calls `sync()` during sells",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 54.5,
+   "error": null
+  },
+  {
+   "case_id": "sharwafinance",
+   "chain_id": 42161,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Position close/settlement logic relies on manipulable on-chain swap quotes as trusted accounting inp",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "Unsafe int256-to-uint256 casts in margin/close paths can corrupt repay and balance calculations",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 3.2,
+   "error": null
+  },
+  {
+   "case_id": "tokenholder",
+   "chain_id": 56,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "sell() performs untrusted external calls using user-supplied TokenHolder and router addresses",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 20.8,
+   "error": null
+  },
+  {
+   "case_id": "balancerv",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "GIVEN_OUT swap path performs non-conservative scaling/rounding when converting between scaled and ra",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 57.6,
+   "error": null
+  },
+  {
+   "case_id": "drlvaultv",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "yeth",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 2,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Virtual-balance accounting is not reconciled with actual ERC20 balances (fee-on-transfer/rebasing to",
+      "matched": false,
+      "why": "no overlap"
+     },
+     {
+      "reference": "`remove_liquidity` allows zero-LP withdrawals to mutate and recompute invariant state",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 0.0,
+   "error": null
+  },
+  {
+   "case_id": "mttoken",
+   "chain_id": 56,
+   "verdict": "REJECTED",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Fee distribution does not bound cumulative contractor percentages, allowing fees to exceed the inten",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 7,
+    "functions_modeled": 51,
+    "functions_explored": 8,
+    "invariants_discovered": 10,
+    "invariants_tested": 10,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 11,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 8,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 26,
+    "roles": 1,
+    "assets": 2,
+    "dependencies": 3,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 4.7,
+   "error": null
+  },
+  {
+   "case_id": "prxvt",
+   "chain_id": 8453,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Transferable receipt token does not update reward accounting, allowing rewards to be claimed multipl",
+      "matched": false,
+      "why": "no overlap"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 0,
+    "functions_modeled": 0,
+    "functions_explored": 0,
+    "invariants_discovered": 0,
+    "invariants_tested": 0,
+    "invariants_validated": 0,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 0,
+    "counterfactual_mutations": 0,
+    "mutations_executed": 0,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 0,
+    "candidates_rejected": 0,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "none"
+   },
+   "execution_time_seconds": 46.9,
+   "error": null
+  },
+  {
+   "case_id": "makina",
+   "chain_id": 1,
+   "verdict": "UNKNOWN",
+   "model_compiled": false,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [],
+   "score": {},
+   "coverage": {},
+   "execution_time_seconds": 0.0,
+   "error": "source unavailable in local cache"
+  },
+  {
+   "case_id": "nalakuvara_lotteryticket50",
+   "chain_id": 8453,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Oracle: LotteryTicketSwap50.transferToken may violate 'the price LotteryTicketSwap50.transferToken() relies on must be manipulation-res'",
+     "severity": "medium",
+     "description": "the price LotteryTicketSwap50.transferToken() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via addliquidity() | AMM dependency (addliquidity) feeds a state transition; return_checked=None | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "LotteryTicketSwap50.transferToken",
+     "recommendation": "AMM dependency (addliquidity) feeds a state transition; return_checked=None",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.5,
+    "reference_count": 2,
+    "matched_count": 1,
+    "novel_findings_count": 0,
+    "match_details": [
+     {
+      "reference": "Whitelist redemption branch transfers LP tokens from contract custody without enforcing per-user ent",
+      "matched": false,
+      "why": "best so far: fn=0, kw=0, focus_ok=False"
+     },
+     {
+      "reference": "Redemption and deposit math rely on instantaneous Uniswap V2 reserves and near-zero slippage checks",
+      "matched": true,
+      "why": "kw overlap 6 + focus_ok"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 6,
+    "functions_modeled": 39,
+    "functions_explored": 10,
+    "invariants_discovered": 18,
+    "invariants_tested": 18,
+    "invariants_validated": 1,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 12,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 23,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 7,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 24,
+    "roles": 2,
+    "assets": 1,
+    "dependencies": 12,
+    "state_relations": 0
+   },
+   "execution_time_seconds": 52.6,
+   "error": null
+  },
+  {
+   "case_id": "gmx",
+   "chain_id": 42161,
+   "verdict": "UNKNOWN",
+   "model_compiled": true,
+   "n_reproduced": 0,
+   "n_confirmed": 0,
+   "findings": [
+    {
+     "title": "Accounting: Vault.liquidatePosition may violate 'Vault.liquidatePosition() must not reduce the protocol's asset reserves by more '",
+     "severity": "medium",
+     "description": "Vault.liquidatePosition() must not reduce the protocol's asset reserves by more than the value legitimately owed to the caller | value-moving external entry point on the asset-holding target contract | deep invariant discovery (deep:asset-conservation); not reproduced",
+     "location": "Vault.liquidatePosition",
+     "recommendation": "value-moving external entry point on the asset-holding target contract",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    },
+    {
+     "title": "Economic: Vault.setInPrivateLiquidationMode may violate 'Vault liquidation may only seize collateral from a position that is actually bel'",
+     "severity": "medium",
+     "description": "Vault liquidation may only seize collateral from a position that is actually below the liquidation threshold | liquidation relation present | deep invariant discovery (deep:debt-collateral); not reproduced",
+     "location": "Vault.setInPrivateLiquidationMode",
+     "recommendation": "liquidation relation present",
+     "_confidence": "UNKNOWN",
+     "_type": "ECONOMIC",
+     "_reproduced": false
+    },
+    {
+     "title": "Oracle: Vault.liquidatePosition may violate 'the price Vault.liquidatePosition() relies on must be manipulation-resistant (a '",
+     "severity": "medium",
+     "description": "the price Vault.liquidatePosition() relies on must be manipulation-resistant (a TWAP, or a staleness-checked feed) - not an instantaneous AMM spot read via getprice() | ORACLE dependency (getprice) feeds a state transition; return_checked=False | deep invariant discovery (deep:oracle-assumption); not reproduced",
+     "location": "Vault.liquidatePosition",
+     "recommendation": "ORACLE dependency (getprice) feeds a state transition; return_checked=False",
+     "_confidence": "UNKNOWN",
+     "_type": "ORACLE",
+     "_reproduced": false
+    },
+    {
+     "title": "Accounting: Vault.withdrawFees may violate 'the value Vault.withdrawFees() pays msg.sender is at most msg.sender's recorded '",
+     "severity": "medium",
+     "description": "the value Vault.withdrawFees() pays msg.sender is at most msg.sender's recorded entitlement (shares x price-per-share / claimable / balance) | WITHDRAW_ASSET relation - a payout keyed on caller state | deep invariant discovery (deep:user-entitlement); not reproduced",
+     "location": "Vault.withdrawFees",
+     "recommendation": "WITHDRAW_ASSET relation - a payout keyed on caller state",
+     "_confidence": "UNKNOWN",
+     "_type": "ACCOUNTING",
+     "_reproduced": false
+    }
+   ],
+   "score": {
+    "recall": 0.0,
+    "reference_count": 1,
+    "matched_count": 0,
+    "novel_findings_count": 4,
+    "match_details": [
+     {
+      "reference": "Global pricing-mode flags stored in contract state allow reentrancy to observe and act on transient ",
+      "matched": false,
+      "why": "best so far: fn=0, kw=3, focus_ok=False"
+     }
+    ]
+   },
+   "coverage": {
+    "contracts_modeled": 7,
+    "functions_modeled": 106,
+    "functions_explored": 19,
+    "invariants_discovered": 31,
+    "invariants_tested": 31,
+    "invariants_validated": 7,
+    "historical_tx_analyzed": 0,
+    "historical_reverts": 0,
+    "sequences_planned": 16,
+    "counterfactual_mutations": 40,
+    "mutations_executed": 20,
+    "fork_blocks_tested": 0,
+    "candidates_generated": 8,
+    "candidates_rejected": 4,
+    "candidates_reproduced": 0,
+    "confirmed_findings": 0,
+    "toolchain": "wsl",
+    "external_functions": 57,
+    "roles": 2,
+    "assets": 1,
+    "dependencies": 5,
+    "state_relations": 4
+   },
+   "execution_time_seconds": 24.2,
+   "error": null
+  }
+ ]
+}

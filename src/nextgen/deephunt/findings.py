@@ -67,6 +67,9 @@ _SOURCE_TO_TYPE = {
     INV.SRC_AUTH_REACH: ACCESS_CONTROL,
     INV.SRC_STATE_MACHINE: STATE_MACHINE,
     INV.SRC_REPLAY: STATE_MACHINE,
+    # a signature valid against more than one party is an authorization defect:
+    # it lets a signer's approval act on a party they never approved.
+    INV.SRC_SIG_SCOPE: ACCESS_CONTROL,
     INV.SRC_ORACLE: ORACLE,
     INV.SRC_PROTOCOL: PROTOCOL_INVARIANT,
 }

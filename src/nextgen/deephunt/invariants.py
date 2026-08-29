@@ -23,6 +23,7 @@ Nothing here decides a verdict.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Iterable
 
 from src.nextgen.invariants import model as IM
@@ -42,6 +43,7 @@ SRC_SUPPLY_SUM = "deep:supply-consistency"
 SRC_AUTH_REACH = "deep:authorization-reachability"
 SRC_STATE_MACHINE = "deep:state-machine"
 SRC_REPLAY = "deep:replay-nonce"
+SRC_SIG_SCOPE = "deep:signature-scope"
 SRC_ORACLE = "deep:oracle-assumption"
 SRC_PROTOCOL = "deep:protocol-specific"
 
@@ -63,11 +65,12 @@ OBJ_SUPPLY = "supply_mismatch"
 OBJ_REPLAY = "replay_accepted"
 OBJ_ORACLE = "oracle_manipulated_transition"
 OBJ_PURITY = "transfer_side_effect"
+OBJ_SIG_CROSS_PARTY = "signature_replayable_across_parties"
 
 RECIPE_TYPES = frozenset({
     OBJ_CALL_SUCCEEDS, OBJ_REINIT, OBJ_STATE_RELATION, OBJ_UNAUTH_UPGRADE,
     OBJ_CONSERVATION, OBJ_ENTITLEMENT, OBJ_SHARE_MATH, OBJ_LTV, OBJ_SUPPLY,
-    OBJ_REPLAY, OBJ_ORACLE, OBJ_PURITY,
+    OBJ_REPLAY, OBJ_ORACLE, OBJ_PURITY, OBJ_SIG_CROSS_PARTY,
 })
 
 _SIG_PARAM_HINT = ("sig", "signature", "proof", "permit", "voucher", "ticket")
@@ -412,6 +415,142 @@ def cat_state_machine(model: PM.ProtocolModel) -> list[IM.CandidateInvariant]:
 
 
 # --------------------------------------------------------------------------- #
+# H2 - signature SCOPE: is the consumed authorization bound to the party whose
+#      nonce it spends? (spec 5.H, the half a plain "nonce exists" check misses)
+# --------------------------------------------------------------------------- #
+#
+# A nonce stops a signature being replayed AGAINST THE SAME PARTY. It does
+# nothing about replay across DIFFERENT parties unless the signed digest also
+# binds the party's identity. The dangerous shape is:
+#
+#     function send(Identity identity, ..., bytes sig) external {
+#         bytes32 hash = keccak256(abi.encode(..., nonces[address(identity)]++));
+#         require(signer == recoverAddr(hash, sig));      // `identity` NOT in hash
+#
+# `identity` is caller-supplied and appears in the preimage only as the nonce's
+# INDEX, never as a signed value - so one signature is valid against every
+# identity that shares the signer, and two fresh parties both sit at nonce 0.
+# This is Ambire H-03 (code4rena 2021-10, confirmed and patched by the team).
+#
+# Deliberately narrow, because a false positive here is expensive:
+#   * the nonce must be keyed on a FUNCTION PARAMETER - `nonces[msg.sender]++`
+#     is the safe, standard shape and is never reported;
+#   * the function must actually verify a signature over the digest;
+#   * the parameter must be absent from the preimage once the `nonce[...]`
+#     index itself is removed - appearing anywhere else clears it.
+# Anything not decidable from the source text yields NO invariant, never a guess.
+
+_HASHERS = ("abi.encode", "abi.encodepacked", "abi.encodewithselector")
+_RECOVERY = ("ecrecover", ".recover", "recoveraddr", "isvalidsignature",
+             "tryrecover", "recoversigner")
+
+
+def _balanced_after(text: str, start: int) -> str:
+    """The parenthesised group beginning at/after `start`, paren-matched."""
+    i = text.find("(", start)
+    if i < 0:
+        return ""
+    depth, j = 0, i
+    while j < len(text):
+        if text[j] == "(":
+            depth += 1
+        elif text[j] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[i + 1:j]
+        j += 1
+    return ""
+
+
+def _nonce_index_exprs(src: str) -> list[tuple[str, str]]:
+    """`(nonce_var, index_expr)` for every `<nonceVar>[<expr>]` in `src`."""
+    out: list[tuple[str, str]] = []
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\[", src):
+        name = m.group(1)
+        if not any(k in name.lower() for k in PM._NONCE_VARS):
+            continue
+        i = m.end() - 1
+        depth, j = 0, i
+        while j < len(src):
+            if src[j] == "[":
+                depth += 1
+            elif src[j] == "]":
+                depth -= 1
+                if depth == 0:
+                    out.append((name, src[i + 1:j]))
+                    break
+            j += 1
+    return out
+
+
+def _preimages(src: str) -> str:
+    """Everything fed to an abi.encode* inside the function, concatenated, with
+    every `<nonce>[...]` index expression REMOVED - the index is not a signed
+    value, it only selects a counter."""
+    parts: list[str] = []
+    low = src.lower()
+    for h in _HASHERS:
+        pos = 0
+        while True:
+            k = low.find(h, pos)
+            if k < 0:
+                break
+            parts.append(_balanced_after(src, k + len(h) - 1))
+            pos = k + len(h)
+    blob = " ; ".join(parts)
+    return re.sub(r"\b[A-Za-z_]\w*\s*\[[^\]]*\]", " ", blob)
+
+
+def cat_signature_scope(model: PM.ProtocolModel) -> list[IM.CandidateInvariant]:
+    out: list[IM.CandidateInvariant] = []
+    for f in model.external_functions():
+        src = f.source or ""
+        if not src:
+            continue
+        if not any(r in src.lower() for r in _RECOVERY):
+            continue                                   # no signature verified
+        idx = _nonce_index_exprs(src)
+        if not idx:
+            continue
+        pnames = {(p.name or "") for p in f.params if (p.name or "")}
+        pre = _preimages(src)
+        if not pre:
+            continue
+        seen: set[tuple[str, str]] = set()
+        for nonce_var, expr in idx:
+            # which caller-supplied parameter is this nonce keyed on?
+            keyed = sorted(p for p in pnames
+                           if re.search(rf"\b{re.escape(p)}\b", expr))
+            if not keyed:
+                continue                               # msg.sender / constant: safe
+            unbound = [p for p in keyed
+                       if not re.search(rf"\b{re.escape(p)}\b", pre)]
+            if not unbound:
+                continue                               # digest binds the party
+            party = unbound[0]
+            if (nonce_var, party) in seen:              # one report per party
+                continue
+            seen.add((nonce_var, party))
+            out.append(_mk(
+                IM.STATE_MACHINE,
+                f"a signature accepted by {f.contract}.{f.name}() must be valid "
+                f"for exactly one '{party}' - the digest it is checked against "
+                f"must bind '{party}', not merely index {nonce_var}[] by it",
+                SRC_SIG_SCOPE, contract=f.contract, functions=(f.name,),
+                variables=(nonce_var,), strength=IM.STRONG,
+                recipe={"type": OBJ_SIG_CROSS_PARTY, "contract": f.contract,
+                        "function": f.name, "party_param": party,
+                        "nonce_var": nonce_var, "nonce_index": expr.strip()[:80]},
+                rationale=(
+                    f"the nonce consumed is {nonce_var}[{expr.strip()[:40]}], keyed on the "
+                    f"caller-supplied parameter '{party}', but '{party}' does not appear "
+                    f"in the signed digest's preimage. One signature is therefore valid "
+                    f"against every '{party}' sharing the signer, and two fresh parties "
+                    f"both start at nonce 0")))
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # H - replay / nonce
 # --------------------------------------------------------------------------- #
 
@@ -559,7 +698,7 @@ def _from_llm(model: PM.ProtocolModel, item: dict) -> IM.CandidateInvariant | No
 CATEGORIES = (
     cat_asset_conservation, cat_user_entitlement, cat_share_accounting,
     cat_debt_collateral, cat_supply_consistency, cat_authorization,
-    cat_state_machine, cat_replay, cat_oracle_assumption,
+    cat_state_machine, cat_replay, cat_signature_scope, cat_oracle_assumption,
 )
 
 

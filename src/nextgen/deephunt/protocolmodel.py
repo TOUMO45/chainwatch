@@ -178,6 +178,12 @@ class FunctionModel:
     sends_eth: bool = False
     risk: int = 0
     risk_factors: tuple[str, ...] = ()
+    # The function's own Solidity source. Needed by oracles that must inspect
+    # an EXPRESSION rather than a fact Slither already summarises - notably the
+    # signature-scope check (spec 5.H), which has to know what went INTO a
+    # `keccak256(abi.encode(...))` preimage. Never used for detection of
+    # anything Slither can answer structurally. "" when unavailable.
+    source: str = ""
 
     @property
     def external(self) -> bool:
@@ -632,9 +638,23 @@ def _model_function(fn, contract, contract_kind: str, _shared) -> FunctionModel:
         returns=tuple(str(t) for t in (getattr(fn, "return_type", None) or ())),
         reads=reads, writes=writes, external_calls=ext_calls,
         internal_calls=int_calls, events=events, guarded=guarded,
-        access_controlled=access_controlled, sends_eth=sends_eth)
+        access_controlled=access_controlled, sends_eth=sends_eth,
+        source=_function_source(fn))
     fm.risk, fm.risk_factors = _risk_score(fm, contract_kind)
     return fm
+
+
+def _function_source(fn) -> str:
+    """The function's own Solidity text, or "". Best-effort and never raises:
+    an oracle that needs it degrades to "not checkable" without it."""
+    try:
+        sm = getattr(fn, "source_mapping", None)
+        txt = getattr(sm, "content", None)
+        if isinstance(txt, str) and txt.strip():
+            return txt
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
 
 
 def _access_controlled(fn, contract, _shared) -> bool:
