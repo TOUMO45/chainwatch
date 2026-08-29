@@ -112,6 +112,95 @@ def test_run_dvbench_over_the_mini_set():
                 assert af.get("_reproduced") is True     # never CONFIRMED w/o a repro
 
 
+# --------------------------------------------------------------------------- #
+# Sourcify source fallback (the benchmark repo does not commit .cache/etherscan)
+# Every test here is OFFLINE: `requests.get` is stubbed, never called for real.
+# --------------------------------------------------------------------------- #
+
+class _Resp:
+    def __init__(self, code, body=None):
+        self.status_code = code
+        self._body = body or {}
+
+    def json(self):
+        return self._body
+
+
+_SOURCIFY_OK = {
+    "match": "exact_match",
+    "sources": {"AIZPT314.sol": {"content": "contract A { uint x; }"}},
+    "compilation": {"name": "AIZPT314", "compilerVersion": "0.8.18+commit.87f61d96",
+                    "compilerSettings": {"evmVersion": "shanghai"}},
+}
+
+_CASE = {"id": "z", "chain_id": 56,
+         "target_contract": "0xBe779D420b7D573C08EEe226B9958737b6218888"}
+
+
+def test_load_source_does_not_fetch_by_default(tmp_path, monkeypatch):
+    """The default must stay offline - a cache miss is a miss, not a request."""
+    import requests
+
+    def _boom(*a, **k):                       # noqa: ANN002, ANN003
+        raise AssertionError("network touched with allow_fetch=False")
+
+    monkeypatch.setattr(requests, "get", _boom)
+    assert B.load_source(_CASE, str(tmp_path), cache_dir=str(tmp_path)) is None
+
+
+def test_fetch_source_sourcify_parses_and_caches(tmp_path, monkeypatch):
+    import requests
+    seen = {}
+
+    def _get(url, timeout=None):              # noqa: ANN001
+        seen["url"] = url
+        return _Resp(200, _SOURCIFY_OK)
+
+    monkeypatch.setattr(requests, "get", _get)
+    got = B.load_source(_CASE, str(tmp_path), cache_dir=str(tmp_path),
+                        allow_fetch=True)
+    assert got is not None
+    assert got["source_files"] == {"AIZPT314.sol": "contract A { uint x; }"}
+    assert got["name"] == "AIZPT314" and got["evm_version"] == "shanghai"
+    # address is lowercased into the URL, and both fields are requested
+    assert "/56/0xbe779d420b7d573c08eee226b9958737b6218888" in seen["url"]
+    assert "fields=sources,compilation" in seen["url"]
+
+    # it wrote the cache in the Etherscan shape -> the next read is offline
+    cached = tmp_path / "56_0xbe779d420b7d573c08eee226b9958737b6218888.json"
+    assert cached.exists()
+    monkeypatch.setattr(requests, "get",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("should have hit the cache")))
+    again = B.load_source(_CASE, str(tmp_path), cache_dir=str(tmp_path),
+                          allow_fetch=True)
+    assert again["source_files"] == got["source_files"]
+
+
+@pytest.mark.parametrize("resp", [
+    _Resp(404),                                            # not verified
+    _Resp(200, {"sources": {}}),                           # verified, no files
+    _Resp(200, {"sources": {"a.sol": {"content": "  "}}}),  # blank content
+])
+def test_fetch_source_sourcify_degrades_to_none(tmp_path, monkeypatch, resp):
+    import requests
+    monkeypatch.setattr(requests, "get", lambda *a, **k: resp)
+    assert B.fetch_source_sourcify(_CASE, cache_path=None) is None
+
+
+def test_fetch_source_sourcify_never_raises_on_network_error(tmp_path, monkeypatch):
+    import requests
+
+    def _explode(*a, **k):                    # noqa: ANN002, ANN003
+        raise OSError("connection reset")
+
+    monkeypatch.setattr(requests, "get", _explode)
+    # a dead network is an ordinary condition -> None, never a raise
+    assert B.fetch_source_sourcify(_CASE, cache_path=None) is None
+    assert B.load_source(_CASE, str(tmp_path), cache_dir=str(tmp_path),
+                         allow_fetch=True) is None
+
+
 def test_missing_checkout_raises():
     with pytest.raises(FileNotFoundError):
         B.load_cases(str(Path(MINI) / "does-not-exist"))

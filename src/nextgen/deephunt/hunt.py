@@ -54,6 +54,7 @@ class HuntInputs:
     use_llm: bool = False
     fork: bool = False                     # attempt execution grounding
     eth_price_usd: float = 3000.0
+    compiler_version: str = ""             # verified deployment's solc (Sourcify)
 
 
 @dataclass
@@ -85,7 +86,8 @@ def run(inp: HuntInputs) -> DeepHuntResult:
     cov = _fresh_coverage()
 
     # --- 1. ProtocolModel (section 3) -----------------------------------------
-    model = PM.build_from_sources(inp.source, target=inp.target_contract)
+    model = PM.build_from_sources(inp.source, target=inp.target_contract,
+                                  compiler_version=inp.compiler_version)
     if not model.compiled:
         return DeepHuntResult(
             verdict=S.VERDICT_UNKNOWN, model=model, coverage=cov,
@@ -97,7 +99,8 @@ def run(inp: HuntInputs) -> DeepHuntResult:
     tgt_name = tgt.name if tgt else inp.target_contract
     slither_obj = None
     try:
-        slither_obj = PM.compile_source(inp.source, target=inp.target_contract)
+        slither_obj = PM.compile_source(inp.source, target=inp.target_contract,
+                                        compiler_version=inp.compiler_version)
     except Exception as exc:  # noqa: BLE001
         sub["slither_error"] = f"{type(exc).__name__}: {exc}"[:200]
 
@@ -269,7 +272,7 @@ def _evaluate(inv, cand_seqs, cand_muts, model, slither_obj, source_bundle,
             if repro.status == RP.REPRODUCED:
                 minimal_seq = m2 or seq
                 break
-    _apply_repro(fs, repro, lines)
+    _apply_repro(fs, repro, lines, objective_type=recipe.get("type", ""))
 
     # a demonstrated end-to-end violation grounds the invariant (execution is
     # the validator the relationship invariants were waiting for) AND excludes
@@ -404,7 +407,17 @@ def _apply_reachability(fs, model, slither_obj, contract, fn, lines, sub, g):
         fs.set_gate("reachable_path", S.GATE_UNKNOWN, note="reachability undetermined")
 
 
-def _apply_repro(fs, repro, lines):
+# Objective types where a blinded reproducer's NOT_REPRODUCED is a genuine
+# DISPROOF: an unprivileged prank call that reverts means the guard really
+# holds. For value / oracle / accounting objectives an isolated `new Target()`
+# test that fails to extract value proves nothing - the real bug usually needs
+# a forked ecosystem (an AMM pair, a backing token). There, NOT_REPRODUCED is
+# inconclusive (PENDING -> the finding stays UNKNOWN), never a FAIL that would
+# reject a real candidate (spec section 33).
+_DISPROVING_OBJECTIVES = frozenset({"call_succeeds", "reinit"})
+
+
+def _apply_repro(fs, repro, lines, *, objective_type: str = ""):
     if repro.status == RP.REPRODUCED:
         fs.set_gate("reproducer", S.PASS, note=repro.detail)
         fs.set_gate("invariant_violated", S.PASS,
@@ -413,10 +426,18 @@ def _apply_repro(fs, repro, lines):
                     note="the required state was constructed in the reproducer")
         lines.append(F.fact("the invariant violation was reproduced on a local "
                             "fork (forge test [PASS])"))
-    elif repro.status == RP.NOT_REPRODUCED:
+    elif repro.status == RP.NOT_REPRODUCED and objective_type in _DISPROVING_OBJECTIVES:
         fs.set_gate("reproducer", S.FAIL, note=repro.detail)
         lines.append(F.fact("the invariant held under every attempted sequence "
-                            "(forge test [FAIL])"))
+                            "(forge test [FAIL]) - the guard is effective"))
+    elif repro.status == RP.NOT_REPRODUCED:
+        fs.set_gate("reproducer", S.PENDING,
+                    note="isolated reproduction inconclusive (" + repro.detail
+                         + "); a forked ecosystem is needed to settle it")
+        lines.append(F.assumption(
+            "an isolated (no-fork) reproduction did not extract value - "
+            "inconclusive, not a disproof: the real setting needs a forked "
+            "AMM pair / backing token"))
     else:
         fs.set_gate("reproducer", S.PENDING, note=repro.detail)
         lines.append(F.assumption("reproduction not attempted: " + repro.detail))

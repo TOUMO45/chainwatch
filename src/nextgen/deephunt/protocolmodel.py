@@ -353,15 +353,21 @@ class ProtocolModel:
 # --------------------------------------------------------------------------- #
 
 def build_from_sources(src: Union[str, dict, Path], *,
-                       target: str = "") -> ProtocolModel:
+                       target: str = "",
+                       compiler_version: str = "") -> ProtocolModel:
     """Compile `src` then model it.
 
     `src` may be a single self-contained source string, a `{path: content}`
     mapping (the Etherscan multi-file shape), or a directory Path. A compile
     failure returns `ProtocolModel(compiled=False, reason=...)`.
+
+    `compiler_version` (bare semver, e.g. "0.8.19") pins the compiler for the
+    whole attempt when it is installed - the verified deployment's own solc,
+    from Sourcify/Etherscan. It suppresses the multi-solc fallback fan-out,
+    which is the dominant cost on a large uncompilable bundle.
     """
     try:
-        slither_obj = _compile_any(src, target)
+        slither_obj = _compile_any(src, target, compiler_version=compiler_version)
     except Exception as exc:  # noqa: BLE001 - any compile failure is "unmeasured"
         return ProtocolModel(compiled=False,
                              reason=f"{type(exc).__name__}: {exc}"[:400],
@@ -374,11 +380,12 @@ def build_from_sources(src: Union[str, dict, Path], *,
                              target_contract=target)
 
 
-def compile_source(src: Union[str, dict, Path], *, target: str = ""):
+def compile_source(src: Union[str, dict, Path], *, target: str = "",
+                   compiler_version: str = ""):
     """Compile `src` and return the raw Slither object (or raise). The orchestrator
     uses this once and shares it with the attack-graph / compensating-control
     analyzers so the source is parsed a single time."""
-    return _compile_any(src, target)
+    return _compile_any(src, target, compiler_version=compiler_version)
 
 
 def build_model(slither_obj, *, target: str = "") -> ProtocolModel:
@@ -440,18 +447,44 @@ def build_model(slither_obj, *, target: str = "") -> ProtocolModel:
 # compilation glue
 # --------------------------------------------------------------------------- #
 
-def _compile_any(src: Union[str, dict, Path], target: str):
+# A big multi-file Etherscan bundle can hold 100+ `.sol` files. Trying each one
+# as a compile entry - and letting every failure fan out over ~20 installed solc
+# versions - is where a run's wall time actually goes (measured: 300-600s on a
+# single uncompilable case). Try only the few most promising entries.
+_MAX_COMPILE_ENTRIES = 4
+
+# path fragments that mark a vendored dependency: never a plausible target entry.
+_VENDOR_SEGMENTS = ("node_modules/", "/lib/", "@openzeppelin/", "@uniswap/",
+                    "@chainlink/", "solmate/", "forge-std/", "ds-test/",
+                    "/interfaces/", "/mocks/")
+
+
+def _bare_semver(v: str) -> str:
+    m = re.match(r"\s*v?(\d+\.\d+\.\d+)", str(v or ""))
+    return m.group(1) if m else ""
+
+
+def _compile_any(src: Union[str, dict, Path], target: str,
+                 *, compiler_version: str = ""):
     if isinstance(src, str) and "\n" in src and "pragma" in src:
         from .._solc import slither_for_source
         return slither_for_source(src)
-    return _compile_tree(src, target)
+    return _compile_tree(src, target, compiler_version=compiler_version)
 
 
-def _compile_tree(src: Union[dict, str, Path], target: str):
+def _compile_tree(src: Union[dict, str, Path], target: str,
+                  *, compiler_version: str = ""):
     """Write a `{path: content}` bundle (or use a dir), then compile the most
     promising entry `.sol` with the classic engine's own `_shared.parse` (same
     solc fallback + remap handling as every rule). Returns the first Slither
-    object that carries `target` (or the first that carries anything)."""
+    object that carries `target` (or the first that carries anything).
+
+    Bounded: at most `_MAX_COMPILE_ENTRIES` entry files are tried, and when
+    `compiler_version` names an installed solc it is pinned for the whole
+    attempt so `_shared.parse` never fans out over every other version.
+    """
+    import os
+
     from src.rules import _shared
 
     if isinstance(src, dict):
@@ -471,29 +504,72 @@ def _compile_tree(src: Union[dict, str, Path], target: str):
     if not sols:
         raise RuntimeError("no .sol files under the source root")
 
-    # rank entries: a file named like the target first, then files nobody
-    # imports (roots), then the biggest.
+    # rank entries: a file named like the target first, then non-vendored files
+    # nobody imports (roots), then the biggest. Vendored files sink to last.
     imported = _imported_basenames(sols)
+
+    def _is_vendor(p: Path) -> bool:
+        rp = p.as_posix().lower()
+        return any(seg in rp for seg in _VENDOR_SEGMENTS)
 
     def rank(p: Path):
         return (0 if (target and p.stem == target) else 1,
+                1 if _is_vendor(p) else 0,
                 1 if p.name in imported else 0,
                 -p.stat().st_size)
 
-    last_err: Optional[Exception] = None
-    for entry in sorted(sols, key=rank):
+    ordered = sorted(sols, key=rank)
+    # if a file literally declares `contract <target>`, that is the only entry
+    # worth trying - a large bundle's other 100 files are its dependencies.
+    if target:
+        decl = re.compile(rf"\b(contract|library|abstract\s+contract)\s+"
+                          rf"{re.escape(target)}\b")
+        named = [p for p in ordered
+                 if _safe_read(p) and decl.search(_safe_read(p))]
+        if named:
+            ordered = named + [p for p in ordered if p not in named]
+    entries = ordered[:_MAX_COMPILE_ENTRIES]
+
+    pin = _bare_semver(compiler_version)
+    saved = os.environ.get("SOLC_VERSION")
+    if pin:
         try:
-            _shared.reset_caches()
-            sl = _shared.parse(entry)
-        except Exception as exc:  # noqa: BLE001
-            last_err = exc
-            continue
-        names = {c.name for c in getattr(sl, "contracts_derived", sl.contracts)}
-        if not target or target in names:
-            return sl
-        last_err = RuntimeError(
-            f"{entry.name} compiled but declares no contract {target!r}")
-    raise last_err or RuntimeError("no entry file compiled")
+            from solc_select.solc_select import installed_versions
+            if pin not in set(installed_versions()):
+                pin = ""
+        except Exception:  # noqa: BLE001 - solc-select absent: don't pin
+            pin = ""
+    if pin:
+        os.environ["SOLC_VERSION"] = pin
+    try:
+        last_err: Optional[Exception] = None
+        for entry in entries:
+            try:
+                _shared.reset_caches()
+                sl = _shared.parse(entry)
+            except Exception as exc:  # noqa: BLE001
+                last_err = exc
+                continue
+            names = {c.name
+                     for c in getattr(sl, "contracts_derived", sl.contracts)}
+            if not target or target in names:
+                return sl
+            last_err = RuntimeError(
+                f"{entry.name} compiled but declares no contract {target!r}")
+        raise last_err or RuntimeError("no entry file compiled")
+    finally:
+        if pin:
+            if saved is None:
+                os.environ.pop("SOLC_VERSION", None)
+            else:
+                os.environ["SOLC_VERSION"] = saved
+
+
+def _safe_read(p: Path) -> str:
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def _imported_basenames(sols: list[Path]) -> set[str]:

@@ -52,27 +52,100 @@ def load_cases(checkout_dir: str, *, include_draft: bool = False) -> list[dict]:
     return out
 
 
+SOURCIFY_BASE = "https://sourcify.dev/server"
+SOURCIFY_TIMEOUT = 60
+
+
+def _cache_path(case: dict, checkout_dir: str,
+                cache_dir: Optional[str] = None) -> Path:
+    cd = Path(cache_dir) if cache_dir else \
+        Path(checkout_dir) / ".cache" / "etherscan"
+    return cd / f"{case['chain_id']}_{str(case['target_contract']).lower()}.json"
+
+
 def load_source(case: dict, checkout_dir: str, *,
-                cache_dir: Optional[str] = None) -> Optional[dict]:
+                cache_dir: Optional[str] = None,
+                allow_fetch: bool = False,
+                timeout: int = SOURCIFY_TIMEOUT) -> Optional[dict]:
     """Return `{"source_files": {...}, "name": str, "evm_version": str|None}`
     from the checkout's Etherscan cache, or None when the case's source is not
     cached locally (the harness records it as source-unavailable, never guesses).
+
+    The benchmark repo does NOT commit `.cache/etherscan/`, so a fresh checkout
+    has no source at all. With `allow_fetch=True` a cache miss falls back to
+    **Sourcify** - keyless, free, and the same service `src/verified.py` already
+    trusts for build settings - and writes the result into the cache in the
+    Etherscan shape, so every later run is offline. Default stays False: the
+    test suite must never reach the network.
     """
-    cd = Path(cache_dir) if cache_dir else \
-        Path(checkout_dir) / ".cache" / "etherscan"
-    key = f"{case['chain_id']}_{str(case['target_contract']).lower()}.json"
-    f = cd / key
-    if not f.exists():
+    f = _cache_path(case, checkout_dir, cache_dir)
+    if f.exists():
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            data = {}
+        sf = data.get("source_files") or {}
+        if sf:
+            return {"source_files": sf, "name": data.get("name", ""),
+                    "evm_version": data.get("evm_version"),
+                    "compiler_version": data.get("compiler_version", "")}
+    if not allow_fetch:
         return None
+    return fetch_source_sourcify(case, cache_path=f, timeout=timeout)
+
+
+def fetch_source_sourcify(case: dict, *, cache_path: Optional[Path] = None,
+                          timeout: int = SOURCIFY_TIMEOUT) -> Optional[dict]:
+    """Verified source for a case's target from Sourcify's v2 API.
+
+    Returns the same record shape `load_source` yields, or None. NEVER raises:
+    Sourcify being down, slow, or simply not knowing a contract are ordinary
+    conditions - the caller records the case as source-unavailable, exactly as
+    it would for a cache miss.
+    """
     try:
-        data = json.loads(f.read_text(encoding="utf-8"))
+        import requests
+    except ImportError:  # pragma: no cover - requests ships with web3
+        return None
+    chain = case.get("chain_id")
+    addr = str(case.get("target_contract", "")).lower()
+    if not chain or not addr:
+        return None
+    url = f"{SOURCIFY_BASE}/v2/contract/{int(chain)}/{addr}?fields=sources,compilation"
+    try:
+        resp = requests.get(url, timeout=timeout)
     except Exception:  # noqa: BLE001
         return None
-    sf = data.get("source_files") or {}
-    if not sf:
+    if resp.status_code != 200:
         return None
-    return {"source_files": sf, "name": data.get("name", ""),
-            "evm_version": data.get("evm_version")}
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        return None
+
+    # Sourcify v2: sources = {path: {"content": str}}. Tolerate a bare string.
+    files: dict[str, str] = {}
+    for path, entry in (body.get("sources") or {}).items():
+        text = entry.get("content") if isinstance(entry, dict) else entry
+        if isinstance(text, str) and text.strip():
+            files[str(path)] = text
+    if not files:
+        return None
+    comp = body.get("compilation") or {}
+    rec = {"source_files": files,
+           "name": comp.get("name") or "",
+           "evm_version": (comp.get("compilerSettings") or {}).get("evmVersion"),
+           "compiler_version": comp.get("compilerVersion"),
+           "_source": "sourcify", "_match": body.get("match")}
+    if cache_path is not None:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(rec, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+    return {"source_files": files, "name": rec["name"],
+            "evm_version": rec["evm_version"],
+            "compiler_version": rec.get("compiler_version") or ""}
 
 
 # --------------------------------------------------------------------------- #
@@ -102,18 +175,54 @@ class DVCaseResult:
                 "error": self.error or None}
 
 
+# Per-chain RPC env vars, named exactly as the benchmark's own .env.example
+# does, so a user who configured DVBench already has these set.
+RPC_ENV_BY_CHAIN: dict[int, tuple[str, ...]] = {
+    1:     ("ETH_RPC_URL", "MAINNET_RPC_URL", "RPC_URL"),
+    56:    ("BSC_RPC_URL",),
+    8453:  ("BASE_RPC_URL",),
+    42161: ("ARBITRUM_RPC_URL", "ARB_RPC_URL"),
+    137:   ("POLYGON_RPC_URL",),
+    10:    ("OPTIMISM_RPC_URL", "OP_RPC_URL"),
+}
+
+
+def rpc_for_chain(chain_id: int, *, rpc_urls: Optional[dict] = None,
+                  rpc_url: str = "") -> str:
+    """The RPC endpoint to fork `chain_id` with, or "".
+
+    Resolution order: an explicit `rpc_urls[chain]` mapping, then the chain's
+    own env var, then a bare `rpc_url` - but the bare one is only honoured for
+    Ethereum mainnet, because pointing an `eth-mainnet` endpoint at a BSC case
+    would fork the wrong chain and silently produce nonsense.
+    """
+    import os
+    if rpc_urls:
+        u = rpc_urls.get(chain_id) or rpc_urls.get(str(chain_id))
+        if u:
+            return str(u)
+    for name in RPC_ENV_BY_CHAIN.get(int(chain_id or 0), ()):
+        u = os.environ.get(name)
+        if u:
+            return u
+    return rpc_url if int(chain_id or 0) == 1 else ""
+
+
 def run_case(case: dict, source: dict, *, rpc_url: str = "", fork: bool = False,
-             budget_findings: int = 8) -> DVCaseResult:
+             budget_findings: int = 8,
+             rpc_urls: Optional[dict] = None) -> DVCaseResult:
     from .hunt import HuntInputs, run as run_hunt
 
     chain = int(case.get("chain_id", 0))
-    can_fork = fork and chain == 1 and bool(rpc_url)
+    chain_rpc = rpc_for_chain(chain, rpc_urls=rpc_urls, rpc_url=rpc_url)
+    can_fork = bool(fork and chain_rpc)
     inp = HuntInputs(
         source=source["source_files"], target_contract=source.get("name", ""),
         chain_id=chain, block_number=case.get("block_number"),
         address=str(case.get("target_contract", "")),
-        rpc_url=(rpc_url or None) if can_fork else None,
-        fork=can_fork, budget_findings=budget_findings)
+        rpc_url=chain_rpc or None if can_fork else None,
+        fork=can_fork, budget_findings=budget_findings,
+        compiler_version=source.get("compiler_version", ""))
     t0 = time.time()
     try:
         res = run_hunt(inp)
@@ -289,8 +398,14 @@ class DVReport:
 def run_dvbench(checkout_dir: str, *, case_ids: Optional[list[str]] = None,
                 limit: Optional[int] = None, fork: bool = False,
                 rpc_url: str = "", cache_dir: Optional[str] = None,
-                budget_findings: int = 8,
-                on_case=None) -> DVReport:
+                budget_findings: int = 8, fetch_sources: bool = False,
+                rpc_urls: Optional[dict] = None, on_case=None) -> DVReport:
+    """Blind run over a local DVBench checkout.
+
+    `fetch_sources=True` lets a cache miss fall back to Sourcify (keyless) and
+    populates the cache for later offline runs. Off by default so the test
+    suite never touches the network.
+    """
     cases = load_cases(checkout_dir)
     if case_ids:
         want = set(case_ids)
@@ -303,7 +418,8 @@ def run_dvbench(checkout_dir: str, *, case_ids: Optional[list[str]] = None,
     fp = 0
     tp = 0
     for case in cases:
-        src = load_source(case, checkout_dir, cache_dir=cache_dir)
+        src = load_source(case, checkout_dir, cache_dir=cache_dir,
+                          allow_fetch=fetch_sources)
         if src is None:
             rep.n_source_unavailable += 1
             dv = DVCaseResult(case["id"], chain_id=case.get("chain_id", 0),
@@ -313,7 +429,7 @@ def run_dvbench(checkout_dir: str, *, case_ids: Optional[list[str]] = None,
                 on_case(dv)
             continue
         dv = run_case(case, src, rpc_url=rpc_url, fork=fork,
-                      budget_findings=budget_findings)
+                      budget_findings=budget_findings, rpc_urls=rpc_urls)
         rep.n_run += 1
         rep.n_compiled += int(dv.model_compiled)
         rep.n_errors += int(bool(dv.error))
