@@ -1,0 +1,11 @@
+{
+  "name": "MiniDrain",
+  "compiler_version": "0.8.19",
+  "optimization_enabled": true,
+  "optimization_runs": 200,
+  "evm_version": "shanghai",
+  "constructor_args": "",
+  "source_files": {
+    "MiniDrain.sol": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\ncontract MiniDrain {\n    mapping(address => uint256) public deposits;\n\n    event Deposited(address indexed who, uint256 amount);\n    event Withdrawn(address indexed who, uint256 amount);\n\n    function deposit() external payable {\n        deposits[msg.sender] += msg.value;\n        emit Deposited(msg.sender, msg.value);\n    }\n\n    // BUG: no check that the caller is entitled to `amount`\n    function withdraw(uint256 amount) external {\n        (bool ok, ) = msg.sender.call{value: amount}(\"\");\n        require(ok, \"send failed\");\n        emit Withdrawn(msg.sender, amount);\n    }\n}\n"
+  }
+}

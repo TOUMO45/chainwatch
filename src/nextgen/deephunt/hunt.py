@@ -141,7 +141,12 @@ def run(inp: HuntInputs) -> DeepHuntResult:
     cov["counterfactual_mutations"] = len(muts)
 
     # --- 6. execution grounding (sections 11/12) - optional ----------------
+    #   a str source, or a single-file {path: content} bundle, is already
+    #   self-contained and can drive the reproducer directly; a genuine
+    #   multi-file bundle needs forge-flatten (not wired in v1).
     source_bundle = inp.source if isinstance(inp.source, str) else ""
+    if not source_bundle and isinstance(inp.source, dict) and len(inp.source) == 1:
+        source_bundle = next(iter(inp.source.values()))
     from ..execground import foundry as _F
     toolchain = _F.resolve()
     cov["toolchain"] = toolchain.kind if toolchain else "none"

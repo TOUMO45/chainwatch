@@ -1,0 +1,11 @@
+{
+  "name": "Minter",
+  "compiler_version": "0.8.19",
+  "optimization_enabled": true,
+  "optimization_runs": 200,
+  "evm_version": "shanghai",
+  "constructor_args": "",
+  "source_files": {
+    "Minter.sol": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\ninterface IPair {\n    function getReserves() external view returns (uint112, uint112, uint32);\n}\n\ncontract Minter {\n    IPair public pair;\n    uint256 public totalSupply;\n    mapping(address => uint256) public balanceOf;\n    uint256 public dailyMinted;\n\n    event Minted(address indexed who, uint256 amount);\n\n    constructor(address p) { pair = IPair(p); }\n\n    // BUG: instantaneous AMM spot reserves used as a price oracle\n    function _price() internal view returns (uint256) {\n        (uint112 r0, uint112 r1, ) = pair.getReserves();\n        return (uint256(r1) * 1e18) / uint256(r0);\n    }\n\n    function mint() external payable {\n        uint256 amount = (msg.value * _price()) / 1e18;\n        require(dailyMinted + amount <= 1_000_000 ether, \"cap\");\n        balanceOf[msg.sender] += amount;\n        totalSupply += amount;\n        dailyMinted += amount;\n        emit Minted(msg.sender, amount);\n    }\n}\n"
+  }
+}
