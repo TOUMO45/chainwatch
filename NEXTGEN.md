@@ -714,8 +714,16 @@ Precision is the load-bearing claim, so it is tested, not asserted:
 function in DeFi — is modelled, writes a nonce, and is **not** flagged (the test
 asserts it was modelled first, so silence cannot be vacuous). Likewise
 `msg.sender`-keyed nonces, party-bound digests, and code verifying no signature.
-Across nine compiled units (OZ 5, five whole protocol trees, sky-dss, Ambire):
-**3 fires, all 3 on the known-vulnerable contract, zero false positives.**
+Then swept across **every one of the 102 code4rena contests in Web3Bugs**
+(`.sigscope-sweep.json`, ~57 min): 53 compiled, and
+
+```
+fires = 3      all three on contest 38 (Ambire)      false positives = 0
+```
+
+Three fires on the one codebase that actually has the bug, and **silence on the
+other 52 real protocol codebases** — 493 labelled bugs' worth of opportunity to
+be wrong. Precision measured, not asserted.
 
 ### Known limits
 
