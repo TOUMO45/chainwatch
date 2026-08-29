@@ -5215,3 +5215,115 @@ multi-fork replay, Phase 8 minimisation, and Phase 9/10 validation, all
 against a real Anvil fork in WSL - both completed to a valid verdict after
 the fix, confirming the bug did not silently mask a real result in the one
 path that actually exercises it end to end.
+
+---
+
+### TWIN-L2 — CONSERVATION mining sees nothing when the scanned address IS the token, not a holder of it
+
+**Type: SCOPE LIMITATION, found by testing against a real, different KIND of
+target (a plain ERC-20 token contract) than the Twin had been verified
+against before (WETH, itself both a token AND, via `deposit`/`withdraw`, a
+genuine ETH holder). Real, not a bug - `collect.py`'s own filter is doing
+exactly what it says. FOUND 2026-08-29, testing USDC live.**
+
+`collect.py` decodes a `TransferEvent` into `Collection.transfers` only when
+the SCANNED address is one of the transfer's two parties
+(`if t and address in (t.frm, t.to)`) - written with a protocol-shaped
+target in mind (a vault, a router, a lending pool: something that itself
+sends and receives tokens as a genuine counterparty). A plain ERC-20 token
+contract is never a party to its OWN `Transfer` events - the event's `from`
+and `to` are the two USER wallets exchanging the token; the token contract
+just emits the log. Measured directly: scanning real USDC
+(`0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`) over a live 50-block window
+collected **997 real transactions** (a very active window - the enumeration
+cap kept the first 250) and **0 transfers**, even though that window
+certainly contained thousands of real USDC transfers. `CONSERVATION` and
+`ACCOUNTING` mining both key off `Collection.transfers`
+(`FunctionFingerprint.transfers_in`/`transfers_out`), so neither can fire at
+all for a plain token scanned this way - not a false negative in the sense
+of a missed violation (nothing was checked, so nothing was cleared either),
+but a real, previously-unmeasured gap in what this target SHAPE can ever
+surface, worth stating plainly rather than leaving a reader to assume
+CONSERVATION was checked and found nothing wrong.
+
+**What still worked, and worked well, on the very same run**: `AUTHORIZATION`
+mining (which keys off caller identity, not token flow) correctly inferred
+from a single observed transaction that USDC's real `mint(address,uint256)`
+selector (`0x40c10f19`) is gated to one specific address - Circle's actual
+production minter - with zero source code and zero ABI, just the raw
+selector and the caller of the one sampled call. `INFERRED`, not `TESTED`
+(one sample is below `_MIN_SAMPLES=3`), which is the correct, honest status
+for a single observation.
+
+**The same run also shows why the `_MIN_SAMPLES` discipline exists, not
+just what it produces when satisfied**: the second boundary mined was
+`permit()` (EIP-2612, selector `0xd505accf`) gated, on this one sample, to a
+single caller - but a real `permit()` is callable by ANYONE holding a valid
+off-chain signature; the "caller" in a live sample is typically whichever
+relayer happened to submit it that block, not a real access-control
+boundary. Left at `INFERRED` on one sample, this is honestly weak evidence,
+exactly as it should be; had this pattern spuriously reached `TESTED` on a
+thin sample, it would have been a textbook false authorization boundary.
+This was not hand-picked - it is what the very first live run against a
+new, real target actually returned.
+
+**Direction, not yet built**: `collect.py` could additionally decode
+transfers where the scanned address is the TOKEN in the event (not a
+party), for a target being analysed specifically as a token rather than a
+protocol - a different collection mode, not a fix to the current one (a
+vault's own conservation boundary genuinely does need "did IT send out what
+it took in", which the current logic already gets right).
+
+---
+
+### TWIN-L3 — a self-call transaction's own gas cost read as an "UNEXPECTED_PROTOCOL_LOSS"
+
+**Type: CORRECTNESS BUG (false positive), found live against a real Uniswap
+V3 pool, not a synthetic case. `src/nextgen/twin/checks.py::_protocol_loss`.
+FOUND and FIXED 2026-08-29.**
+
+Testing the Twin against a second, different KIND of real target (a
+protocol contract, chosen specifically to contrast with TWIN-L2's plain-token
+case) surfaced a genuine bug, not just a scope gap. `replay()` pre-funds
+every SENDER in a mutation's calls with a large synthetic balance
+(`_BIG_BALANCE = 10**24` wei) BEFORE sampling `balances_before` - correct
+for `_balance_gain`, which specifically wants to know whether an account
+ended up with MORE than that known synthetic baseline (a real signal). But
+`_protocol_loss` read the SAME sampled balance for its own `target`
+(`mutation.calls[-1]["to"]`) without checking whether that target happened
+to ALSO be one of the mutation's senders - which is exactly what a genuine
+SELF-CALL transaction is (`from == to`), not a contrived case: a real,
+observed Uniswap V3 pool interaction was collected via a router whose own
+transaction called itself. Replaying it with a `BOUNDARY_VALUE` mutation
+(unchanged `from`/`to`, both the router) reported the router's ETH balance
+dropping by 651330042304960 wei - **ordinary gas cost, measured against a
+1,000,000-ETH balance that check itself had just synthetically created
+moments earlier**, not a real financial fact about anything.
+
+**Confirmed, not assumed, before writing a fix**: read the flagged
+transaction's real `from`/`to` directly from the live chain (`eth_getTransactionByHash`)
+- both fields were the identical address - and read that address's REAL
+current mainnet balance, which is nowhere near `10**24` wei, closing off any
+possibility this was a real fact about the target rather than an artifact
+of the replay harness's own setup.
+
+**Fix**: `_protocol_loss` now returns early when `target` is also present in
+`mutation.calls`'s sender set - a target whose balance was synthetically
+inflated moments before never had a real "before" figure to lose in the
+first place. `_balance_gain` needed no change: it was never vulnerable to
+this shape, since it always compares the SENDER's own balance against the
+SAME known synthetic baseline it was funded to, which is precisely the
+comparison that makes an excess-above-baseline reading meaningful.
+
+**Verified**: `tests/test_nextgen_twin_checks.py::
+test_protocol_loss_absent_when_target_is_also_the_sender` locks the exact
+real numbers from the live false positive; the full pure `checks.py` suite
+(15 tests) passes; the SAME live Uniswap V3 pool window was re-scanned after
+the fix to confirm the false violation no longer appears.
+
+**What this run demonstrates, stated plainly**: this was not a synthetic
+test case invented to prove the fix - it is what a live, unmodified run
+against a real, heavily-used DeFi pool actually produced, and it was wrong.
+Catching it before it could ever be reported as a finding, rather than after,
+is the entire point of testing against real, varied, adversarial-by-accident
+targets instead of only fixtures built to exercise the happy path.

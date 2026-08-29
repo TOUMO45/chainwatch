@@ -96,6 +96,19 @@ def _protocol_loss(mutation: M.Mutation, rr: M.ReplayResult,
     if not succeeded or mutation.kind not in _ATTACK_SHAPED:
         return []
     target = mutation.calls[-1].get("to", "")
+    senders = {c.get("from") for c in mutation.calls if c.get("from")}
+    if target in senders:
+        # `replay()` pre-funds every SENDER with a large synthetic balance
+        # before sampling `balances_before` - correct for `_balance_gain`
+        # (an unexpected excess ABOVE that known baseline is real signal),
+        # wrong here: a target that is ALSO one of the mutation's own senders
+        # (a genuine self-call transaction, `from == to`) never had a real
+        # "before" balance to lose - its drop is just the synthetic
+        # balance's own gas cost. Measured directly against a real Uniswap
+        # V3 pool interaction (a self-calling router tx): without this
+        # guard, ordinary gas expenditure against a 10**24-wei synthetic
+        # balance read as a 651330042304960-wei "protocol loss".
+        return []
     before = rr.balances_before.get(target)
     after = rr.balances_after.get(target)
     if before is None or after is None or before == 0:

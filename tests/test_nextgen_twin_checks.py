@@ -102,6 +102,23 @@ def test_protocol_loss_absent_when_target_had_no_balance():
     assert CH._protocol_loss(mut, rr, baseline=None, succeeded=True) == []
 
 
+def test_protocol_loss_absent_when_target_is_also_the_sender():
+    """A genuine self-call transaction (from == to) has its balance
+    pre-funded by replay()'s own synthetic BIG_BALANCE before sampling -
+    the resulting drop is ordinary gas cost against a fake baseline, not a
+    real loss. Measured directly against a real Uniswap V3 pool interaction
+    (a self-calling router tx) before this guard existed: 651330042304960
+    wei of pure gas cost against a 10**24-wei synthetic balance read as a
+    false UNEXPECTED_PROTOCOL_LOSS."""
+    self_addr = "0xe7d0dc39f2aad5ec69fe784b683ddd9941a6f724"
+    mut = _mut(M.BOUNDARY_VALUE,
+              calls=[{"from": self_addr, "to": self_addr, "value": 0,
+                     "data": "0x12345678"}])
+    rr = _rr(mut, before={self_addr: 10 ** 24},
+            after={self_addr: 10 ** 24 - 651330042304960})
+    assert CH._protocol_loss(mut, rr, baseline=None, succeeded=True) == []
+
+
 def test_unexpected_success_needs_a_tested_boundary_of_the_right_kind():
     mut = _mut(M.BOUNDARY_VALUE)
     rr = _rr(mut, status=True)
