@@ -330,7 +330,36 @@ def main() -> int:
                          "check.")
     ap.add_argument("--blocks", metavar="LO:HI",
                     help="block range for --twin, e.g. 21000000:21005000")
+    ap.add_argument("--deep-hunt", dest="deep_hunt", metavar="SRC",
+                    help="EXPERIMENTAL (src/nextgen/deephunt/, additive, "
+                         "flag-gated): the Deep Hunt engine - analyse a DEPLOYED "
+                         "protocol as a behavioural system (no git regression "
+                         "required). SRC is a .sol file or a directory of "
+                         "verified source. Builds a ProtocolModel, discovers "
+                         "protocol-specific security invariants (asset "
+                         "conservation / entitlement / share math / oracle "
+                         "assumption / ...), plans and mutates stateful "
+                         "sequences, and - with a Foundry toolchain - reproduces "
+                         "violations on a local fork. With --address/--rpc-url "
+                         "it also learns historical behaviour and checks "
+                         "liveness. Prints a CANDIDATE / LIKELY / UNKNOWN / "
+                         "REJECTED / CONFIRMED research report with a coverage "
+                         "block. The classic pipeline is untouched.")
+    ap.add_argument("--chain-id", dest="chain_id", type=int, default=0,
+                    help="chain id for --deep-hunt (1 ETH, 56 BSC, 8453 Base, ...)")
+    ap.add_argument("--block", dest="block", type=int, default=0,
+                    help="fork block number for --deep-hunt")
+    ap.add_argument("--fork", action="store_true",
+                    help="for --deep-hunt: attempt execution grounding against a "
+                         "local fork of --address at --block (needs --rpc-url)")
+    ap.add_argument("--deep-hunt-llm", dest="deep_hunt_llm", action="store_true",
+                    help="for --deep-hunt: allow the optional Gemini hypothesis "
+                         "hook to PROPOSE extra invariants / sequences (still "
+                         "mechanically validated; never decides a verdict)")
     args = ap.parse_args()
+
+    if args.deep_hunt:
+        return _run_deephunt(args)
 
     if args.twin:
         return _run_twin(args)
@@ -477,6 +506,59 @@ def _run_twin(args) -> int:
     tw = CounterfactualTwin(args.twin, rpc, lo, hi, on_event=_progress)
     res = tw.run()
     print("\n" + res.render_text())
+    if args.json:
+        Path(args.json).write_text(json.dumps(res.as_dict(), indent=2, default=str),
+                                   encoding="utf-8")
+        print(f"\nfull result written to {args.json}")
+    return 0 if res.verdict in ("CONFIRMED", "UNKNOWN") else 1
+
+
+def _run_deephunt(args) -> int:
+    """`--deep-hunt SRC [--address 0x.. --chain-id N --block N --rpc-url ..
+    --fork --deep-hunt-llm]`. Additive, flag-gated. See NEXTGEN.md / the
+    CHAINWATCH 2.0 spec."""
+    import os
+
+    src_path = Path(args.deep_hunt)
+    if not src_path.exists():
+        sys.exit(f"--deep-hunt: {src_path} does not exist")
+    if src_path.is_dir():
+        source: object = {str(p.relative_to(src_path)): p.read_text(encoding="utf-8",
+                                                                   errors="replace")
+                          for p in src_path.rglob("*.sol")}
+        if not source:
+            sys.exit(f"--deep-hunt: no .sol files under {src_path}")
+    else:
+        source = src_path.read_text(encoding="utf-8", errors="replace")
+
+    rpc = args.rpc_url
+    if rpc is None and (args.address or args.fork):
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except Exception:  # noqa: BLE001
+            pass
+        rpc = os.environ.get("RPC_URL")
+
+    os.environ.setdefault("CHAINWATCH_DEEPHUNT", "1")
+    from src.nextgen.deephunt.hunt import HuntInputs, run as run_hunt
+
+    bblocks = None
+    if args.blocks and ":" in args.blocks:
+        lo, hi = args.blocks.split(":", 1)
+        try:
+            bblocks = (int(lo), int(hi))
+        except ValueError:
+            bblocks = None
+
+    print(f"deep hunt: {args.deep_hunt}"
+          + (f"  @ {args.address}" if args.address else "  (source-only)"))
+    res = run_hunt(HuntInputs(
+        source=source, chain_id=args.chain_id, block_number=args.block or None,
+        address=args.address or "", rpc_url=rpc, behaviour_blocks=bblocks,
+        fork=args.fork, use_llm=args.deep_hunt_llm))
+    print("\n" + res.report_text)
+    print(f"\nVERDICT: {res.verdict}")
     if args.json:
         Path(args.json).write_text(json.dumps(res.as_dict(), indent=2, default=str),
                                    encoding="utf-8")

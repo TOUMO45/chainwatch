@@ -374,6 +374,13 @@ def build_from_sources(src: Union[str, dict, Path], *,
                              target_contract=target)
 
 
+def compile_source(src: Union[str, dict, Path], *, target: str = ""):
+    """Compile `src` and return the raw Slither object (or raise). The orchestrator
+    uses this once and shares it with the attack-graph / compensating-control
+    analyzers so the source is parsed a single time."""
+    return _compile_any(src, target)
+
+
 def build_model(slither_obj, *, target: str = "") -> ProtocolModel:
     """Model an already-compiled Slither object."""
     from src.rules import _shared
