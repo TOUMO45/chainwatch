@@ -631,3 +631,84 @@ tree with 41 external calls, 11 state-diff addresses, 12 transfers.
 **Acceptance check (Twin 3/3):** see the resume file (HANDOFF.md) for the
 exact command and pass count this arc closed with — full suite plus a real,
 live end-to-end `CounterfactualTwin.run()` against a real address.
+
+---
+
+## Chainwatch 2.0 — the DEEP HUNT engine (third pipeline, 2026-08-29)
+
+The regression engine and the Twin both need an anchor: a git commit, or a
+transaction history. Deep Hunt needs neither. It answers the third question —
+
+> can the protocol **as it stands** be driven into a state that violates a
+> security property, whether or not any commit ever introduced it?
+
+Additive and flag-gated exactly like the others: `src/nextgen/deephunt/`,
+`CHAINWATCH_DEEPHUNT=1`, `chainwatch.py --deep-hunt`. Nothing on the classic
+or regression paths imports it. A Deep Hunt `CONFIRMED` still needs the full
+evidence chain; the two git-only gates (`regression_commit`, `build_environment`)
+are made non-blocking by `findings.classify_live` and **nothing else is relaxed**.
+
+| Phase | Module | Spec §  |
+|-------|--------|---------|
+| 1  | `protocolmodel.py` — contracts / functions / roles / assets / deps / state relations / risk score | 3, 21 |
+| 2  | `invariants.py` — categories A–J, each emitting a machine-checkable `test_recipe` | 4, 5 |
+| 3  | `execadapter.py` — `ForkContext` over `AnvilFork`, exact-state repro | 11, 12 |
+| 4  | `stateexplorer.py` — risk-ranked bounded sequence planning | 9, 21 |
+| 5  | `assetflow.py` — flow graph, entitlement check, economics feed | 13, 14, 15 |
+| 6  | `behavior.py` — historical behaviour priors (RPC-gated, optional) | 6, 7, 8 |
+| 7  | `counterfactual.py` — sequence-driven mutation | 10 |
+| 8  | `skeptic.py` — live-finding rejection sweep | 16 |
+| 9  | `reproduce.py` — blinded reproducer | 16, 17 |
+| 10 | `findings.py` + `hunt.py` — taxonomy, live gate profile, orchestrator, coverage | 18, 26, 27, 28 |
+| 11 | `bench_dvbench.py` — the blind DVBench harness | 29 |
+
+### Measured, not asserted
+
+**DVBench (90 real DeFi exploits, blind — `reference_findings` hidden from the
+engine).** Source is fetched keylessly from **Sourcify**, since the benchmark
+repo does not commit its Etherscan cache. Source-only, no fork:
+
+```
+run 72/90   (18 source unavailable)   model compiled 38/72
+micro recall  0.247   (24/97 reference findings)      novel 82
+cases CONFIRMED 0     false positives 0
+```
+
+Recall is gated by the **compile** rate, not by the oracles: an uncompiled
+bundle contributes zero. That is honest coverage, reported, never hidden —
+the same discipline as the classic scanner's coverage block. Zero CONFIRMED is
+the correct outcome for a source-only run: with no deployment and no
+reproducer, the evidence chain cannot close, so every finding stays `UNKNOWN`.
+
+### The signature-SCOPE oracle (§5.H) — a real bug, found blind
+
+A nonce stops a signature being replayed against the **same** party. It does
+nothing about replay across **different** parties unless the digest also binds
+that party. `invariants.cat_signature_scope` reports only when a signature is
+genuinely verified, the nonce is keyed on a caller-supplied **parameter**
+(never `msg.sender`), and that parameter is absent from the `abi.encode*`
+preimage once the `nonce[...]` index is stripped.
+
+Run blind against **code4rena 2021-10 Ambire** (Web3Bugs contest 38), Deep Hunt
+independently reported `QuickAccManager.send` / `sendTransfer` / `sendTxns`,
+party `identity` — which is finding **H-03, "Signature replay attacks for
+different identities (nonce on wrong party)", confirmed and patched by the
+Ambire team**. Nothing pointed the engine at the contract, the function, or the
+bug class; they are now the repo's top three findings.
+
+Precision is the load-bearing claim, so it is tested, not asserted:
+**OpenZeppelin 5 `ERC20Permit.permit`** — the most deployed signature-consuming
+function in DeFi — is modelled, writes a nonce, and is **not** flagged (the test
+asserts it was modelled first, so silence cannot be vacuous). Likewise
+`msg.sender`-keyed nonces, party-bound digests, and code verifying no signature.
+Across nine compiled units (OZ 5, five whole protocol trees, sky-dss, Ambire):
+**3 fires, all 3 on the known-vulnerable contract, zero false positives.**
+
+### Known limits
+
+- **Compile rate is the ceiling.** Multi-file bundles with unresolved
+  dependencies do not model. Fixing this lifts recall more than any new oracle.
+- **Fork grounding is chain-gated.** Only chains with an RPC configured can be
+  execution-grounded; the rest stay source-only and therefore `UNKNOWN`.
+- The DVBench scoring proxy is a deterministic root-cause-overlap heuristic,
+  not the benchmark's own LLM judge. It is documented as approximate.

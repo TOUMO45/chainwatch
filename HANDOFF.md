@@ -1,11 +1,88 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `0430fbb`** ("Counterfactual Twin commit 3/3" — Twin commit
-2/3 is `c009873`, immediately before it). **NOT YET PUSHED** — this whole
-NEXTGEN + Twin arc is local only; run `git push origin master` with a human
-present; `git status -sb` shows `ahead N`.
+**Last commit: `d7d6db4`** ("Deep Hunt: the signature-SCOPE oracle").
+**NOT YET PUSHED** — `git status -sb` shows `ahead 21`. Git Credential Manager
+has no cached token on this host: `git push` and even
+`git credential-manager get` HANG until timeout, and there is no `gh` CLI and
+no `GH_TOKEN`/`GITHUB_TOKEN`. A human must run `git push origin master`, or
+supply a PAT. Do not burn time retrying it.
 
-## Counterfactual Protocol Twin — ALL THREE COMMITS DONE (2026-08-28)
+## CHAINWATCH 2.0 — the DEEP HUNT engine (2026-08-29). Read NEXTGEN.md's last section.
+
+A THIRD pipeline beside the regression engine and the Twin, answering the
+question neither can: *can the protocol as it stands be driven into a violating
+state, whether or not any commit introduced it?* Additive, flag-gated
+(`CHAINWATCH_DEEPHUNT=1`, `chainwatch.py --deep-hunt`), imported by nothing on
+the classic path. 11 phases, `src/nextgen/deephunt/`, one commit per phase
+(`3ef4535` → `c806c45`), then two more:
+
+- **`53baa37`** made the DVBench harness actually runnable. Three real fixes:
+  (1) the benchmark repo does not commit `.cache/etherscan/`, so a fresh
+  checkout had ZERO source — added a keyless **Sourcify** fallback (71/90 cases
+  fetched in 39s); (2) big multi-file bundles thrashed every entry file across
+  ~20 solc versions — now ≤4 ranked entries with the verified compiler pinned,
+  taking 300–620s cases under 40s; (3) a blinded reproducer's NOT_REPRODUCED
+  was FAILing the gate for value/oracle objectives, where an isolated
+  `new Target()` test proves nothing — now PENDING, recovering 3 false-REJECTs.
+- **`d7d6db4`** added the **signature-SCOPE oracle** (below).
+
+### The result that matters: a real bug, found blind
+
+Swept six real repos (Web3Bugs contests 18/20/38/39/105/125). On contest 38 —
+**Ambire, code4rena 2021-10** — Deep Hunt independently reported
+`QuickAccManager.send` / `sendTransfer` / `sendTxns`, party `identity`. That is
+finding **H-03, "Signature replay attacks for different identities (nonce on
+wrong party)" — confirmed AND patched by the Ambire team** (Web3Bugs label
+S2-3). Nothing pointed the engine at the contract, function, or bug class.
+
+The oracle (`invariants.cat_signature_scope`): a nonce stops replay against the
+SAME party; it does nothing across DIFFERENT parties unless the digest binds
+that party. It fires only when a signature is genuinely verified, the nonce is
+keyed on a caller-supplied PARAMETER (never `msg.sender`), and that parameter
+is absent from the `abi.encode*` preimage once the `nonce[...]` index is
+stripped. `FunctionModel.source` was added so an oracle can read an EXPRESSION
+rather than a fact Slither summarises.
+
+**Precision is the load-bearing claim, so it is tested.** OpenZeppelin 5
+`ERC20Permit.permit` — the most deployed signature-consuming function in DeFi —
+is modelled, writes a nonce, and is NOT flagged; the test asserts it was
+modelled first so the silence cannot be vacuous. Wide sweep over 9 compiled
+units: **3 fires, all 3 on the known-vulnerable contract, ZERO false positives.**
+
+### Numbers (measured, in-repo artifacts)
+
+- `.dvbench-run.json` — full blind DVBench run, 90 cases: 72 run, 38/72
+  compiled, **micro recall 0.247 (24/97)**, **0 CONFIRMED, 0 false positives**.
+- `.sigscope-sweep.json` — the signature-scope sweep over all 102 Web3Bugs
+  contests (written by `$TEMP/bigsweep.py`; re-runnable).
+- 118 deephunt tests green; full suite 720 passed / 3 skipped; `guard.sh` OK.
+
+### Where the next gain is — NOT more oracles
+
+**Compile rate is the ceiling.** 38/72 on DVBench, and roughly half of Web3Bugs
+contests need `node_modules` that are not vendored. An uncompiled bundle
+contributes exactly zero recall, so dependency reconstruction for a bare
+Etherscan/hardhat tree is worth more than any new detector. The classic engine
+already solves this per-commit in `src/history.py` (`detect_env`/`install`) —
+wiring that into `deephunt/protocolmodel._compile_tree` is the obvious next
+move.
+
+Second: fork grounding is chain-gated. `.env` has only an ETH-mainnet Alchemy
+URL, so only 31/90 DVBench cases could ever be execution-grounded. The harness
+now resolves per-chain RPCs (`bench_dvbench.rpc_for_chain`, reading
+`BSC_RPC_URL`/`BASE_RPC_URL`/…), so adding endpoints lifts this with no code
+change. A bare eth-mainnet URL is deliberately NOT reused for other chains.
+
+### Checkouts (gitignored)
+
+`realworld-test/dvbench` (the DVBench repo + a Sourcify-populated
+`.cache/etherscan/`) and `realworld-test/web3bugs` (493 labelled code4rena bugs
+across 102 contests, with full source trees). Both are what the tests
+`skipif`-guard on.
+
+---
+
+## PRIOR ARC Counterfactual Protocol Twin — ALL THREE COMMITS DONE (2026-08-28)
 
 The user asked to build a **Counterfactual Protocol Twin** (a trace-driven
 complement to the NEXTGEN pipeline) per a 10-phase architecture, in three
