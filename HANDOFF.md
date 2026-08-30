@@ -1,13 +1,77 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `d7d6db4`** ("Deep Hunt: the signature-SCOPE oracle").
-**NOT YET PUSHED** — `git status -sb` shows `ahead 21`. Git Credential Manager
-has no cached token on this host: `git push` and even
-`git credential-manager get` HANG until timeout, and there is no `gh` CLI and
-no `GH_TOKEN`/`GITHUB_TOKEN`. A human must run `git push origin master`, or
-supply a PAT. Do not burn time retrying it.
+**Last commit: `5e214b4`** ("BENCHMARK.md: the measured results table").
+**NOT YET PUSHED** — `ahead 30`. GCM has no cached token on this host: `git
+push` and even `git credential-manager get` HANG until timeout, there is no
+`gh` CLI and no `GH_TOKEN`. A human must push, or supply a PAT. Do not retry.
 
-## CHAINWATCH 2.0 — the DEEP HUNT engine (2026-08-29). Read NEXTGEN.md's last section.
+## BENCHMARK ARC (2026-08-30) — read BENCHMARK.md first, it is the product.
+
+Built a three-pass benchmark harness over three new public corpora and measured
+Chainwatch against all of them. **BENCHMARK.md carries the numbers and their
+caveats**; the raw per-case JSON is committed (`.dfhl-detection.json`,
+`.precision-run.json`, `.smartbugs-run.json`, `.sigscope-sweep.json`,
+`.dvbench-run.json`, `.dfhl-classmatch.json`).
+
+Headline: **50.8% mechanism-matched detection (32/63 scoreable DeFiHackLabs
+exploits), 0 high-confidence false positives per 1,000 mainnet contracts.**
+
+### New harnesses (`src/nextgen/deephunt/bench_*.py`, read-only, wired to nothing)
+
+- `bench_dfhl.py` — parses all 855 DeFiHackLabs PoCs. Each header gives the
+  vulnerable address + chain + pre-attack fork block, so no incident-to-repo
+  mapping is needed: it scans the code that was actually exploited. Root-cause
+  labels come from README titles (848/855 labelled).
+- `bench_smartbugs.py` — 143 line-level-truth contracts; 7 of 10 categories
+  mapped, 3 declared out of scope. Needed eleven 0.4.x solc installs.
+- `bench_precision.py` — ordinary mainnet contracts. Deliberately does NOT call
+  its findings false positives (the corpus is not known-clean) and reports per
+  1,000 CONTRACTS, not commit pairs, because these have no history.
+
+### Two parser bugs worth remembering (both found by disbelieving first numbers)
+
+Every DeFiHackLabs PoC credits its author with a twitter URL and the template
+contains a bare `// twitter guy :` line — matching those labelled 536 incidents
+"social engineering". And pre-2022 PoCs predate the `// Vulnerable Contract :`
+convention, costing 145 addresses until an explorer-link fallback was added.
+
+### Rules: two shipped, one REJECTED — the rejection is the important one
+
+Demand analysis: **63.0% of the 855 incidents are in classes no existing rule
+covers.** Shipped rule 11 (AMM pair-balance write + forced `sync()`, reproduces
+DVBench's FireToken reference finding) and rule 12 (credited amount != amount
+received). Price manipulation, the biggest gap at 150, was already covered by
+`cat_oracle_assumption`, so nothing was written for it.
+
+A candidate **rule 13 was written, measured, and reverted** (`45418f4`). It
+targeted the worst class — ACCESS_CONTROL at 2/14 — passed every synthetic
+fixture, then recovered only 2 of 12 real incidents and **both were false
+positives**: OpenZeppelin's deliberately permissionless `renounceRole`, and a
+`_balances` var that reached `RoleModel.guard_vars` by sharing a guard with a
+real auth check. Do not resurrect it without a sounder notion of "authority
+state" than naming or guard co-occurrence.
+
+### The open hole, if you want the highest-value next task
+
+`cat_authorization` proves a variable is privileged by finding a **guarded
+sibling** that writes it. A contract where NOTHING guards the owner setter has
+no sibling, so the most severe access-control case is invisible. That is why
+ACCESS_CONTROL scores 2/14. Closing it soundly is the biggest single win
+available, and rule 13 shows the naive closure does not work.
+
+Second-best: verified-source coverage. Only 134 of 847 in-scope incidents have
+Sourcify source; an Etherscan key would roughly triple the denominator.
+
+### Corpora (all gitignored under realworld-test/)
+
+`dfhl` (DeFiHackLabs), `sbcur` (smartbugs-curated), `sanctuary`
+(smart-contract-sanctuary-ethereum, sparse: 4418 contracts), plus the earlier
+`dvbench` and `web3bugs`. Sourcify cache in `.bench-cache/`. Tests skipif-guard
+on all of them.
+
+---
+
+## PRIOR ARC CHAINWATCH 2.0 — the DEEP HUNT engine (2026-08-29). Read NEXTGEN.md's last section.
 
 A THIRD pipeline beside the regression engine and the Twin, answering the
 question neither can: *can the protocol as it stands be driven into a violating
