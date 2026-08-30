@@ -325,6 +325,23 @@ async function loadSweeps() {
 
 loadSweeps();
 
+/* "Commits" and "Commit pair" are mutually exclusive - explicit_pairs, when
+ * set, is authoritative server-side and Commits is never consulted (see the
+ * comment in the submit handler). Grey Commits out and say so the moment a
+ * pair is typed, rather than let someone start a long walk that could never
+ * reach the commit they actually meant to target - exactly what happened
+ * before this field existed: "Commits: 15" quietly walking the 15 most
+ * recent commits while the regression they wanted sat years further back. */
+function syncPairCommitsState() {
+  const hasPair = $("pair").value.trim().length > 0;
+  $("limit").disabled = hasPair;
+  $("limit-hint").textContent = hasPair
+    ? "ignored — an exact commit pair is set above"
+    : "how many recent pairs to walk";
+}
+$("pair").addEventListener("input", syncPairCommitsState);
+syncPairCommitsState();
+
 fetch("/api/rules").then((r) => r.json()).then((d) => {
   RULE_TITLES = d.titles;
   $("rule-boxes").innerHTML = d.order.map((r) =>
@@ -379,6 +396,22 @@ $("scan-form").addEventListener("submit", async (e) => {
   const rules = [...document.querySelectorAll("#rule-boxes input:checked")].map((i) => i.value);
   if (!rules.length) { alert("Select at least one rule."); return; }
 
+  // A commit pair targets ONE exact regression instead of walking recent
+  // history - the same explicit_pairs the CLI's --pairs flag has always
+  // supported, just never exposed as a form field until now. When set, it
+  // overrides "Commits": the backend's own ScanOptions treats
+  // explicit_pairs as authoritative and never falls back to a limit-bound
+  // walk when it is present (src/scan.py).
+  const pairRaw = $("pair").value.trim();
+  let pairs = null;
+  if (pairRaw) {
+    if (!pairRaw.includes(":")) {
+      alert('Commit pair must be "parent_sha:commit_sha" - a single colon between the two revisions.');
+      return;
+    }
+    pairs = [pairRaw];
+  }
+
   const body = {
     repo: $("repo").value.trim(),
     limit: parseInt($("limit").value, 10) || 15,
@@ -388,6 +421,7 @@ $("scan-form").addEventListener("submit", async (e) => {
     check_head_survival: $("head_check").checked,
     check_exposure: $("exposure_check").checked,
     check_exploit_proof: $("exploit_check").checked,
+    pairs,
   };
 
   setStatus("starting…", "running");

@@ -48,8 +48,11 @@
         <input name="root_dir" id="root_dir"
                placeholder="leave empty to detect the source directory">
       </label>
+      <label>Commit pair <span class="hint">optional — target one exact regression instead of walking recent history</span>
+        <input name="pair" id="pair" placeholder="parent_sha:commit_sha">
+      </label>
       <div class="row">
-        <label>Commits
+        <label>Commits <span class="hint" id="limit-hint">how many recent pairs to walk</span>
           <input name="limit" id="limit" type="number" min="1" max="2000" value="15">
         </label>
         <label>Deployed address <span class="hint">optional</span>

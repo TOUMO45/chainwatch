@@ -275,6 +275,7 @@ input[type=text], input[type=number], input:not([type]) {
 }
 input::placeholder { color: var(--faint); }
 input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+input:disabled { opacity: .42; cursor: not-allowed; }
 .row { display: grid; grid-template-columns: 92px 1fr; gap: var(--sp-3); }
 .check { display: flex; align-items: center; gap: var(--sp-2); margin: 6px 0 var(--sp-3); }
 .check input { width: auto; }
