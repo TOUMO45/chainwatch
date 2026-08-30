@@ -1149,7 +1149,7 @@ discipline. Tracked in TODO.md.
 
 ---
 
-### LIVE-L1 — the immutable-code fallback is gated on "is a clone", not "is immutable" [FN risk]
+### LIVE-L1 — the immutable-code fallback is gated on "is a clone", not "is immutable" [FN risk — FIXED 2026-08-30]
 
 **Found 2026-08-30 by re-running the README's own flagship reproduction and
 disbelieving the result.** The section documented a CONFIRMED verdict; the
@@ -1201,38 +1201,84 @@ evidence exists; the pipeline cannot reach it.
    sufficient condition for that, not the necessary one. A non-proxy address
    (`proxy_kind: none`) is equally unable to have its code replaced.
 
-**The fix, and why it was not made on the spot.** Widen the fallback's
-predicate from "is a clone" to "is not a proxy, so its code cannot be updated".
-The evidential bar does not move: LIVE still requires a byte-exact normalized
-match against the regression commit's own build, and `update_survival` is still
-only called on that match. But it changes **when CONFIRMED is reachable**,
-which is the most safety-sensitive edit available in this codebase, and it was
-found the day before a submission deadline. Shipping a verdict-widening change
-under time pressure is precisely the failure this file exists to prevent. It
-gets its own tests, its own fixtures, and its own measurement — or it does not
-ship.
+**The fix, and why it was not made on the spot at first.** Widen the
+fallback's predicate from "is a clone" to "is not a proxy, so its code cannot
+be updated". The evidential bar does not move: LIVE still requires a
+byte-exact normalized match against the regression commit's own build, and
+`update_survival` is still only called on that match. But it changes **when
+CONFIRMED is reachable**, which is the most safety-sensitive edit available in
+this codebase, and it was found the day before a submission deadline.
+Shipping a verdict-widening change under time pressure is precisely the
+failure this file exists to prevent — so the first pass recorded the gap,
+corrected the README to match what the tool actually produced, and stopped.
 
-**What is honest to claim in the meantime:** Chainwatch locates the introducing
-commit for this case from history alone, exactly as documented. The on-chain
-half is provable by hand and not reachable by the pipeline. The funnel says so
-precisely rather than vaguely — killed at `liveness_live`, blocked on
-`reachability`, `distance_to_confirmed: null`.
+**Applied 2026-08-30, on explicit request, with the discipline the paragraph
+above insisted on: its own tests first, its own fixtures, its own
+measurement.** `src/scan.py` gained `_IMMUTABLE_PROXY_KINDS = frozenset({
+"none", "eip1167-clone"})` and `_IMMUTABLE_KIND_LABEL`; the gate at
+`_attach_liveness`'s regression-commit fallback now reads
+`proxy_kind in _IMMUTABLE_PROXY_KINDS` instead of the single string. The
+upgradeable kinds (`eip1967`, `eip1967-beacon`, `zeppelinos-legacy`) are
+DELIBERATELY still excluded — see the function's own docstring for exactly
+why widening to them needs different reason-text wording, not bundled into
+this fix.
 
-**Same root cause, third symptom, measured in the same sitting:**
-`--check-exposure` on this address returns an EMPTY probe list, while calling
-`exposure.probe` directly on the same address returns
+`tests/test_attach_liveness_immutable_fallback.py` (11 tests, every external
+boundary mocked) pins: the widened `none` path reaching LIVE and then
+CONFIRMED through the real, unmodified `verdict.classify`; the original
+`eip1167-clone` path unchanged; every upgradeable kind and `not-a-contract`
+staying disarmed; an RPC failure during proxy-kind resolution correctly
+leaving Python `None` (not the string `"none"`) so it cannot accidentally
+match the widened set; the pre-existing `cur_wt`/`cache` preconditions still
+enforced; the fallback never firing when the ordinary HEAD-based check already
+succeeded; and the constant itself checked as a subset of what
+`resolve_implementation` can actually return, read from that function's
+source rather than re-typed, so the two cannot drift apart silently.
+
+**Verified against the real, unmodified pipeline — the same discipline as the
+original 88mph closure this project already required of itself:**
 
 ```
-status='OPEN'  reason='simulated call did not revert - the one-shot window is
-still open'
+SUMMARY   1 finding(s): 1 CONFIRMED, 0 CANDIDATE in 78.1s
+
+#1  CONFIRMED   rule 10 - SC01 Control migrated to an unguarded entry point
+    at HEAD    : still present
+    on-chain   : LIVE - matched the REGRESSION COMMIT's own build, not current
+                 HEAD (deployed target is a non-proxy contract (its own
+                 bytecode cannot be upgraded); a later source fix cannot
+                 reach it): normalized runtime bytecode is identical to the
+                 compiled artifact
+
+    EXPLOITABILITY PROOF: OPEN - simulated call to init(...) did NOT revert
+    against the live deployed bytecode
+
+FUNNEL: 1 candidate(s): CONFIRMED 1, distance_to_confirmed 0
 ```
 
-— a live, read-only `eth_call` against mainnet proving `init()` is callable
-right now, five years after the disclosure. The probe machinery works; the
-candidate-identification step that feeds it compiles at HEAD, where the file no
-longer lives under that path. Any fix to cause (1) should be checked against
-this symptom too, because a fix that repairs liveness and leaves the exposure
-probe blind has only moved the problem.
+Note `at HEAD: still present` — previously `repaired later`. This is not a
+second, separate fix: `update_survival(f, True)` is the SAME call the
+`eip1167-clone` path always made, now reached via the widened gate, and it is
+exactly as sound here as it always was there — see the function's own
+docstring for why "this exact bytecode is still running" and "the regression
+still exists" are the same fact for code that cannot be repointed, regardless
+of which of the two immutable kinds made that true.
+
+**What is still open, and unaffected by this fix.** Cause (1) above — the
+HEAD-based compile failing because the file moved — is UNCHANGED; this fix
+gives CONFIRMED an independent route around it (the regression-commit
+recompile), it does not repair the HEAD-based path itself.
+`scan._renamed_path_at_head` still is not consulted by `_attach_liveness`.
+
+**The third symptom (capability 13 / `--check-exposure`) is STILL open and
+was NOT touched by this fix**, and should not be assumed closed by it:
+`--check-exposure` on this address still returns an empty probe list, while
+`exposure.probe` called directly still returns
+`status='OPEN' reason='simulated call did not revert - the one-shot window is
+still open'`. That gap lives in `exposure.find_candidates`, an entirely
+different identification path (Rule 3b's `has_init_guard` criterion, which
+`NFT.init()` may not even satisfy in the first place, having no guard of any
+kind — a distinct question from the file-move issue this entry originally
+attributed it to, and not re-investigated here). Real, separate work.
 
 ---
 

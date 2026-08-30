@@ -1025,6 +1025,21 @@ def _head_survival(rule_id: str, before_p: Path, rel: str, modified: list[str],
 # 200, is byte-exact against this setting.
 DEFAULT_OPTIMIZE_RUNS = 200
 
+# LIVE-L1 (LIMITATIONS.md). Every `resolve_implementation` `proxy_kind` value
+# meaning "no admin key, no beacon, nothing can ever repoint this address's
+# code" - see `_attach_liveness`'s docstring for exactly why these two and not
+# the upgradeable kinds (`eip1967`, `eip1967-beacon`, `zeppelinos-legacy`) or
+# `not-a-contract` (nothing deployed there at all). Read
+# `liveness.resolve_implementation`'s own
+# `out["proxy_kind"] = ...` assignments before changing this set - it must
+# stay a subset of the literal strings that function can actually return.
+_IMMUTABLE_PROXY_KINDS = frozenset({"none", "eip1167-clone"})
+
+_IMMUTABLE_KIND_LABEL: dict[str, str] = {
+    "none": "a non-proxy contract (its own bytecode cannot be upgraded)",
+    "eip1167-clone": "an immutable EIP-1167 clone",
+}
+
 
 def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit_event,
                      cur_wt=None, cache=None):
@@ -1033,27 +1048,54 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
     A finding whose contract is not what is deployed at the given address is not
     the code holding funds; the verdict model downgrades it accordingly.
 
-    IMMUTABLE-CLONE FALLBACK (measured on the real, publicly-disclosed 88mph
-    NFT.init() regression, `a4c48d61661a`, 2026-08-26). The HEAD-based check
-    below assumes the deployed contract keeps tracking the repository's current
-    source - true for an ordinary contract, false for an EIP-1167 minimal-proxy
-    clone target. A clone's implementation is immutable at deploy time: a later
-    source fix protects only FUTURE clones, so an already-deployed clone's
-    target keeps running the exact pre-fix bytecode forever, regardless of what
-    HEAD says. `contracts/NFT.sol` was fixed in the real 88mph repo six weeks
-    after the regression (`29be743`), then the file was moved and rewritten
-    again later - HEAD has no trace of the vulnerable shape left to compile -
-    yet the real deployed implementation at `0xDe71B24F...` is, TODAY, still
-    byte-for-byte the `a4c48d6` build (verified against real mainnet RPC:
-    `.walker-cache` is irrelevant here, this was a live `eth_getCode` read).
-    When the address resolves to a structurally-confirmed (never assumed)
-    `eip1167-clone` and the HEAD-based check above did not already prove LIVE,
-    this recompiles from the REGRESSION COMMIT's own source (`f.commit`)
-    instead and checks that. A match is labelled explicitly as such - never
-    silently reported as "matches HEAD" - and also supplies survival, because
-    for immutable code "this exact bytecode is still running" and "the
-    regression still exists" are the same fact, more direct than the
-    source-diff heuristic `_head_survival` uses.
+    IMMUTABLE-CODE FALLBACK (measured on the real, publicly-disclosed 88mph
+    NFT.init() regression, `a4c48d61661a`, 2026-08-26; widened from
+    clone-only to non-proxy-general 2026-08-30 - see `LIVE-L1` in
+    LIMITATIONS.md for the full before/after). The HEAD-based check below
+    assumes the deployed contract keeps tracking the repository's current
+    source - true only while the finding's file still exists at that path at
+    HEAD. It is false whenever the file has since been moved, rewritten past
+    recognition, or deleted, WHICH IS ORTHOGONAL to whether the deployed code
+    can ever change: for an EIP-1167 minimal-proxy clone target, or for an
+    ordinary non-proxy contract, the bytecode running at the address is fixed
+    forever at deploy time - EVM-level, not a property of this repository's
+    git history. A later source fix protects only future deployments; an
+    already-deployed instance of either kind keeps running its original
+    bytecode regardless of what HEAD says. `contracts/NFT.sol` was fixed in
+    the real 88mph repo six weeks after the regression (`29be743`), then the
+    file was moved and rewritten again later - HEAD has no trace of the
+    vulnerable shape left to compile - yet the real deployed implementation at
+    `0xDe71B24F...` is, TODAY, still byte-for-byte the `a4c48d6` build
+    (verified against real mainnet RPC: `.walker-cache` is irrelevant here,
+    this was a live `eth_getCode` read).
+
+    `0xDe71B24F...` itself resolves `proxy_kind: none` - it is the shared
+    logic three EIP-1167 clones (yaLINK/CRV:STETH/CRV:RENWBTC 88mph pools)
+    delegate to, not a clone address itself - which is why an EARLIER version
+    of this fallback, gated on `proxy_kind == "eip1167-clone"` alone, never
+    engaged for it: correct code, wrong gate. `_IMMUTABLE_PROXY_KINDS` below is
+    every `resolve_implementation` result meaning "nothing can ever repoint
+    this address's code" - `none` (an ordinary contract; not identified as any
+    upgradeable proxy pattern) and `eip1167-clone` (the embedded delegate
+    target can never change post-deploy) both qualify. The upgradeable
+    kinds - `eip1967`, `eip1967-beacon`, `zeppelinos-legacy` - are
+    DELIBERATELY excluded: for those, `check_against_artifact` already
+    re-resolves the CURRENT implementation fresh on every call, so a match
+    would still be a true fact about what is deployed right now, but the
+    REASON text this fallback writes claims permanence ("a later fix cannot
+    reach it"), and that claim is false for something an admin key can
+    repoint tomorrow. Widening to cover them would need reason text that says
+    something narrower and weaker than what is written below - real, separate
+    work, not bundled into closing LIVE-L1.
+
+    When the address resolves to one of `_IMMUTABLE_PROXY_KINDS` and the
+    HEAD-based check above did not already prove LIVE, this recompiles from
+    the REGRESSION COMMIT's own source (`f.commit`) instead and checks that.
+    A match is labelled explicitly as such - never silently reported as
+    "matches HEAD" - and also supplies survival, because for immutable code
+    "this exact bytecode is still running" and "the regression still exists"
+    are the same fact, more direct than the source-diff heuristic
+    `_head_survival` uses.
     """
     try:
         from . import liveness as L
@@ -1114,7 +1156,7 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
                 head_cache[key] = (V.UNKNOWN, f"{type(exc).__name__}: {exc}"[:200])
         f.liveness, f.liveness_reason = head_cache[key]
 
-        if (f.liveness != V.LIVE and proxy_kind == "eip1167-clone"
+        if (f.liveness != V.LIVE and proxy_kind in _IMMUTABLE_PROXY_KINDS
                 and f.commit and cur_wt is not None and cache is not None):
             ck = f.commit
             if ck not in clone_cache:
@@ -1142,8 +1184,8 @@ def _attach_liveness(opts: ScanOptions, findings: list[V.Finding], head_wt, emit
                 f.liveness = V.LIVE
                 f.liveness_reason = (
                     "matched the REGRESSION COMMIT's own build, not current HEAD "
-                    "(deployed target is an immutable EIP-1167 clone; a later source "
-                    f"fix cannot reach it): {reason}")
+                    f"(deployed target is {_IMMUTABLE_KIND_LABEL.get(proxy_kind, proxy_kind)}; "
+                    f"a later source fix cannot reach it): {reason}")
                 if f.survives_to_head is not True:
                     V.update_survival(f, True)
 

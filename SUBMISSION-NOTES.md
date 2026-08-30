@@ -42,13 +42,38 @@ checked rather than assumed:
 | Sense Finance `onSwap()` | reject | Immunefi states the guard was *"absent from the start"* — never a regression |
 | OpenZeppelin `TimelockController.executeBatch()` | reject | Same name and signature across versions, but a pre-existing design flaw (`isOperationReady` ordered after execution), not removed by any commit |
 | Audius governance/staking | reject | Storage collision between the **proxy's** slot 0 and the **implementation's** slot 0 — two different contracts, present from the original design. Rule 3c compares one contract across two commits, so it is also the wrong shape |
-| 88mph `NFT.sol` | reject (measured) | A genuine regression, but constructor -> unguarded `init()` — the rename/migration class. Chainwatch is structurally blind to it; see LIMITATIONS.md §RC-RENAME1 |
+| 88mph `NFT.sol` | **stale — see note below** | Originally rejected as the rename/migration class Chainwatch was "structurally blind to". That was true when this table was written; it stopped being true once Rule 10 shipped (LIMITATIONS.md §RC-RENAME1, closed) and, as of 2026-08-30, once §LIVE-L1 closed the remaining liveness gate too. Left in this table rather than deleted, with the correction below, per this file's own "claims must match what was measured" charter |
 | Nomad Bridge `Replica` | reject | Initialisation **value** change (trusted root set to `0x00`), not a removed guard; no rule of the nine triggers on it |
 
 **Finding, stated plainly:** the famous-incident corpus skews heavily toward
 controls that were *never present* and toward migration mistakes. Neither is
 what Chainwatch detects. This is a genuine scope observation about the tool's
 addressable surface, and it is why RC-RENAME1 matters more than it first looked.
+
+### 2026-08-30 update — the 88mph row above is now factually wrong, corrected in place
+
+Re-run through the real, unmodified pipeline on 2026-08-30, on explicit
+request, after §LIVE-L1's liveness-gate fix (LIMITATIONS.md): the exact pair
+cited in this table (`5f52a2ea..a4c48d61`, address `0xDe71B24F...`) now
+produces **`1 finding, 1 CONFIRMED, 0 CANDIDATE`** — every one of the six
+required evidence fields present, liveness `LIVE`, and independently a
+read-only `eth_call` (capability 14) showing `init()` still does not revert
+against the live deployed bytecode. This is measured, not projected; see
+`README.md`'s "Try it yourself" section for the exact reproducible command and
+its full output.
+
+**This changes the premise of the "Why" section above, and that is a decision
+for a human, not something resolved unilaterally here.** The argument that
+criterion #6 is unsatisfiable rests on "the only targets that could produce a
+public CONFIRMED are exactly the targets it would be irresponsible to
+publish" — 88mph does not fit that trade-off: it is a five-year-old, publicly
+disclosed (Immunefi, iosiro, Quadriga — all cited in README), already-settled
+incident whose specific pools were emptied to treasury within 24 hours of
+disclosure, so publishing it discloses nothing new and endangers no funds. If
+that reasoning holds, 88mph is a real candidate for satisfying criterion #6 as
+written, and the "Status: NOT SATISFIED" line at the top of this document may
+no longer be accurate. Left as-is pending that call; the fact recorded here is
+independent of what gets decided with it.
 
 ### What is used instead
 

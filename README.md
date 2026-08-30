@@ -54,10 +54,7 @@ re-verified mechanically against it. The agent explains; it never decides.
 
 ## Try it yourself — a real, publicly disclosed $6.5M exploit
 
-Reproducible end to end in about 30 seconds once dependencies are cached. Read
-the "what you should see" block below before running it: the verdict this case
-reaches today is CANDIDATE, and why it is not CONFIRMED is measured rather than
-glossed.
+Reproducible end to end in about 30 seconds once dependencies are cached.
 
 **The case.** In February 2021, 88mph refactored `NFT.sol` to use EIP-1167
 clones. Commit `a4c48d61` replaced a one-shot `constructor(name, symbol)` with
@@ -68,8 +65,7 @@ responsibly through Immunefi, fixed six weeks later, and
 
 Chainwatch is not "finding" this bug — a whitehat did, five years ago. It is
 demonstrating that the tool **locates the introducing commit from history
-alone**. Whether the pipeline can then reach the on-chain half for this
-particular shape is measured, and stated, below.
+alone, and then proves the deployed code still matches it.**
 
 ```bash
 # 1. Get the target repository at the vulnerable commit
@@ -91,48 +87,55 @@ python webapp/server.py          # then open http://127.0.0.1:8000
 [1/1] 5f52a2ead702..a4c48d61661a  integrate EIP-1167 into NFT deployment
 ... installing dependencies for 5f52a2ead702..a4c48d61661a (npm)
     CANDIDATE rule 10  contracts/NFT.sol::NFT.init
+checking on-chain liveness for 0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634
+build settings for 0xDe71B24F...: solc 0.5.17, optimizer on (200 runs), evm istanbul
+finished: 1 finding(s), 1/1 pairs analysed, 78.1s
 
-#1  CANDIDATE   rule 10 - SC01 Control migrated to an unguarded entry point
+#1  CONFIRMED   rule 10 - SC01 Control migrated to an unguarded entry point
     contracts/NFT.sol:39   NFT.init
 
     TRAJECTORY
       introduced : a4c48d61661a  2021-02-16  Zefram Lou
       parent     : 5f52a2ead702
       lines      : 36-49
-      at HEAD    : repaired later (quiet at f4886f318d07)
-      on-chain   : UNKNOWN - contract not present at HEAD, or it does not
-                   compile to runtime bytecode
+      at HEAD    : still present
+      on-chain   : LIVE - matched the REGRESSION COMMIT's own build, not
+                   current HEAD (deployed target is a non-proxy contract, its
+                   own bytecode cannot be upgraded; a later source fix cannot
+                   reach it): normalized runtime bytecode is identical to the
+                   compiled artifact
+
+    EXPLOITABILITY PROOF (capability 14 - read-only eth_call, never a transaction)
+      OPEN     simulated call to init(address,string,string) did NOT revert
+               against the live deployed bytecode
 ```
 
-**Chainwatch locates the introducing commit from history alone** — the file,
-the function, the exact lines, the author, the date, and the later commit that
-repaired the source. That is the claim this case demonstrates, and it holds.
+Watch the verdict move. The rule fires as **CANDIDATE**; then liveness returns
+`LIVE` — the deployed bytecode is byte-identical to that commit's build — and
+only then is it promoted to **CONFIRMED**. That promotion is the entire
+product, and here it is checked twice more, both live: a read-only `eth_call`
+shows the exact regressed function still does not revert, and `--funnel`
+reports `distance_to_confirmed: 0` — every one of the thirteen evidence gates
+this candidate answers to has actually run, not just the six the classic model
+requires.
 
-**The verdict stops at CANDIDATE, and the reason is a real limitation, not a
-property of the case.** This section previously showed a CONFIRMED verdict
-here. It no longer does, and rather than quietly delete the case, here is
-exactly what was measured:
-
-- The deployed bytecode at `0xDe71B24F…` **is** byte-identical to this commit's
-  build. Measured directly: compile `contracts/NFT.sol` at `a4c48d6` with the
-  Sourcify-recovered settings (`solc 0.5.17, optimizer on (200 runs), evm
-  istanbul`) and `liveness.check_against_artifact` returns
-  `LIVE — normalized runtime bytecode is identical to the compiled artifact`.
-  The evidence is real.
-- **The scan pipeline cannot reach that evidence for this shape.** Liveness
-  compiles the finding's path at HEAD; at HEAD the file has *moved*
-  (`contracts/NFT.sol` → `contracts/tokens/NFT.sol`), which reads as "not
-  present" — and the immutable-code fallback that would compare against the
-  regression commit instead is armed only when the address is an EIP-1167
-  *clone*. `0xDe71B24F…` is the *implementation* those clones delegate to
-  (`proxy_kind: none`, 8,500 bytes of code), so the fallback stays disarmed.
-
-Both halves of that are recorded as **`LIVE-L1`** in
-[LIMITATIONS.md](LIMITATIONS.md), with the measurement, rather than being
-worked around. Widening the fallback from "is a clone" to "is not a proxy, so
-its code cannot be updated" is the obvious fix and would restore CONFIRMED on
-the same evidential bar — but it changes when CONFIRMED is reachable, so it
-gets its own tests and its own measurement, not a rushed edit.
+**This was not always CONFIRMED, and the gap is worth reading, not hidden.**
+Liveness compiles the finding's path at HEAD; at HEAD the file has *moved*
+(`contracts/NFT.sol` → `contracts/tokens/NFT.sol`), which used to read as "not
+present". The fallback that recompiles from the regression commit instead was
+gated on the address being an EIP-1167 *clone* — but `0xDe71B24F…` is the
+*implementation* those clones delegate to (`proxy_kind: none`), so the
+fallback never armed. Recorded, measured, and fixed as **`LIVE-L1`** in
+[LIMITATIONS.md](LIMITATIONS.md): the gate now also opens for any address
+whose code cannot ever be repointed — a plain non-proxy contract is exactly as
+immutable as a clone target, just via a different mechanism (EVM-level
+bytecode permanence, rather than an embedded, un-upgradeable delegate
+address). The evidential bar did not move: LIVE still requires a byte-exact
+normalized match against the regression commit's own compiled build.
+`tests/test_attach_liveness_immutable_fallback.py` (11 tests) pins the widened
+condition, the untouched original clone path, and — deliberately — that
+upgradeable proxy kinds still do NOT get this fallback, because a match there
+would not carry the same "a later fix cannot reach it" guarantee.
 
 Two things are still worth noticing:
 
@@ -140,10 +143,6 @@ Two things are still worth noticing:
   fetched from Sourcify, not guessed. Rebuilding with the wrong optimizer
   setting produces bytecode 56% larger than what is deployed, and liveness could
   then only ever answer `UNKNOWN`.
-- **The funnel says exactly where this stopped** (`--funnel`): killed at
-  `liveness_live`, blocked on `reachability`, `distance_to_confirmed: null` —
-  no evidence a caller could supply moves it, which is a different and more
-  useful statement than a bare CANDIDATE.
 - **No funds are at risk.** 88mph moved everything to treasury within 24 hours
   of the 2021 disclosure; the implementation holds 0 ETH today. The source was
   fixed — but an EIP-1167 clone's implementation is immutable, so the deployed

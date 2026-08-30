@@ -1,3 +1,80 @@
+## LIVE-L1 CLOSED (2026-08-30, same day) — 88mph now reaches CONFIRMED, on explicit request
+
+User asked, plainly: "why is 88mph CANDIDATE not CONFIRMED" — answered, then
+given a follow-up /goal: "fix this issue and make it confirmed, see where the
+problem is and solve it."
+
+**Root cause was exactly what LIVE-L1 already documented, and the fix was
+exactly what it already proposed.** `_attach_liveness`'s regression-commit
+fallback (the route to LIVE when HEAD's copy of the file has moved/been
+rewritten) was gated on `proxy_kind == "eip1167-clone"`. `0xDe71B24F...` is
+the *implementation* three real clones delegate to, not a clone itself
+(`proxy_kind: none`) - correct code, wrong gate, precisely as already written
+up. Widened to `_IMMUTABLE_PROXY_KINDS = frozenset({"none", "eip1167-clone"})`
+in `src/scan.py`. Upgradeable proxy kinds (`eip1967`, `eip1967-beacon`,
+`zeppelinos-legacy`) deliberately still excluded - see the function's own
+docstring for exactly why (their reason text would claim a permanence the
+upgrade path contradicts).
+
+**Verified real, twice.** `tests/test_attach_liveness_immutable_fallback.py`
+(11 tests, every RPC/git/solc boundary mocked) - the widened path reaching
+CONFIRMED through the real unmodified `verdict.classify`, the original
+eip1167-clone path untouched, every upgradeable kind and `not-a-contract`
+staying disarmed, an RPC failure correctly leaving Python `None` (not string
+`"none"`) so it can't accidentally match, both original preconditions
+(`cur_wt`/`cache`) still enforced, the fallback never firing when HEAD already
+succeeded, and the constant checked as a live subset of what
+`liveness.resolve_implementation` can actually return (read from that
+function's source, not re-typed). Then the REAL pipeline, unmocked, against
+the real 88mph repo and real mainnet RPC:
+
+```
+SUMMARY   1 finding(s): 1 CONFIRMED, 0 CANDIDATE in 78.1s
+#1  CONFIRMED   rule 10
+    at HEAD    : still present
+    on-chain   : LIVE - matched the REGRESSION COMMIT's own build...
+    EXPLOITABILITY PROOF: OPEN - simulated call did NOT revert
+FUNNEL: distance_to_confirmed 0
+```
+
+One bug caught while writing the FIRST version of the test file, before it
+ever ran against real code: `_attach_liveness`'s liveness module is imported
+LOCALLY inside the function (`from . import liveness as L`), not at module
+scope, so a first-draft fixture that patched a fabricated `SC.L` attribute
+would have silently patched nothing - caught by re-reading the import before
+trusting the mock, not by a failing assertion. Fixed to patch the real
+`src.liveness` module object directly (`from . import liveness as L` always
+resolves to the SAME `sys.modules` singleton, so patching its attributes is
+what actually reaches the function).
+
+**Docs updated to match, not left stale**: README's 88mph section restored to
+CONFIRMED with the new measured output and the fix explained inline;
+LIMITATIONS.md's LIVE-L1 marked FIXED with the full before/after and an
+explicit note that the THIRD symptom (capability 13's `--check-exposure`,
+which uses an entirely different, untouched identification path) is still
+open and was not touched by this fix; DEMO-SCRIPT.md's 88mph beat rewritten
+around "watch the verdict move to CONFIRMED, then hear that it wasn't always
+reachable" rather than the CANDIDATE-explanation framing from this morning.
+
+**Also corrected, found while checking for other stale claims**:
+`SUBMISSION-NOTES.md`'s criterion-6 rejection table still called 88mph
+"structurally blind" - true when written, false since Rule 10 shipped
+(RC-RENAME1, already closed in an EARLIER session) and doubly false now.
+Corrected the row and added a dated note. **Did NOT flip the document's
+top-level "Status: NOT SATISFIED" for criterion 6** - that is a bigger,
+submission-facing editorial call (88mph is a 5-year-old already-disclosed,
+already-emptied incident, so the "irresponsible to publish" argument may no
+longer apply to it specifically, but that is the user's call, not mine to
+make silently) - flagged explicitly instead.
+
+**Next: redeploy live and re-run the 88mph scan through the actual `.run.app`
+web UI** (user asked for this explicitly, for the demo recording) - once the
+full suite confirms green. See the arc below for the deploy/live-verification
+pattern already established today; this is the same loop, one more time, for
+CONFIRMED instead of CANDIDATE.
+
+---
+
 ## LIVE VERIFICATION ARC (2026-08-30, same day) — deployed, found a real bug live, fixed it, re-verified live
 
 Explicit user goal: make `.run.app` actually work, prove it against
@@ -183,7 +260,7 @@ conversion — and this repo is genuinely MIXED. `HANDOFF.md`, `LIMITATIONS.md`,
 `DEMO-SCRIPT.md` and most newer files are **LF**.
 
 Python's `Path.write_text()` on Windows translates `
-` to `
+` to `
 `, so a
 one-line edit written that way rewrites EVERY line of an LF file. It happened
 during this session: a 14-file diff read as 3,794 insertions / 2,446 deletions,

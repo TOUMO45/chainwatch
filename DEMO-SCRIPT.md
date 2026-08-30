@@ -119,12 +119,12 @@ plus the Sweeps panel.
 
 ---
 
-## 2:15–3:00 — the 88mph case, told honestly
+## 2:15–3:00 — the 88mph case, and watching the verdict move
 
 ```bash
 python chainwatch.py --repo realworld-test/88mph-src \
   --address 0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634 \
-  --pairs 5f52a2ead702…:a4c48d61661a… --funnel
+  --pairs 5f52a2ead702…:a4c48d61661a… --check-exploit-proof --funnel
 ```
 
 **Screen:** the trajectory strip.
@@ -132,15 +132,19 @@ python chainwatch.py --repo realworld-test/88mph-src \
 ```
 introduced : a4c48d61661a  2021-02-16  Zefram Lou
 lines      : 36-49
-at HEAD    : repaired later (quiet at f4886f318d07)
+at HEAD    : still present
+on-chain   : LIVE - matched the REGRESSION COMMIT's own build, not current
+             HEAD (deployed target is a non-proxy contract, its own bytecode
+             cannot be upgraded; a later source fix cannot reach it)
 ```
 
 **Say:** "From history alone, with no prior knowledge of the incident:
-`NFT.init`, the exact commit, the author, the line range, and the later commit
-that repaired the source."
+`NFT.init`, the exact commit, the author, the line range — and now watch the
+verdict. It fires as CANDIDATE first. Then liveness runs: the deployed
+bytecode is compared, byte for byte, against what that commit compiles to.
+Match. **CONFIRMED.** That promotion, not the finding itself, is the product."
 
-**Then the live proof — this is the moment.** A read-only `eth_call` against
-mainnet, right now:
+**Then the live proof.** A read-only `eth_call` against mainnet, right now:
 
 ```
 OPEN  NFT.init  init(address,string,string)
@@ -159,16 +163,15 @@ pools to treasury within 24 hours in 2021. There is nothing to steal. The
 vulnerability is real; the value at risk is zero, and I'm not going to inflate
 that."
 
-**And the honest verdict:** the funnel reports this case as CANDIDATE, killed
-at `liveness_live`.
+**Then the funnel, briefly — the other half of the story:** `distance_to_confirmed: 0`.
 
-**Say:** "Watch what it does *not* do. It has the byte-exact evidence — I
-verified by hand that the deployed code is identical to that commit's build —
-but the pipeline's liveness path can't reach it for this shape, because the
-file moved at HEAD and the immutable-code fallback is gated too narrowly. So it
-says CANDIDATE. That's written up as `LIVE-L1` in LIMITATIONS.md, with the
-measurement. A security tool that inflates its own verdict when it's being
-filmed is worth nothing."
+**Say:** "This CONFIRMED result wasn't always reachable, and that's worth ten
+seconds. Until earlier today, this exact case stopped at CANDIDATE — the
+pipeline had the byte-exact evidence but a gate in the liveness check was too
+narrow to reach it. That's written up as `LIVE-L1` in LIMITATIONS.md: found,
+measured, fixed, eleven new tests, and re-verified against the real repo and
+real mainnet, not a mock. A tool that shows its own bugs is more trustworthy
+than one that's never had any."
 
 ---
 
@@ -215,11 +218,12 @@ false positives."
   reports evidence; the 88mph bug was found by a whitehat in 2021.
 - **Never show `OPEN` without the "nothing to steal" sentence** in the same
   breath.
-- **Do not cut the CANDIDATE explanation to save time.** The refusal is the
-  differentiator; cutting it removes the reason to trust anything else.
+- **Do not cut the "wasn't always CONFIRMED" beat to save time.** It is the
+  differentiator over a tool that would just show the clean result and imply
+  it was always solid; cutting it removes the reason to trust anything else.
 - **Timing, measured on 2026-08-30, not estimated:** the 88mph pair took
-  **209s end to end** (105s for the single file comparison) with npm caches
-  already populated but HEAD dependencies re-installing. Do not promise "thirty
+  **78–209s end to end** depending on whether npm/HEAD dependencies are
+  already cached (78s warm, 209s on a cold container). Do not promise "thirty
   seconds" on camera. Either run it once immediately before recording so the
   HEAD environment is hot, or start the command, say the 0:00–0:30 problem
   framing over it, and come back to the result.
@@ -231,7 +235,7 @@ false positives."
 python chainwatch.py --repo realworld-test/88mph-src \
   --address 0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634 \
   --pairs 5f52a2ead702e4cb9ab3d04a1109807462dde228:a4c48d61661ae3d8ce5aadfda6e4de27c4f07a9e \
-  --funnel --quiet
+  --check-exploit-proof --funnel --quiet
 
 # the live eth_call shown at 2:15 (read-only, no transaction)
 python -c "import sys; sys.path.insert(0,'.'); \
