@@ -44,6 +44,7 @@ SRC_AUTH_REACH = "deep:authorization-reachability"
 SRC_STATE_MACHINE = "deep:state-machine"
 SRC_REPLAY = "deep:replay-nonce"
 SRC_SIG_SCOPE = "deep:signature-scope"
+SRC_PAIR_RESERVE = "deep:pair-reserve-manipulation"
 SRC_ORACLE = "deep:oracle-assumption"
 SRC_PROTOCOL = "deep:protocol-specific"
 
@@ -66,11 +67,12 @@ OBJ_REPLAY = "replay_accepted"
 OBJ_ORACLE = "oracle_manipulated_transition"
 OBJ_PURITY = "transfer_side_effect"
 OBJ_SIG_CROSS_PARTY = "signature_replayable_across_parties"
+OBJ_PAIR_RESERVE = "pair_reserve_manipulated"
 
 RECIPE_TYPES = frozenset({
     OBJ_CALL_SUCCEEDS, OBJ_REINIT, OBJ_STATE_RELATION, OBJ_UNAUTH_UPGRADE,
     OBJ_CONSERVATION, OBJ_ENTITLEMENT, OBJ_SHARE_MATH, OBJ_LTV, OBJ_SUPPLY,
-    OBJ_REPLAY, OBJ_ORACLE, OBJ_PURITY, OBJ_SIG_CROSS_PARTY,
+    OBJ_REPLAY, OBJ_ORACLE, OBJ_PURITY, OBJ_SIG_CROSS_PARTY, OBJ_PAIR_RESERVE,
 })
 
 _SIG_PARAM_HINT = ("sig", "signature", "proof", "permit", "voucher", "ticket")
@@ -551,6 +553,109 @@ def cat_signature_scope(model: PM.ProtocolModel) -> list[IM.CandidateInvariant]:
 
 
 # --------------------------------------------------------------------------- #
+# K - third-party (AMM pair) balance manipulation + forced reserve sync
+# --------------------------------------------------------------------------- #
+#
+# Mined from real demand rather than guessed: across the 855 DeFiHackLabs
+# incidents, 14 are explicitly "skim / pair balance / reserve manipulation" and
+# 17 more are reflection-or-fee tokens that reach the same end, and NO existing
+# Chainwatch regression rule covers any of them. FireToken (DVBench) is the
+# canonical shape:
+#
+#     if (to == uniswapV2Pair) {
+#         _balances[uniswapV2Pair] -= sellAmount;        // debit a THIRD PARTY
+#         _balances[DEAD] += sellAmount;
+#         IUniswapV2Pair(uniswapV2Pair).sync();          // force reserves to agree
+#     }
+#
+# A token contract editing the AMM pair's balance breaks the pair's core
+# assumption that reserves only move through mint/burn/swap. Calling `sync()`
+# right after makes the pool accept the theft as canonical, which is what turns
+# it into arbitrary price movement.
+#
+# The load-bearing signal is the THIRD-PARTY BALANCE WRITE, not `sync()`:
+# calling `sync()` alone is merely unusual, while a token debiting an address
+# that is neither the sender nor the recipient of the transfer is not something
+# a correct ERC-20 ever does. `sync()`/`skim()` in the same function raises the
+# strength but is never required, and is never sufficient on its own.
+
+_PAIR_VAR_HINT = ("pair", "pool", "lp", "amm", "swap")
+_BALANCE_VAR_HINT = ("balance", "_balances", "balanceof", "shares", "holdings")
+_SYNC_CALL = ("sync(", "skim(")
+# indices that are legitimately written by a transfer: the two counterparties.
+_SELF_INDICES = ("msg.sender", "from", "to", "_from", "_to", "sender",
+                 "recipient", "account", "owner", "address(this)")
+
+
+def _pair_like_state_vars(model: PM.ProtocolModel, contract: str) -> set[str]:
+    out: set[str] = set()
+    for c in model.contracts:
+        if c.name != contract:
+            continue
+        for name, typ in c.state_vars:
+            n = (name or "").lower()
+            if any(h in n for h in _PAIR_VAR_HINT) and "address" in (typ or "").lower():
+                out.add(name)
+    return out
+
+
+def cat_pair_reserve_manipulation(model: PM.ProtocolModel
+                                  ) -> list[IM.CandidateInvariant]:
+    out: list[IM.CandidateInvariant] = []
+    for f in model.all_functions():
+        src = f.source or ""
+        if not src:
+            continue
+        pairs = _pair_like_state_vars(model, f.contract)
+        if not pairs:
+            continue
+        bal_writes = [w for w in f.writes
+                      if any(h in w.lower() for h in _BALANCE_VAR_HINT)]
+        if not bal_writes:
+            continue
+        hit_pair, hit_bal = "", ""
+        for bal in bal_writes:
+            # `<balances>[<pairVar>]` on the left of an assignment / compound op
+            for m in re.finditer(
+                    rf"\b{re.escape(bal)}\s*\[([^\]]{{1,80}})\]\s*(?:=|-=|\+=)",
+                    src):
+                idx = m.group(1).strip()
+                if any(s == idx.lower() for s in _SELF_INDICES):
+                    continue                      # a counterparty: legitimate
+                p = next((pv for pv in pairs
+                          if re.search(rf"\b{re.escape(pv)}\b", idx)), "")
+                if p:
+                    hit_pair, hit_bal = p, bal
+                    break
+            if hit_pair:
+                break
+        if not hit_pair:
+            continue
+        synced = any(s in src.replace(" ", "") for s in _SYNC_CALL)
+        out.append(_mk(
+            IM.ACCOUNTING,
+            f"{f.contract}.{f.name}() must not modify the AMM pair's own token "
+            f"balance - reserves may only move through the pair's mint / burn / "
+            f"swap, never by the token contract editing '{hit_pair}' directly",
+            SRC_PAIR_RESERVE, contract=f.contract, functions=(f.name,),
+            variables=(hit_bal,), strength=IM.STRONG,
+            recipe={"type": OBJ_PAIR_RESERVE, "contract": f.contract,
+                    "function": f.name, "pair_var": hit_pair,
+                    "balance_var": hit_bal, "forces_sync": synced},
+            rationale=(
+                f"{f.contract}.{f.name}() writes {hit_bal}[{hit_pair}] - the "
+                f"balance of the AMM pair, which is neither the sender nor the "
+                f"recipient of the transfer"
+                + (f" - and then calls sync()/skim(), forcing the pool to accept "
+                   f"the new balance as canonical reserves. That converts the "
+                   f"balance edit into an arbitrary price move."
+                   if synced else
+                   ". The pair's reserves and its real balance now disagree, "
+                   "which anyone can realise via skim()/sync()."))))
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # H - replay / nonce
 # --------------------------------------------------------------------------- #
 
@@ -698,7 +803,8 @@ def _from_llm(model: PM.ProtocolModel, item: dict) -> IM.CandidateInvariant | No
 CATEGORIES = (
     cat_asset_conservation, cat_user_entitlement, cat_share_accounting,
     cat_debt_collateral, cat_supply_consistency, cat_authorization,
-    cat_state_machine, cat_replay, cat_signature_scope, cat_oracle_assumption,
+    cat_state_machine, cat_replay, cat_signature_scope,
+    cat_pair_reserve_manipulation, cat_oracle_assumption,
 )
 
 

@@ -70,6 +70,9 @@ _SOURCE_TO_TYPE = {
     # a signature valid against more than one party is an authorization defect:
     # it lets a signer's approval act on a party they never approved.
     INV.SRC_SIG_SCOPE: ACCESS_CONTROL,
+    # editing the AMM pair's balance is an accounting defect whose blast
+    # radius is the pool's price - it is not an access-control question.
+    INV.SRC_PAIR_RESERVE: ACCOUNTING,
     INV.SRC_ORACLE: ORACLE,
     INV.SRC_PROTOCOL: PROTOCOL_INVARIANT,
 }
