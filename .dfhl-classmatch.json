@@ -1,0 +1,35 @@
+{
+ "class_matched": 32,
+ "scoreable": 63,
+ "unscoreable": 59,
+ "by_class": {
+  "INPUT_VALIDATION": [
+   7,
+   8
+  ],
+  "REENTRANCY": [
+   6,
+   9
+  ],
+  "PRICE_MANIPULATION": [
+   15,
+   24
+  ],
+  "ACCESS_CONTROL": [
+   2,
+   14
+  ],
+  "SIGNATURE_REPLAY": [
+   1,
+   3
+  ],
+  "ARBITRARY_EXTERNAL_CALL": [
+   0,
+   2
+  ],
+  "ACCOUNTING_MATH": [
+   1,
+   3
+  ]
+ }
+}

@@ -352,6 +352,41 @@ ANALYSABLE_CLASSES = frozenset({
     VC_SIGNATURE, VC_ACCOUNTING, VC_INIT, VC_VALIDATION, VC_BUSINESS_LOGIC,
 })
 
+# An incident's root-cause class -> the Deep Hunt finding types that would mean
+# "we described the same defect". Without this, a detection rate would only be
+# measuring whether the tool said ANYTHING, which is not a detection rate.
+#
+# BUSINESS_LOGIC and OTHER are deliberately absent: they are not a mechanism,
+# so no finding type can be said to match them, and scoring them either way
+# would be arbitrary. They are reported separately and excluded from the
+# class-matched denominator.
+CLASS_TO_FINDING_TYPES: dict[str, frozenset] = {
+    VC_ACCESS_CONTROL: frozenset({"ACCESS_CONTROL", "STATE_MACHINE"}),
+    VC_PRICE_MANIPULATION: frozenset({"ORACLE", "ECONOMIC", "ACCOUNTING"}),
+    VC_REENTRANCY: frozenset({"STATE_MACHINE", "ACCOUNTING", "PROTOCOL_INVARIANT"}),
+    VC_ARBITRARY_CALL: frozenset({"ACCESS_CONTROL", "PROTOCOL_INVARIANT",
+                                  "CROSS_CONTRACT"}),
+    VC_SIGNATURE: frozenset({"ACCESS_CONTROL", "STATE_MACHINE"}),
+    VC_ACCOUNTING: frozenset({"ACCOUNTING", "ECONOMIC"}),
+    VC_INIT: frozenset({"STATE_MACHINE", "DEPLOYMENT", "ACCESS_CONTROL"}),
+    VC_VALIDATION: frozenset({"PROTOCOL_INVARIANT", "ACCOUNTING", "LIVE_LOGIC"}),
+}
+
+# Classes that are scoreable: a mechanism exists to match against.
+SCOREABLE_CLASSES = frozenset(CLASS_TO_FINDING_TYPES)
+
+
+def class_matches(vuln_class: str, finding_types) -> Optional[bool]:
+    """Did Chainwatch describe the same MECHANISM the incident was?
+
+    `None` when the class carries no mechanism (BUSINESS_LOGIC / OTHER) - the
+    question is not answerable, and saying so beats scoring it arbitrarily.
+    """
+    want = CLASS_TO_FINDING_TYPES.get(vuln_class)
+    if want is None:
+        return None
+    return bool(set(finding_types or ()) & want)
+
 
 # --------------------------------------------------------------------------- #
 # the detection pass
@@ -361,6 +396,7 @@ ANALYSABLE_CLASSES = frozenset({
 class DetectionResult:
     incident: str
     name: str = ""
+    vuln_class: str = ""
     chain_id: int = 0
     address: str = ""
     source_available: bool = False
@@ -375,6 +411,7 @@ class DetectionResult:
 
     def as_dict(self) -> dict:
         return {"incident": self.incident, "name": self.name,
+                "vuln_class": self.vuln_class,
                 "chain_id": self.chain_id, "address": self.address,
                 "source_available": self.source_available,
                 "compiled": self.compiled, "n_findings": self.n_findings,
@@ -392,6 +429,7 @@ def run_incident(inc: Incident, *, cache_dir: str, allow_fetch: bool = True,
     from .hunt import HuntInputs, run as run_hunt
 
     res = DetectionResult(incident=inc.id, name=inc.name,
+                          vuln_class=inc.vuln_class,
                           chain_id=inc.chain_id, address=inc.address)
     if not (inc.address and inc.chain_id):
         res.error = "no vulnerable address / chain in the PoC header"
