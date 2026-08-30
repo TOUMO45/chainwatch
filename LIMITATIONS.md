@@ -1149,6 +1149,93 @@ discipline. Tracked in TODO.md.
 
 ---
 
+### LIVE-L1 — the immutable-code fallback is gated on "is a clone", not "is immutable" [FN risk]
+
+**Found 2026-08-30 by re-running the README's own flagship reproduction and
+disbelieving the result.** The section documented a CONFIRMED verdict; the
+command produced CANDIDATE. The README has been corrected to show what it
+actually produces. This is the measurement behind that correction.
+
+**The case.** 88mph `contracts/NFT.sol` at `a4c48d6`, address
+`0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634`.
+
+**What the pipeline reports:** `liveness: UNKNOWN — contract not present at
+HEAD, or it does not compile to runtime bytecode`.
+
+**What is actually true, measured directly:**
+
+```
+verified settings: solc 0.5.17, optimizer on (200 runs), evm istanbul
+compiled runtime len: 17000
+verdict: LIVE
+reason:  normalized runtime bytecode is identical to the compiled artifact
+```
+
+The deployed code IS byte-identical to the regression commit's build. The
+evidence exists; the pipeline cannot reach it.
+
+**Two causes, both real, and the second is the interesting one.**
+
+1. **The finding's path is the path at the regression commit.**
+   `_attach_liveness` compiles `f.file` in the HEAD worktree. At 88mph's HEAD
+   the file has MOVED — `contracts/NFT.sol` → `contracts/tokens/NFT.sol` — so
+   the compile finds nothing and reports "not present at HEAD", which is
+   indistinguishable from "the contract was deleted". `scan._renamed_path_at_head`
+   already solves exactly this for the survival half and is not consulted here.
+   (Following the rename would not by itself produce LIVE: HEAD's copy is the
+   *fixed* source, so it correctly would not match the deployed vulnerable
+   bytecode. It would only replace one uninformative UNKNOWN with a better one.)
+
+2. **The immutable-code fallback is armed on the wrong predicate.** The
+   fallback that recompiles from the regression commit — the only route to LIVE
+   for code that a later source fix cannot reach — is gated on
+   `proxy_kind == "eip1167-clone"`. `0xDe71B24F…` is not a clone: it is the
+   *implementation* the clones delegate to, `proxy_kind: none`, 8,500 bytes of
+   code. So for the address where the vulnerable code actually lives, the
+   fallback never runs.
+
+   The property the fallback's soundness argument actually rests on is
+   **immutability** — "this exact code still executes" and "the regression
+   still exists" are the same fact for code that cannot be updated
+   (`verdict.update_survival`'s own docstring). "Is an EIP-1167 clone" is one
+   sufficient condition for that, not the necessary one. A non-proxy address
+   (`proxy_kind: none`) is equally unable to have its code replaced.
+
+**The fix, and why it was not made on the spot.** Widen the fallback's
+predicate from "is a clone" to "is not a proxy, so its code cannot be updated".
+The evidential bar does not move: LIVE still requires a byte-exact normalized
+match against the regression commit's own build, and `update_survival` is still
+only called on that match. But it changes **when CONFIRMED is reachable**,
+which is the most safety-sensitive edit available in this codebase, and it was
+found the day before a submission deadline. Shipping a verdict-widening change
+under time pressure is precisely the failure this file exists to prevent. It
+gets its own tests, its own fixtures, and its own measurement — or it does not
+ship.
+
+**What is honest to claim in the meantime:** Chainwatch locates the introducing
+commit for this case from history alone, exactly as documented. The on-chain
+half is provable by hand and not reachable by the pipeline. The funnel says so
+precisely rather than vaguely — killed at `liveness_live`, blocked on
+`reachability`, `distance_to_confirmed: null`.
+
+**Same root cause, third symptom, measured in the same sitting:**
+`--check-exposure` on this address returns an EMPTY probe list, while calling
+`exposure.probe` directly on the same address returns
+
+```
+status='OPEN'  reason='simulated call did not revert - the one-shot window is
+still open'
+```
+
+— a live, read-only `eth_call` against mainnet proving `init()` is callable
+right now, five years after the disclosure. The probe machinery works; the
+candidate-identification step that feeds it compiles at HEAD, where the file no
+longer lives under that path. Any fix to cause (1) should be checked against
+this symptom too, because a fix that repairs liveness and leaves the exposure
+probe blind has only moved the problem.
+
+---
+
 ## Trajectory mode — walking a real repository's commit history
 
 ### WALK-L1 — path-keyed caches silently replay the previous commit's analysis

@@ -39,6 +39,10 @@ flowchart TD
     WEB --> RUN
 ```
 
+Full architecture — all three engines, the 13-gate evidence chain, the agent
+roles and what each may decide, and where Gemini connects to the backend, the
+database and the frontend — is in **[docs/architecture.md](docs/architecture.md)**.
+
 **The `CANDIDATE → CONFIRMED` boundary is the one hard constraint in the system.**
 A verdict reaches CONFIRMED only when all six evidence fields are present *and*
 on-chain liveness is `LIVE`; missing any of them caps it at CANDIDATE, and
@@ -50,8 +54,10 @@ re-verified mechanically against it. The agent explains; it never decides.
 
 ## Try it yourself — a real, publicly disclosed $6.5M exploit
 
-This is the exact run shown in the demo video, reproducible end to end in about
-30 seconds once dependencies are cached.
+Reproducible end to end in about 30 seconds once dependencies are cached. Read
+the "what you should see" block below before running it: the verdict this case
+reaches today is CANDIDATE, and why it is not CONFIRMED is measured rather than
+glossed.
 
 **The case.** In February 2021, 88mph refactored `NFT.sol` to use EIP-1167
 clones. Commit `a4c48d61` replaced a one-shot `constructor(name, symbol)` with
@@ -61,8 +67,9 @@ responsibly through Immunefi, fixed six weeks later, and
 [publicly written up](https://medium.com/immunefi/88mph-function-initialization-bug-fix-postmortem-c3a2282894d3).
 
 Chainwatch is not "finding" this bug — a whitehat did, five years ago. It is
-demonstrating that the tool **locates the introducing commit from history alone,
-and then proves the deployed code still matches it.**
+demonstrating that the tool **locates the introducing commit from history
+alone**. Whether the pipeline can then reach the on-chain half for this
+particular shape is measured, and stated, below.
 
 ```bash
 # 1. Get the target repository at the vulnerable commit
@@ -78,34 +85,65 @@ Or start the web UI and paste the same three values into the form:
 python webapp/server.py          # then open http://127.0.0.1:8000
 ```
 
-**What you should see:**
+**What you should see** (measured on 2026-08-30, unedited):
 
 ```
 [1/1] 5f52a2ead702..a4c48d61661a  integrate EIP-1167 into NFT deployment
 ... installing dependencies for 5f52a2ead702..a4c48d61661a (npm)
     CANDIDATE rule 10  contracts/NFT.sol::NFT.init
-checking on-chain liveness for 0xDe71B24FE56358cC0ADfd6f2e0f6D8ed9e2CF634
-build settings for 0xDe71B24F...: solc 0.5.17, optimizer on (200 runs), evm istanbul
-    exploitability proof: OPEN NFT.init
-finished: 1 finding(s), 1/1 pairs analysed, 28.8s
 
-#1  CONFIRMED   rule 10 - SC01 Control migrated to an unguarded entry point
+#1  CANDIDATE   rule 10 - SC01 Control migrated to an unguarded entry point
     contracts/NFT.sol:39   NFT.init
+
+    TRAJECTORY
+      introduced : a4c48d61661a  2021-02-16  Zefram Lou
+      parent     : 5f52a2ead702
+      lines      : 36-49
+      at HEAD    : repaired later (quiet at f4886f318d07)
+      on-chain   : UNKNOWN - contract not present at HEAD, or it does not
+                   compile to runtime bytecode
 ```
 
-Watch the verdict move. The rule fires as **CANDIDATE**; then liveness returns
-`LIVE` — the deployed bytecode is byte-identical to that commit's build — and
-only then is it promoted to **CONFIRMED**. That promotion is the entire product.
+**Chainwatch locates the introducing commit from history alone** — the file,
+the function, the exact lines, the author, the date, and the later commit that
+repaired the source. That is the claim this case demonstrates, and it holds.
 
-Three things are worth noticing in that output:
+**The verdict stops at CANDIDATE, and the reason is a real limitation, not a
+property of the case.** This section previously showed a CONFIRMED verdict
+here. It no longer does, and rather than quietly delete the case, here is
+exactly what was measured:
+
+- The deployed bytecode at `0xDe71B24F…` **is** byte-identical to this commit's
+  build. Measured directly: compile `contracts/NFT.sol` at `a4c48d6` with the
+  Sourcify-recovered settings (`solc 0.5.17, optimizer on (200 runs), evm
+  istanbul`) and `liveness.check_against_artifact` returns
+  `LIVE — normalized runtime bytecode is identical to the compiled artifact`.
+  The evidence is real.
+- **The scan pipeline cannot reach that evidence for this shape.** Liveness
+  compiles the finding's path at HEAD; at HEAD the file has *moved*
+  (`contracts/NFT.sol` → `contracts/tokens/NFT.sol`), which reads as "not
+  present" — and the immutable-code fallback that would compare against the
+  regression commit instead is armed only when the address is an EIP-1167
+  *clone*. `0xDe71B24F…` is the *implementation* those clones delegate to
+  (`proxy_kind: none`, 8,500 bytes of code), so the fallback stays disarmed.
+
+Both halves of that are recorded as **`LIVE-L1`** in
+[LIMITATIONS.md](LIMITATIONS.md), with the measurement, rather than being
+worked around. Widening the fallback from "is a clone" to "is not a proxy, so
+its code cannot be updated" is the obvious fix and would restore CONFIRMED on
+the same evidential bar — but it changes when CONFIRMED is reachable, so it
+gets its own tests and its own measurement, not a rushed edit.
+
+Two things are still worth noticing:
 
 - **`build settings … solc 0.5.17, optimizer on (200 runs), evm istanbul`** —
   fetched from Sourcify, not guessed. Rebuilding with the wrong optimizer
   setting produces bytecode 56% larger than what is deployed, and liveness could
   then only ever answer `UNKNOWN`.
-- **`exploitability proof: OPEN`** — a read-only `eth_call` from an unprivileged
-  address showing `init()` does not revert against the live deployed bytecode.
-  Never a transaction; no exploit code is generated, by charter.
+- **The funnel says exactly where this stopped** (`--funnel`): killed at
+  `liveness_live`, blocked on `reachability`, `distance_to_confirmed: null` —
+  no evidence a caller could supply moves it, which is a different and more
+  useful statement than a bare CANDIDATE.
 - **No funds are at risk.** 88mph moved everything to treasury within 24 hours
   of the 2021 disclosure; the implementation holds 0 ETH today. The source was
   fixed — but an EIP-1167 clone's implementation is immutable, so the deployed
@@ -157,7 +195,7 @@ it corrected itself before saving.
 
 - **It cannot change a verdict.** CONFIRMED/CANDIDATE is decided by
   `src/verdict.py` before the model sees anything. The agent is handed a
-  finished record and ten read-only tools.
+  finished record and eleven read-only tools (`agent/tools.py::ALL_TOOLS`).
 - **It cannot invent a fact.** [`agent/verify.py`](agent/verify.py) is a
   *mechanical* gate, not a second model: every commit hash, address, source
   path, line reference and qualified name in the draft must already appear in
@@ -174,7 +212,8 @@ could act on remains something deterministic code established.
 | Service | Role |
 |---|---|
 | **Cloud Run** | hosts the scanner and web UI; scale-to-zero, 2 vCPU / 4 GiB, 3600s timeout |
-| **Firestore** | findings corpus + job state, keyed by `(repo, prev_sha, cur_sha)` — so a pair is never re-analysed, and cross-repository queries become possible |
+| **Cloud Run Jobs + Cloud Scheduler** | the unattended sweep (capability 21) — a batch that ends, on a schedule, with nobody watching. Recipe in [deploy/sweep-job.md](deploy/sweep-job.md) |
+| **Firestore** | findings corpus + job state, keyed by `(repo, prev_sha, cur_sha)` — so a pair is never re-analysed, and cross-repository queries become possible. Collections: `scans`, `pairs`, `findings`, `funnel_traces`, `agent_runs`, `agent_turns`, `sweeps` |
 | **Secret Manager** | `GEMINI_API_KEY`, never in the image or the repo |
 
 Firestore is optional at runtime: with no cloud project configured,
@@ -211,7 +250,8 @@ python chainwatch.py --repo <path> --root contracts --generate-reports
 ```
 
 or click **Generate report** on any finding in the web UI. The agent may only
-read a finished finding record through six tools; it cannot analyse, cannot
+read a finished finding record through the six report-path tools; it cannot
+analyse, cannot
 reach a chain or a repository's source, and cannot change a verdict. Every
 document it produces is re-verified mechanically against the finding record
 before it is written — a draft citing a commit hash, address, path or line that
@@ -332,6 +372,112 @@ project exists to avoid.
 
 ---
 
+### The agentic layer — four roles, one decider (capabilities 20 and 21)
+
+```bash
+python chainwatch.py agent --repo <path-or-url>          # ADK orchestration
+python chainwatch.py sweep --repos deploy/sweep-targets.txt   # unattended
+```
+
+`chainwatch agent` runs the deterministic scan first, then an ADK
+orchestration over its finished output:
+
+| Role | Kind | May propose | May decide |
+|---|---|---|---|
+| **Hunter** | Gemini 3.5 via ADK `LlmAgent` | which candidates deserve deeper evidence work, and each one's invariant | nothing |
+| **Skeptic** | Gemini 3.5 via ADK `LlmAgent` | disproof challenges | nothing — a challenge is an *input* |
+| **Reproducer** | Gemini 3.5 via ADK `LlmAgent` | a reproduction plan | nothing |
+| **Gatekeeper** | **deterministic code** | — | **everything** |
+
+Three constraints, each enforced by construction rather than by a prompt:
+
+- **It cannot change a verdict.** The engine's verdicts are snapshotted before
+  a single token is generated, recomputed after the last agent turn, and
+  compared. A difference raises `VerdictDrift` and the run fails — on every
+  invocation, not only under test.
+- **The Hunter cannot create a finding.** A proposal naming an id the engine
+  never produced is dropped, and the drop is printed.
+- **The Reproducer never sees the write-up.** It receives a frozen
+  `ReproducerBrief` of exactly four fields — contract, function, invariant,
+  objective. Blinding is a property of the type, so there is no path that
+  could leak the analyst's prose even by mistake.
+
+The control experiment ships with it: `--agent-no-llm` abstains every model
+turn and runs the same orchestration. It must produce identical verdicts, and
+a test asserts that it does. On a real run the blinding is visible in the
+model's own answer — asked to plan a reproduction, `gemini-3.5-flash-lite`
+listed *"the exact function signature"* and *"the method used for access
+control"* under `unknowns`, because it had not been told them.
+
+`chainwatch sweep` is the path with no human in it: a list of repositories,
+walked end to end, on a schedule (`deploy/sweep-job.md` — Cloud Run Job +
+Cloud Scheduler). Its one non-negotiable property is that **a failing target
+does not end the sweep** — every failure is recorded with its reason and
+counted in `totals.failed`, beside `totals.ok`. A sweep over public repos has
+no deployed addresses, so nothing it finds can reach CONFIRMED; its product is
+the funnel — which candidates are one address away — not a CONFIRMED count.
+
+---
+
+### The funnel — where each candidate actually stopped (capability 19)
+
+"0 CONFIRMED" is not one result, it is several, and a bare count cannot tell
+them apart. Every candidate was disproved is the opposite situation from every
+candidate died one gate short of a deployed address nobody supplied. The funnel
+is that missing view, and every scan now carries one:
+
+```bash
+python chainwatch.py --repo <path> --funnel
+python chainwatch.py --repo <path> --funnel --funnel-format csv > funnel.csv
+```
+
+```
+FUNNEL (capability 19) - a derived view; it decides nothing
+  1 candidate(s): CANDIDATE 1
+  1 resolvable, 0 killed; median distance to CONFIRMED 2
+
+  BLOCKED ON (a gate that has not been able to run)
+      1  liveness
+      1  liveness_live
+
+  RESOLUTION QUEUE - closest to a decidable answer first
+    1. [distance 2] 1-FeeManager-setFee-dac6083a  (CANDIDATE, rule 1)
+       supply: address, rpc_url
+       liveness (PENDING) needs: address, rpc_url
+           re-run with --address <deployed address>; liveness is UNKNOWN
+           until deployed bytecode is compared
+```
+
+Per candidate it records the state of every gate, the first gate that FAILED
+(if any), the gates that are unresolved, `distance_to_confirmed`, and — for
+each unresolved gate — the deterministic input that would let that gate
+actually run. The **resolution queue** ranks candidates by that distance, then
+by finding-type severity: it orders *work*, never truth.
+
+Three constraints make this instrumentation rather than a second opinion:
+
+- **`distance_to_confirmed` is a count of gates that have not run.** Not a
+  score, not a probability, not a likelihood that a finding is real. Distance 1
+  means exactly one mechanical check is outstanding.
+- **Nothing here promotes anything.** Supplying a named input lets a gate run;
+  the same verdict function then decides the outcome, unchanged.
+- **Every trace is re-derived before it is shown.** `funnel.verify` recomputes
+  the stored verdict from the stored gate states using the engine's own gate
+  function, and any divergence is a hard error — in the CLI, in the API, and in
+  the test suite:
+
+```bash
+python chainwatch.py --verify-funnel report.json    # exit 1 on any divergence
+```
+
+The classic six-field model and the next-gen 13-gate model are both traced, and
+each trace says which rulebook produced it. That the funnel's restatement of
+the six-field model returns exactly what `src/verdict.py` returns is not
+asserted, it is proved: `tests/test_funnel.py` walks all 768 shapes a classic
+finding can take and compares the two answers.
+
+---
+
 ## Precision discipline
 
 - `fixtures/` and its 13 sibling sets are frozen ground truth, hash-guarded by
@@ -415,6 +561,57 @@ surface that shows a LIVE verdict shows this with it:
 > LIVE = this exact bytecode is present on-chain at this address and is what
 > executes there. It does NOT mean the contract is currently reachable, funded,
 > or exploitable — liveness compares code, not risk.
+
+---
+
+## Pre-existing work disclosure
+
+The All Things Agentic Hackathon submission period ran **3 Aug 2026 → 31 Aug
+2026**, and the rules require that projects be newly created within it while
+disclosing any pre-existing code incorporated. Chainwatch's first commit is
+dated **1 Aug 2026** — two days early. That is stated here in full rather than
+rounded off, because a tool whose entire argument is "state what you measured,
+including the parts that are inconvenient" does not get to make an exception
+for its own submission.
+
+**What existed before 3 Aug 2026** — 28 commits, ending at `21aa72f`, totalling
+**16 Python files / 2,431 lines**:
+
+| Component | State on 2 Aug |
+|---|---|
+| `CHARTER.md`, `RULES.md`, `LIMITATIONS.md` | written |
+| Detection rules 1, 2a, 2b, 3a, 3b, 3c, 6 | written, fixture-scored |
+| `src/history.py`, `src/liveness.py`, `src/verdict.py` | written |
+| Fixture corpus + `scorer.py` + `guard.sh` integrity guard | written |
+
+**What did not exist at all before 3 Aug 2026:**
+
+`src/scan.py` (the scan pipeline) · `chainwatch.py` (the CLI) · `webapp/` (the
+web app) · `agent/` (the ADK agent layer) · `tests/` (the entire test suite —
+there was no `tests/` directory) · rules 4, 5, 10, 11, 12 · `src/corpus.py`
+(Firestore) · the Cloud Run deployment · `src/nextgen/` (the 13-gate evidence
+model, the Skeptic, the blinded Reproducer, the Counterfactual Twin, the Deep
+Hunt engine) · `src/funnel.py` (the funnel and resolution queue) ·
+`agent/orchestrator.py` (the ADK multi-agent layer) · `src/sweep.py` (the
+unattended sweep) · every benchmark harness and every number in
+`BENCHMARK.md`.
+
+**Proportion, measured rather than characterised:** 2,431 of the current 43,641
+tracked Python lines predate the window — **94.4% of the code in this
+repository was written during the submission period**, along with all of its
+tests, its cloud deployment, and every agentic component.
+
+**How to check this yourself**, rather than taking the table on trust:
+
+```bash
+git log --reverse --format="%h %ad %s" --date=short --until=2026-08-03
+git ls-tree -r --name-only 21aa72f | grep -E "^(src|tests|agent|webapp)/"
+```
+
+The submitted project is the system as it stands — the ADK agent layer, the
+evidence-gate model, the funnel, the benchmarks and the deployment, all built
+inside the window — incorporating that 2,431-line detection core as disclosed
+prior work.
 
 ---
 

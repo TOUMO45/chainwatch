@@ -44,14 +44,32 @@ not established. That refusal is the product, not a shortfall.
   SC09, SC10).
 - **On-chain liveness:** `web3.py` over a read-only Ethereum RPC
   (`eth_getCode` / `eth_call` only — no code path can send a transaction).
-- **Agent layer (reporting):** Google **ADK** (`google-adk`) with **Gemini**
-  (`google-genai`, model `gemini-3.5-flash-lite`). Six read-only tools; every
-  drafted dossier is re-verified against the finding record before it is
-  written, and any invented hash/address/path/line is rejected.
+- **Agent layer (reporting):** Google **ADK** (`google-adk`) with **Gemini 3.5**
+  (`google-genai`, model `gemini-3.5-flash-lite`). Eleven read-only tools (six
+  on the report path); every drafted dossier is re-verified against the finding
+  record before it is written, and any invented hash/address/path/line is
+  rejected.
+- **Agent layer (orchestration):** four ADK roles over a finished scan —
+  **Hunter**, **Skeptic** and **Reproducer** proposing, and a **deterministic
+  Gatekeeper** deciding. The engine's verdicts are snapshotted before a single
+  token is generated and recomputed afterwards; a difference raises
+  `VerdictDrift` and the run fails. The Reproducer is blinded by the type
+  system — a frozen four-field brief, so there is no path that could leak the
+  analyst's write-up. `chainwatch agent --repo <url>`.
+- **Funnel + resolution queue:** every candidate carries its gate states, the
+  gate that killed it, its distance to a decidable answer, and the exact
+  deterministic input that would let each blocked gate run. Every stored verdict
+  is re-derived from its own stored gate states on read; divergence is a hard
+  error (`chainwatch --verify-funnel`).
+- **Unattended sweep:** `chainwatch sweep` walks a repository list with nobody
+  watching, as a **Cloud Run Job** on **Cloud Scheduler**. A failing target is
+  recorded with its reason and never ends the sweep.
 - **Interfaces:** FastAPI + SSE web app, and a CLI — both thin shells over one
   engine (`src/scan.py`) so they can never disagree about what a finding is.
 - **Deployment:** Docker → Google **Cloud Run** (`2 vCPU / 4 GiB`, scale to
-  zero); `GEMINI_API_KEY` via **Secret Manager**, never in an image layer.
+  zero); `GEMINI_API_KEY` via **Secret Manager**, never in an image layer;
+  Firestore collections `scans`, `pairs`, `findings`, `funnel_traces`,
+  `agent_runs`, `agent_turns`, `sweeps`.
 - **Integrity discipline:** frozen, hash-guarded fixture sets (`guard.sh`) and
   a `scorer.py` that enforces precision = 1.00 per shipped rule.
 
@@ -104,6 +122,56 @@ The honest log is in `LIMITATIONS.md`; four things are worth surfacing.
    one). The same refuse-rather-than-guess instinct runs through the whole
    product.
 
+5. **We measured the tool against real exploits, and published the number that
+   came back.** Across 63 scoreable DeFiHackLabs incidents Chainwatch
+   mechanism-matched **50.8%** (32/63), at **0 high-confidence false positives
+   per 1,000 mainnet contracts** (`BENCHMARK.md`). The number we are proudest
+   of is a *negative* one: a candidate rule 13, written to close the worst
+   class (ACCESS_CONTROL, 2/14), passed every synthetic fixture, then recovered
+   2 of 12 real incidents — and **both were false positives**. It was reverted
+   rather than shipped. A detector that buys recall with false positives is not
+   an improvement to a tool whose entire claim is that it does not overclaim.
+
+6. **The agentic layer had to be safe by construction, not by prompt.** The
+   whole design question was how to use a model without letting it near a
+   verdict. The answer was to make the boundary mechanical: verdicts
+   snapshotted before generation and compared after, proposals filtered against
+   the engine's own id set, and the Reproducer's inputs reduced to a frozen
+   four-field type. Each is tested against a stub model actively trying to
+   break it. On a real run the blinding was visible in the model's own output:
+   asked to plan a reproduction, Gemini listed “the exact function signature”
+   and “the method used for access control” under `unknowns` — because it had
+   not been told them.
+
+---
+
+## 1b. Pre-existing work disclosure (hackathon rule: “New Projects Only”)
+
+Stated in full in the README under **Pre-existing work disclosure**, and worth
+repeating here because the rules ask for it explicitly.
+
+The submission period ran **3–31 Aug 2026**. Chainwatch's first commit is dated
+**1 Aug 2026** — two days early. What existed before the window opened was 28
+commits, **16 Python files / 2,431 lines**: the charter, seven detection rules,
+`history.py`, `liveness.py`, `verdict.py`, and the fixture corpus with its
+scorer and integrity guard.
+
+What did **not** exist: the scan pipeline, the CLI, the web app, the entire
+test suite (there was no `tests/` directory), rules 4/5/10, Firestore, the
+Cloud Run deployment, the 13-gate evidence model, the Skeptic, the blinded
+Reproducer, the Counterfactual Twin, the Deep Hunt engine, the funnel, the ADK
+multi-agent layer, the unattended sweep, and every benchmark.
+
+Measured rather than characterised: **2,431 of 43,641 tracked Python lines
+predate the window — 94.4% of this repository was written during the
+submission period**, along with all of its tests, its cloud deployment, and
+every agentic component. Verifiable from the repo:
+
+```bash
+git log --reverse --format="%h %ad %s" --date=short --until=2026-08-03
+git ls-tree -r --name-only 21aa72f | grep -E "^(src|tests|agent|webapp)/"
+```
+
 ---
 
 ## 2. Third-party code and license disclosure
@@ -155,19 +223,16 @@ well-known standard licenses (please verify before final submission).
 
 ## 3. Repository visibility — ACTION REQUIRED
 
-**Current state: the repository has no git remote at all** (`git remote -v` is
-empty). It exists only on this machine — it is neither public nor private on
-GitHub, because it is not on GitHub yet.
+**Current state: the remote exists but the work is not pushed.** `origin` is
+`https://github.com/TOUMO45/chainwatch.git` and the local `master` is **ahead
+by 32+ commits**, including every capability described above.
 
-Before judges (`testing@devpost.com`, `cloudhackathons@google.com`) can see it,
-**you** must create and push the repo (I can't — it needs your GitHub
-credentials):
+**A human must push.** This machine has no cached GitHub credential: `git push`
+and even `git credential-manager get` hang until timeout, there is no `gh` CLI
+and no `GH_TOKEN`. That is not a retryable failure — it needs a credential
+only you can supply.
 
 ```bash
-# 1. Create the repo (gh CLI) — or make it on github.com and copy the URL.
-gh repo create <you>/chainwatch --public --source=. --remote=origin
-
-# 2. Push (current branch is `master`).
 git push -u origin master
 ```
 
@@ -179,8 +244,8 @@ Then choose one:
   `cloudhackathons@google.com` (accounts, not just emails, may be required by
   the specific hackathon — check its rules).
 
-**Note:** the three commits made this session (`0270fff`, `0c72626`, `ed5e2d3`)
-plus these packaging commits are local only until you push.
+**Note:** everything after the last pushed commit is local only until you push
+— confirm with `git rev-list --count origin/master..master`.
 
 ---
 

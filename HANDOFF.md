@@ -1,9 +1,129 @@
 # HANDOFF — resume point for a fresh session
 
-**Last commit: `5e214b4`** ("BENCHMARK.md: the measured results table").
-**NOT YET PUSHED** — `ahead 30`. GCM has no cached token on this host: `git
-push` and even `git credential-manager get` HANG until timeout, there is no
-`gh` CLI and no `GH_TOKEN`. A human must push, or supply a PAT. Do not retry.
+**NOT YET PUSHED.** GCM has no cached token on this host: `git push` and even
+`git credential-manager get` HANG until timeout, there is no `gh` CLI and no
+`GH_TOKEN`. A human must push, or supply a PAT. Do not retry.
+
+## HACKATHON ARC (2026-08-30) — three new capabilities, and one real defect found in our own README
+
+Built Part A of the All Things Agentic submission plan: the funnel, the ADK
+multi-agent layer, and the unattended sweep — plus the submission assets.
+Full write-ups in **`docs/ENHANCEMENTS.md`**; architecture in
+**`docs/architecture.md`**.
+
+### Capability 19 — the funnel and resolution queue (`src/funnel.py`)
+
+Per candidate: `gate_states`, `kill_gate`, `blocking_gates`,
+`distance_to_confirmed`, `required_inputs`, and a machine-readable evidence
+request per unresolved gate. Ranked into a resolution queue. Surfaced in the
+scan report, the CLI (`--funnel`, `--funnel-format {text,json,csv}`), the API
+(`GET /api/scan/{id}/funnel`, re-verified on every read) and the web UI.
+`--verify-funnel FILE` re-derives every stored verdict from its own stored gate
+states and exits 1 on divergence.
+
+**The load-bearing test is the equivalence proof.** The classic six-field model
+is restated as gates so it can be traced, and
+`test_classic_gate_model_agrees_with_verdict_classify` walks all **768** shapes
+a classic finding can take, comparing against `verdict.classify`. It FAILED on
+its first run — and the fixture was wrong, not the module: it set
+`Finding.liveness` and `Evidence.liveness` independently, a shape
+`verdict.build` never produces. Fixed by building findings the way `build` does
+AND pinning the coupling in its own test.
+
+### Capability 20 — the ADK multi-agent layer (`agent/orchestrator.py`)
+
+`chainwatch agent --repo <url>`. Hunter, Skeptic and Reproducer are Gemini 3.5
+`LlmAgent`s; the Gatekeeper is code. Three constraints, each structural:
+
+1. **Cannot change a verdict.** Verdicts snapshotted before any token is
+   generated, recomputed after the last turn, compared. Difference →
+   `VerdictDrift`, run fails. In production, not only in tests.
+2. **Hunter cannot create a finding.** A proposal naming an id the engine never
+   produced is dropped and recorded.
+3. **Reproducer is blinded by the type.** A frozen four-field `ReproducerBrief`.
+   The test captures the ACTUAL prompt string and asserts the write-up is absent.
+
+`--agent-no-llm` is the control experiment: same orchestration, every model turn
+abstained, identical verdicts (asserted). Persisted to `agent_runs` /
+`agent_turns`.
+
+### Capability 21 — the unattended sweep (`src/sweep.py`)
+
+`chainwatch sweep --repos <file|list>`. One property matters: **a failing target
+must not end the sweep.** Every target is wrapped, failures recorded with their
+reason, `totals.failed` printed beside `totals.ok`. `sweeps` collection,
+`GET /api/sweeps`, a web panel that says "not recorded" rather than showing an
+empty list. Cloud Run Job + Scheduler recipe in `deploy/sweep-job.md` —
+**written, deliberately NOT deployed** (the user declined; it creates billable
+recurring infrastructure).
+
+### LIVE-L1 — the README was overclaiming, and it is now fixed
+
+Re-ran the README's own flagship 88mph reproduction and disbelieved the result.
+**It documented CONFIRMED and produces CANDIDATE.** Root cause measured, two
+parts:
+
+1. `_attach_liveness` compiles the finding's path at HEAD; at 88mph's HEAD the
+   file MOVED (`contracts/NFT.sol` → `contracts/tokens/NFT.sol`), reading as
+   "not present". `scan._renamed_path_at_head` already solves this for the
+   survival half and is not consulted here.
+2. The immutable-code fallback is gated on `proxy_kind == "eip1167-clone"`.
+   `0xDe71B24F…` is the *implementation* the clones delegate to
+   (`proxy_kind: none`, 8500 bytes), so it never arms.
+
+**The evidence is real** — compiled `a4c48d6`'s NFT.sol with the
+Sourcify-recovered settings and `check_against_artifact` returns `LIVE`, byte
+identical. And a live read-only `eth_call` right now returns
+`OPEN — the one-shot window is still open`. The pipeline just cannot reach
+either through the CLI (a third symptom: `--check-exposure` returns an empty
+list for the same reason).
+
+**Fix NOT applied, on purpose.** Widening the fallback from "is a clone" to "is
+not a proxy, so its code cannot be updated" is the right change on the same
+evidential bar — but it changes when CONFIRMED is reachable, and it was found
+the day before a deadline. Recorded as `LIMITATIONS.md` **LIVE-L1** with the
+measurement; README corrected to show real output. **This is the highest-value
+next task**: it is scoped, measured, and has a known-good expected result.
+
+### Submission assets
+
+- README: **Pre-existing work disclosure** — 28 commits / 16 files / 2,431
+  lines predate the 3 Aug window; **94.4%** of the current 43,641 tracked Python
+  lines were written inside it. Verifiable by two commands printed in the README.
+- `docs/architecture.md` (two mermaid diagrams, the 13-gate table, who may
+  decide what), `docs/ENHANCEMENTS.md`, rewritten `DEMO-SCRIPT.md` (4 min,
+  including the mandatory Google Cloud proof segment), updated
+  `SUBMISSION-DRAFT.md`.
+- Corrected two stale claims found while writing: the agent tool count (README
+  said six and ten in different places; it is **11**, six on the report path)
+  and the 88mph verdict.
+
+### A trap worth knowing about before you edit anything here
+
+`.gitattributes` is `* -text`, so git stores byte-for-byte with **no** newline
+conversion — and this repo is genuinely MIXED. `HANDOFF.md`, `LIMITATIONS.md`,
+`README.md`, `chainwatch.py`, `src/scan.py` and `webapp/static/app.js` are
+**CRLF** in HEAD; `webapp/server.py`, `src/corpus.py`, `agent/runner.py`,
+`DEMO-SCRIPT.md` and most newer files are **LF**.
+
+Python's `Path.write_text()` on Windows translates `
+` to `
+`, so a
+one-line edit written that way rewrites EVERY line of an LF file. It happened
+during this session: a 14-file diff read as 3,794 insertions / 2,446 deletions,
+almost all of it invisible newline churn. Caught by disbelieving
+`git diff --stat`, then fixed by matching each file to its own HEAD style.
+
+**Read the file's bytes and write bytes back**, or check `git diff --stat`
+before committing. New files: use LF.
+
+### State
+
+Full suite **860 passed / 3 skipped / 0 failed**; re-run green over the final
+code; `guard.sh check` OK. 4 new test files (**77 tests**). Nothing deployed.
+Nothing pushed.
+
+---
 
 ## BENCHMARK ARC (2026-08-30) — read BENCHMARK.md first, it is the product.
 
