@@ -1,0 +1,3017 @@
+{
+ "scanned": 250,
+ "compiled": 147,
+ "errors": 0,
+ "with_findings": 91,
+ "with_high": 0,
+ "confirmed": 0,
+ "sigscope_fires": 0,
+ "sigscope_contracts": 0,
+ "confirmed_per_1k_contracts": 0.0,
+ "high_conf_per_1k_contracts": 0.0,
+ "sigscope_per_1k_contracts": 0.0,
+ "results": [
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1148e2396947a55d89f7f7369ae66deb5dfa8042_KokeshiInu.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 27.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00934d7aAb087b952635CB8d883295d824249998_StreamA.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 33.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa9110Ddad12a265272A749F732979722c5b10db_DAMG.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 5.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0058290b7b28ac32e5d94afdcbeacb774378cd34_OInimigo.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "STATE_MACHINE"
+   ],
+   "seconds": 22.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11EBe21e9d7BF541A18e1E3aC94939018Ce88F0b_PitchFXSToken.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 64.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\118c929c4F7bA5Ef75E9dc070eb873635faeA1B3_BitcoinWhalesClub.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 4.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00e632A902f2cE3a40174A0D08dEe887bf7C321d_w3_quiz.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00c2fb6f4f7b7ca30ed1412b08881e638c180d79_NeraPlatformToken.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 61.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aac277020580e1e9b5bf68d979c1c20e51c7e1d9_LimitedEditionSeedCardsDistributor.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\004048e3974D9FA7e1095c03B99F307A03E0e310_BakedLpPool.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 61.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1184bd6de005374a2600ce999a09777739efe92c_ERC721ABigFoot.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 38.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aAbf86D0428c3612D38d2552f7376a23Ea6b1Ac8_LosBears.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 63.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00055C3e0a29c48a270221D55c79d9b0dA0d75D4_OSB95.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 63.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aacf3c7845551f21484e7ed4b2652ad046031e72_UniswapExchange.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL"
+   ],
+   "seconds": 8.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11f6b343d131fcf95a10086eaa1e23b0bd488dd1_PPCToken.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 7.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11c7262CB638D51E596363243C82066F49110Ed9_EIP20Interface.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 6.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00000a9f233d0b3ebbf136276165429d071d1abf_AssetsRouter.sol",
+   "compiled": true,
+   "n_findings": 5,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ACCOUNTING",
+    "ORACLE"
+   ],
+   "seconds": 7.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11c26446b5ce3b895ef6a9a594cf9df6e8badbd7__Users_igor_job_dev_defi-sdk_contracts_adapters_curve_CurveStakingAdapter.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 62.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00a80284a025c91c1df6048f7a71d1a56a86bffa_ADH.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 63.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa20E81eA7F3201F60109dD90fBdf071cEdF304A_ChillFins.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 68.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\Aa304E98f47D4a6a421F3B1cC12581511dD69C55_OperatingGrant.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1102c276c29d14e801d625b20e29236bac6fb925_dai.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 18.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00f3d9f10b9fc10a88f8a8f57e9190455b57cbc7_AaveV3EthereumWSTETHSteward.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 67.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00ae2bf07de51c8f97a6823e33a0d2b1ee74c17d_STW.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 66.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00c2411A35553d9FC65f941e730d3AD3902DB785_Feet.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 64.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa7f6b76ce4d9a0602416d9f4536698a6a25b836_SquawkNinjas.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "STATE_MACHINE"
+   ],
+   "seconds": 51.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00bDFF4144D0bff0A5A0CC9BC610606d1a319BD4_TropixGenesisStory.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 66.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0051f1Cd0234c48Ea92BE0b0191fD102EeD797f7_KarbonPlatinum.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 4.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa5ef2de455d573d79c1c77d162e4deb2db7e00b_E11.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 65.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11742f8c430dda45ef026c71c6870e57c071e256_Fractal.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 11.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\116f20D6A9B10305a3510427d13694E75fbA7cc9_CloudEternals.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 63.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa103e5acc93baa3e0c4113e3cbe0633bf099829_Exoticsy.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ACCOUNTING"
+   ],
+   "seconds": 7.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\AA934c75a4A771E7AfC66f8A6DBaf3902EAd76b9_TheMuskProtocol.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 65.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aAaD93dDef0aCFAA17082c00B1544b93DbEbc2D4_PepeWillMEWN.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 65.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\007b4CaD1707E8375DF70888352b0A10856C287F_MetaObituary.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0007240ff3c377fc324e581eedce86dd4dc40917_TripodMath.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 7.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa05564b450Fe67D8757AAAA9Ae565B7954F40fB_SpritesheetRenderer.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 92.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\003e3f7a82a2903c4e9ab17d7ca00c824692569a_Rum.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 67.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11aAf4B08cb37e31e794AB236ADFbAf19abf3a3b_pixelbeans.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 65.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0059df6bAEf0e489c161C5dae54A256c65a9A018_DeathClockCOIN.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 62.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00E9303e0fA754751C417E33FdBC031F0cc01360_TokenPool.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 61.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\115a968BD061b3cd0a5e21D80c827e6A4B5e36E6_Token.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 43.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00EA18ED5bfDa37B08e72c40016b26cb5b17e32D_greyNFT.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 28.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\000000630a383f8bd13430471175ce97796d9b31_GasOptimizedEther.sol",
+   "compiled": true,
+   "n_findings": 5,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ACCOUNTING"
+   ],
+   "seconds": 7.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11e361f07e8a00f09bda795cc04118cb6d9b810b_Vyper.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 11.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00491f21c9655c2a4022eff5c4cfb066c5a38e93_InuInuInu.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 4.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\005aae78c0de67642c728504dc9d264ecb9bb312_EC.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 9.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aabf0b58958aa392B69F793BcCA015d402fEC377_THERAID.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 35.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00e0c1ea2085e30e5233e98cfa940ca8cbb1b0b7_Pool.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 65.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11fa1305a3a4A1BC000Ef67fabde2AA0f3d5DF79_DiamondCutFacet.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 66.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa98ad43210405fc54868dbb60dc66c94ca8314d_FarbeArtSaleV3Upgradeable.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 68.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\117a47512429caf97dd4bb2a2ecd17ae916af2c0_HyveVaults.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 65.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\112e48F7c2A45AFa8917d218d18058986f02c6d8_StandardERC20.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 5.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aabf1b6e4fbebb239e8a16deea11947bbcd1024a_RetailLoyaltySystemToken.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 7.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0000074ced850ff66ac2bef99396ab4d11c1ea7c_Bot.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 8.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11d144613a92a6740d32c1bf06c067af99fd774c_polymorphAI.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 4.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00000000cd6eab3b2c4b0381247443b0cce5c40b_xd.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 62.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aA625787EB8D63C9CF08785e53B6ABFC7d460d46_RO.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 61.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1199997a33fac8a64d19ff9e11a890bce7b52b7e_curveI.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 7.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00c83aeCC790e8a4453e5dD3B0B4b3680501a7A7_OEPEnumerableSet.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 7.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00Decc285a43B4c736269FA50588F3C493Daf990_SunriseAuctionHouse.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1827.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11E88AF43fAEFE30F06796396dc50FE0a48A3fc3_MurderedApesCanoeClub.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 28.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0000007b02230091a7ed01230072f7006a004d60_ConduitCreator.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 27.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11a0016dff71ed66d34f5798a61d4e6ffc0b0c64_CryptoMessiah.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 20.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11Bbb0604df39e63a3c67F3b207e6fB24f0701f1_TimeshareToken.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 2.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00767367F6ECCC7047eA2695cCd103A5654324f5_JsnyNftClubMinter.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\AA95c6e1772F1aeB45c415CDeB2Ef18eb5968899_ConnectV2Auth.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 27.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00c3bc63DcDF8EcbED68aE37858Fc4B74d41700E_PHCToken.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1159ef8410ac26165bc6809438571316c36db631_Token.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 29.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11c7443f3ec86Ca734C911446d2a47E4A4609e64_CRYPTONINJAWORLD.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL"
+   ],
+   "seconds": 13.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aadf4D1dEcfd8F0907c0DDDd10042dA7D53A6490_Umibozu.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 3.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\117EcFb2b29Fb15814A77927753Bd84317708060_TheNFT.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 28.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\009b8727B61db4D9EE59b102Df53e5e30E8B14e5_OGCardDescriptor.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 30.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00ce538f93D76bA2ABCBb12b51F71420Fd0280ED_MyNFTContract.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "STATE_MACHINE"
+   ],
+   "seconds": 11.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaaed28a447c6d458e621b37ae676ab01952ee26_DorkyDucks.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 38.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11a4c77eeE4Db7AA7dA0d836423529E68a9a1f28_Sizuki.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 27.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa2ed858a526768c7b99df4eaf5ccdad28f45cc8_ERC20.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11a605d7e12b64d713e93c487277d819a1d14b99_SafeShield.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 10.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaaa332899c4847580334da7ed6eaf95289b3cfd_PayWinners.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "STATE_MACHINE"
+   ],
+   "seconds": 16.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa08a0572475386ad76a6a649532251ce8898f01_DOE.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 32.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\116aD07c6310885D74c154D3bDD9CD5498151E81_Pool.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL"
+   ],
+   "seconds": 5.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0079d39858de26f4a48aee061a27d01daffd18f1_MerkleDistributor.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa86fc58748b84be5fb0f97f894be102c6eb41cf_MB.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 33.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0013643aD916f48807629e2aB85a96bfAc854517_GuardiansofFuyuki.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 30.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\007f8F8bA11b75cA7030ed563eb7Ca1A16F966EC_Wrapper.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 9.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11433e2Dd472Dff2Dbd4C92ea8584Db60701391e_NewLunaInu.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 11.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00224d9084fD7cDb4A5CE7740Cb1Ca0Dca6bE7a6_ProxyCrop.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 3.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\AaC5cb686e95B4D03103fCcdf5aaEd680a07D3e9_Anthology.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 30.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa7bf9ac192d25656fec1035ed2973fb1beaae47_ALPHA_BUCKS.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ACCOUNTING"
+   ],
+   "seconds": 2.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0037A27414c316E1a2b0ce72E9C458C4A3984F2F_MasterchefMasatoshiJunior.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 32.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11253A404204b90f2360b23640ABfD414cd922d6_Airdrop.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 33.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1177FF2341a42C493FfF2B45eB63E9e761bE6816_APContractV4.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 29.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\004BA6820A30A2c7B6458720495fb1eC5b5f7823_Aludel.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa5eee2ce148d0d041d7c585496ef785fdc55150_NiftyBaseMerkle.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 13.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11bba9df4541c8e40288428d91b19ac64b22dd91_StrategiesHelper.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 2.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa9002f991cfd2e01b288fbfb49f752a0c1dd1bc_HHH3.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL"
+   ],
+   "seconds": 3.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1145e9503000c4b2c9022a196717be5b7feba6a1_WrappedToUnderlyingOracle.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 14.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1136e64461bda5DC3E7fc67ec8F2097faB1C8790_PixelHelms.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aae5114ce19c2292df3d7645959764636e4183a0_BobbleBats.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 9.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aac880fa6ea5650cb7f45e314cfed9b7c72e144b_RoyalRabbit.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 19.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11128ce75cb297ebeb0e98cf09bd7df007534ee1_GnosisBridgeFacet.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11c26446b5ce3b895ef6a9a594cf9df6e8badbd7__Users_igor_job_dev_defi-sdk_contracts_ERC20.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\Aa9b97cf7E4c52D028b854F2610aac18F60c86F5_PolkaBridgeTreasury.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\006e666629206607464c3EBaF25FD16986910772_MONK.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 7.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0041f2b27439d93a6b40f521e49f930891d11c95_dlmr.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11c59daf3dcb9bdb74156687fbb3e6b83eae9e59_DaiPermitResolver.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00c83aeCC790e8a4453e5dD3B0B4b3680501a7A7_OEPOwnable.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 27.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa6e49caa0b717a5a892441fe9d5d971ca981e2c_SPS.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 27.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11571ECF3E9f1BEf74E102472CBA9074B2f83e9D_StrategyUSDCCurve.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 3.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aad68218c3ea6889529206b37840f85da31b7ef4_BabyKishu.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 18.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0011eaaaa14eb99b1dc0c3f931d91deea8bbd471_Saitinja.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 9.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0023ba8f6c1f7b98b5D69a386EA7bF480F020d2c_X7Inu.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 4.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aA321A715e08eF44EeE8CadB1282688D9dc683cf_GooDeePayment.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 27.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\117478e32ee6f6d8bc89c37d75a21d1ff58037fe_RMM.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 29.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaF805b5Bb96397a8e2B65DdEE14eAc1cDcB53F5_StandardERC20.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 2.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11c937fD367D75465DC211c367684d8d4520E6f9_contracts_cream_saver_CreamSaverFlashProxy.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 30.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\002c72064e3a9eb097d4ffaf873739006c12adf6_NFL.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 8.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa6e558460cd857792df0af5b45ea7d06301fecf_BEANZ.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa763a0a7aa5b78083ef4aa21024e5e1c909e085_Cyrus.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 5.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11b3808A5C0B612BC284EF7c2c6034C77A66BE7b_RockXStaking.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11918828B68A816CC702B9037db37271b0ac506E_CryptoSnail.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 12.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00c9ae2b1207654cb4c2e5c47584b41d96059f61_MEMELAND.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 11.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa0c3ceb9461a758aeafab4593283b54a3eaf8bf_dame.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0043aa592ffc4125b8ebdae95f883b0e8ada71b1_GAROUINU.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 10.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0021dceeb93130059c2bbba7dacf14fe34aff23c_VaultEPTActions.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE"
+   ],
+   "seconds": 9.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11119b3e915a99b64b058444ff7834de8c79d31b_YieldingNft.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 14.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\Aae61e445A45FEEc71d93f2996EaA0B6a7c0e09b_BSODE.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\110c2eee0719796256888bf93d12498e26541000_AG1.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aA07976D0da7984CAc5520e414E40232309efeA7_KillerAcid.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 10.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00c8b2fd3213f089604e7a7ae264e9839a91f097_DRKCOIN.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "STATE_MACHINE"
+   ],
+   "seconds": 3.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\000000009600105C4578D4131F67B7Ff952F9dE3_BadgerRegistry.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\111111111CFACf48287Ff59Cc0c7B03629f1444F_altGME.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 3.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11543183a3f6a0b0a9f79b9d07a8a2950cf0788b_TELEGRAM.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 15.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00c300c5ae4734abc8b19b71bb2f5f03e829dd4c_EasyGame.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 6.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11d7dcf5fc6061773bd05b50ac7f7b5e8df8b4b3_MalTokenStakerHelper.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11948c2bf783b5b250b0a9e09b16db619903e2b9_FTX.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ACCOUNTING"
+   ],
+   "seconds": 3.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11b7f392e8802f1295028bd46257767e3b6ede7c_THISProtocol.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 10.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaa001caae6e0c581779914a18fc7fb9b26b00e0_Factory.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "STATE_MACHINE"
+   ],
+   "seconds": 2.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\007b749fd9c28455f03a57c005f4249693550e51_TraceChain.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11518846de0b4fd57875c284ff382d9d34d5da2e_KnowTokenPrivateSale.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 13.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\009e0bd9624cdc2bd8fb2e179928ec0f5a8b4157_PlayerBook.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11fd55861a68e113280a40f97b497719dfa1db2b_FrensDAO.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 7.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\003516572f212dec785c3bcc97e6f354851eeb47_GBCToken.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0098bda18b144eea5522ae5da4bc5f7c8f3f0085_Kraa.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 11.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\003281ce32a53dbbaa43dfe0c890e268117522c7_AmericanDream.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 9.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\005b92d71a934dbe48e985b6469881cf4b0308fc_ADIDASXBAYC.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0012EdA08A762ff158E9B6401591DB80Ed875920_SSFV2Staking.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00f4969458d8e6a6c8ead5d5b5878e6f375feea6_BabyInu.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 11.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00A6501Ba97246744874637A48D6e50DF3155936_SaffronERC20StakingPool.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 17.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00000000fffd97acdc8c5585c818f6b0f946c0ed_QR.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 2.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa5fafbbb8d54e8335100a64ccedc025f0466e13_LOVE.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\006edd93482512a8b5b961954cbdd54042f565d4_COLLAGE.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\117a36055bf56b0157bd1df3cf45bfd7e01e1663_ETCH3dV.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 4.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\115c39E1370533455d62dE88C71C809a7dCA9A2F_TTCAirdropper.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\113b767841728ecf7301260b78f32188ac7b60c2_TwitterKishu.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 7.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\114a629422Ee756F329e6F9731E3573A3Ff2736e_PAT.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11c79b83e29dc8af31a98da285a3fc6445083ac6_Strategy.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 11.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\117ea876fd3d6a6ac22cef80152a7e6b31bbbde6_Address.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 9.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0003ed19f80564745e84b4cc411a7b6be4f0cf31_NeverJeet.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 6.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00B7AB6A4b12A2548855Ee0b7598C6D267762636_ScrapStake.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11595fFB2D3612d810612e34Bc1C2E6D6de55d26_RocketComponent.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00000000000066F8295B13Fb252b7f873CBBA71d_Multicaller.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa115827753cb7b2a8445eaa09a4e5812eebbf23_VitalikInu.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 5.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaeB683b35a36876bD44aEa6B704F58614889228__home_merklejerk_code_0x-monorepo_contracts_zero-ex_contracts_src_transformers_LibERC20Transformer.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00CECAd4302B4a68606e88a7D280Ae63b3A1Ca64_NFDP.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaaaaa20d9e0e2461697782ef11675f668207961_AuroraToken.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00437b1bca0a3ebe4518ecc24e4795e4c76a533c_MonoInu.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 12.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\115bcab915935f33924beebda75906d82fd9641b_UniswapExchange.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL"
+   ],
+   "seconds": 3.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00900af70559eeb9b0c6b5a7a38721c0da0c07ab_TNGLK.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aafec8b274864ed14e88d893957f4f552505f6e3_TehRabbit.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaf3385bf59e0dbbebd7c80a592bd05cc2bd8c74_UniswapExchange.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL"
+   ],
+   "seconds": 3.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa4250216f77a79fd9983642a987f708f1fe7504_Bank.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 3.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1172ab3f0cb3f53baf86a274cc770dcd56db850a_MAIZAMPLPool.sol",
+   "compiled": true,
+   "n_findings": 5,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ACCOUNTING"
+   ],
+   "seconds": 3.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa547910216e7437f3e387217beabd1640ce5517_BEP20Token.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ACCOUNTING"
+   ],
+   "seconds": 1.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\114ad141671c869bd922d97fab34818c5dcc94d0_Bubble.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 4.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\114221367907b8c73de143e6e91826170308e303_NFT.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 9.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa152e2c7a373b89f0c10a938f8835efdb6880f2_FTGU.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00294f75ad3fbd51f0359b82fc7fbfa18e83584a_ChickenSoupProtocol.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL"
+   ],
+   "seconds": 3.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\004D1bf176c59890e11e487d1270D809df188C07_Market.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\AA7C0fB9775a23FB120d0AB9315e8636DBD2A893_bullsVSbears.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaa6657b81c353c793596821f10b889f0f45a0fb_WESTMORE.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 11.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\000000000031163395F67E424F5B0082609709a7_OpenSeaSignedZoneCaptain.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11633DE32c66e81284f411a28DF16163B2BA5470_ICryptoPunksMarket.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\111f86b56cb5b5edd44d469eb9012edb7e889efd_Triangle.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 11.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11be5e4fb1d9384b0646eb5628f16c8802b32733_Scarecrow.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 3.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1136df102348c87b936457025287e77b4897aa98_HongkongAgency.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 11.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00d14753f126286502a3aa6df97a949a951398c9_AlienNetworkToken.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa9d866666c2a3748d6b23ff69e63e52f08d9ab4_FMTAToken.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 8.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\004D09bDF288366B1AA6ea2229d11fc621B4e1d2_DevDetectorAi.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 4.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa5A31680479650dB8BbBc6e0d89aA4F3825F3f6_MirsOfSpaceEditionLimited.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11De5b2294b769fe4559f60bEC07912b9db6e5cE_AntiBotBlacklist.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa3E697F660fe08841CA0Fcb44390aA5D7a8982C_PriceProviderUniswap.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 17.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa6945212acfceec06ae29d67efd21d4cb7d96e8_RealAssetDepositaryBalanceView.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11293678D2bE8BDD9b17cdf10FF3B292C5FBA1f1_HalfBAYCD.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00e101E7F8a86a8F41b39A048AeBD0afF21Af268_NewUsdcEth.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 9.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1153a64c4de64b319ce391d15d96a7b507bae940_WOOF.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 3.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00834e2763b108b01218638dc2cec27ce6d43753_MoverUBTStakeNode.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 24.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11fDa2BD01f9d27e977F7aAc63BC114359767a86_NewShepardRocket.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 6.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\001f1ee6757f2237dE33AAe616976CfA6B791a0f_KaiKenInu.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 7.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00fA04e424CBE24526949056b71e00d7eE6C24Fa_PendleYieldContractDeployerBaseV2.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa60deab753e892b768bceb3a4a485d23d33dc07_NFT.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "STATE_MACHINE"
+   ],
+   "seconds": 6.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\113F0Be93F9EFC44371880E3dF1D991bd8F2C37a_HITOKIRI.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 7.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaf099a16cb37dfdaffc1a169f6e99f41aaaf75c_TraxionToken.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "STATE_MACHINE"
+   ],
+   "seconds": 3.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\116bb0961ca28a3587d0aab9c4a5b5de2d74a13c_TENKO.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00888096c1cdeb35bb3772f9080227aa6c9968ad_ICOBuyer.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 2.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0066342E98Ac72545cf814B9621413604f0fe95F_FundingLocker.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 19.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00a61cccd2a4281437352abdfaf1151102f8bd82_NEWCOMMUNITYUSDC.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\009e1f77b1E855FFD9FB3472fb5C8116CB316079_LimitedSupplyMintingExtension.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 14.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0025a8eB116f3748fe37167522398bcD8CC5bf42_Soba.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 9.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\002c64d47867f233888bd14de18c1d62971b8e97_MyTether.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 2.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aafc9f0b75b5a0c20a775274c876e00dd135d52c_yInsure.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "ACCOUNTING"
+   ],
+   "seconds": 4.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1191d313e0db3b99cd65b56b4879d5bf94636eb1_KapelaToken.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL"
+   ],
+   "seconds": 3.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\0048309a970094a68ef7eb56a561302c08c91898_CryptoLords.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00138bd67465733ae1bedfd2105a6ffa83af97d8_TORUE.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCESS_CONTROL",
+    "STATE_MACHINE"
+   ],
+   "seconds": 3.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa9eed51df293189d98a0646a771bb5d599ec6a1_Main.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 13.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00ee3f92e8c37c862eeaf99813718ac10b7fa7ce_KIYOMORI.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 4.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\119ebd89943d5d23992b625f5bcf28bda67d291d_TACBG.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\005bA0cc7b779Ba9c598b8aC1bdf0C9bE83d301D_Aureus.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\000000000000cb2d80a37898be43579c7b616844_ReduxToken.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11a5fc81aa06aff5ccad8629063e6d3c4e5b156e_SpaceToken.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa6C63f23bA7DaeECC03e2D9F1506EaB6A3B9484_Something.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\000aA88EB998443fBAE7Ce8F2341449971cDBF35_PixelNakedGuy.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 11.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00ef721095c355edf851be7ae0a1ed26d2ba64d4_CELLInu.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 9.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11B0D9AFD49Dc36D86DEa579d0D11771a4f2f54b_MerkleVault.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00000000000001ad428e4906aE43D8F9852d0dD6_Seaport.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\110C4f745c48E91257A3382453fbbF45187ee1fc_NiftyBuilderInstance.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 10.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11a67895e6d42ddbdb92a19981a4973a72bce70c_ImpostorsGenesis.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.5,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aaf0b6226398ccc9c99f37e0bc710b198ab82e9b_ADZbuzzCommunityToken.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 3.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1103849f41222a4c348515331f0e734d4bd9ad34_SolarDaoTokenCrowdsale.sol",
+   "compiled": true,
+   "n_findings": 3,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\113fd609d2b4365b511df55d3d1e47ddb7244f6e_KylerNetwork.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\Aa4837866FFF4AE5EfB043491Eb7Ff1d26f1319B_HonestWorkNFT.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 26.1,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa3308cabf0a39b432e310303e7f388b8eb41b9c_LUCIDTECH.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 11.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa19c2aef38051a8c2a6e208ac91d9f25bebb39a_shiboytoken.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 7.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\003824AbF752bAa6ebA4A5F7e62D08354c9B2877_LWAN.sol",
+   "compiled": true,
+   "n_findings": 6,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING",
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 4.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\113b505aa6e64f960036e92baf0fff67e9d80e6d_LIV.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 3.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\AAAA0090bB3813331BD54D00F5FC7b01466923A3_Goku.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 16.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\1184da746d4efa0b2717388af7d32aca963f2a69_ChexCoin.sol",
+   "compiled": true,
+   "n_findings": 2,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 3.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11dda4fa6be5718ba5ad958903e0e15ef0f8c422_Silverine.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 6.6,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00947730e363d598ab98a00e709d5f53a7c34e26_FAE.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa8ee058add9840a1afbc538fe8c55360862c11a_TaxFarmProject.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa941f91b17efa122d4831c7a99ad5e1a87612e8_DogToken.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00e169bf40163f6ff539860c4dffd686fd2eb410_synpulseToken.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.2,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\110E2da39705723436e6987637921C3Eee07aB2e_EtherCollateral.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 0.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\115cb1660a06b304a018788aa17f64e7a5a48451_TheMoonRabbit.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 13.3,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aa482edc2b6f11bc02c4f51a058ddb207d54bbf2_Hwarang.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.7,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\001ed2d6f4fb995572646bc21420bbc0f3cd89d4_SHIBAMARS.sol",
+   "compiled": true,
+   "n_findings": 1,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ACCOUNTING"
+   ],
+   "seconds": 2.9,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\11167f362cf3dcf79e4dd01cd3fd6defadc096e0_DogeDaniels.sol",
+   "compiled": true,
+   "n_findings": 4,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [
+    "ORACLE",
+    "PROTOCOL_INVARIANT"
+   ],
+   "seconds": 9.0,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\11\\116f4D31e8dbFE9eb8c8656BC65dFF1198CdE30E_CopperProxy.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.8,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\00\\00000000062c52e29e8029dc2413172f6d619d85_ModuleProxyFactory.sol",
+   "compiled": true,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 1.4,
+   "error": null
+  },
+  {
+   "path": "realworld-test\\sanctuary\\contracts\\mainnet\\aa\\aadd47E46527090A7218AD32Ce8F44fD5aD313D4_ListRandomizer.sol",
+   "compiled": false,
+   "n_findings": 0,
+   "n_high": 0,
+   "confirmed": 0,
+   "sigscope": [],
+   "finding_types": [],
+   "seconds": 25.6,
+   "error": null
+  }
+ ]
+}
