@@ -45,6 +45,7 @@ SRC_STATE_MACHINE = "deep:state-machine"
 SRC_REPLAY = "deep:replay-nonce"
 SRC_SIG_SCOPE = "deep:signature-scope"
 SRC_PAIR_RESERVE = "deep:pair-reserve-manipulation"
+SRC_CREDIT_MISMATCH = "deep:credited-amount-mismatch"
 SRC_ORACLE = "deep:oracle-assumption"
 SRC_PROTOCOL = "deep:protocol-specific"
 
@@ -68,11 +69,13 @@ OBJ_ORACLE = "oracle_manipulated_transition"
 OBJ_PURITY = "transfer_side_effect"
 OBJ_SIG_CROSS_PARTY = "signature_replayable_across_parties"
 OBJ_PAIR_RESERVE = "pair_reserve_manipulated"
+OBJ_CREDIT_MISMATCH = "credited_more_than_received"
 
 RECIPE_TYPES = frozenset({
     OBJ_CALL_SUCCEEDS, OBJ_REINIT, OBJ_STATE_RELATION, OBJ_UNAUTH_UPGRADE,
     OBJ_CONSERVATION, OBJ_ENTITLEMENT, OBJ_SHARE_MATH, OBJ_LTV, OBJ_SUPPLY,
     OBJ_REPLAY, OBJ_ORACLE, OBJ_PURITY, OBJ_SIG_CROSS_PARTY, OBJ_PAIR_RESERVE,
+    OBJ_CREDIT_MISMATCH,
 })
 
 _SIG_PARAM_HINT = ("sig", "signature", "proof", "permit", "voucher", "ticket")
@@ -656,6 +659,102 @@ def cat_pair_reserve_manipulation(model: PM.ProtocolModel
 
 
 # --------------------------------------------------------------------------- #
+# L - credited amount vs amount actually received (fee-on-transfer / rebasing)
+# --------------------------------------------------------------------------- #
+#
+# Also mined from demand: 17 of the 855 DeFiHackLabs incidents are reflection or
+# fee-on-transfer tokens, and the mechanism is always the same - a pool credits
+# the caller with the amount they ASKED to deposit, while the token delivered
+# less, so the difference is minted out of other users' funds.
+#
+#     token.transferFrom(msg.sender, address(this), amount);
+#     balances[msg.sender] += amount;        // WRONG on a fee-on-transfer token
+#
+# The correct shape measures the delta instead:
+#
+#     uint256 before = token.balanceOf(address(this));
+#     token.transferFrom(msg.sender, address(this), amount);
+#     uint256 received = token.balanceOf(address(this)) - before;
+#     balances[msg.sender] += received;      // right
+#
+# So the oracle fires when a function pulls tokens IN and then credits an
+# accounting variable using the same parameter it passed to the transfer,
+# WITHOUT any `balanceOf(address(this))` measurement in the same body. The
+# balance-delta check is what makes this precise: its presence clears the
+# function outright, and it is trivially greppable, so the rule has a clean
+# escape hatch rather than a heuristic threshold.
+
+_PULL_CALLS = ("transferfrom", "safetransferfrom")
+_CREDIT_HINT = ("balance", "deposit", "shares", "staked", "amount", "credit",
+                "principal", "collateral", "supplied")
+_DELTA_MARKERS = ("balanceof(address(this))", "balanceof(this)")
+
+
+def cat_credited_amount_mismatch(model: PM.ProtocolModel
+                                 ) -> list[IM.CandidateInvariant]:
+    out: list[IM.CandidateInvariant] = []
+    for f in model.external_functions():
+        src = f.source or ""
+        if not src or f.mutability in ("view", "pure"):
+            continue
+        flat = re.sub(r"\s+", "", src).lower()
+        if not any(p in flat for p in _PULL_CALLS):
+            continue                              # no transferFrom at all
+        # It must PULL INTO this contract. `transferFrom(address(this), user, x)`
+        # is a PUSH out, and its `balances[user] -= x` is correct bookkeeping -
+        # reporting it was the first false positive this oracle produced.
+        if not re.search(r"(?:safe)?transferfrom\([^;)]*,address\(this\),", flat):
+            continue
+        if any(d in flat for d in _DELTA_MARKERS):
+            continue                              # measures what arrived: correct
+        # the amount parameter handed to the transfer
+        amounts = [p.name for p in f.params
+                   if (p.name or "") and "int" in (p.type or "").lower()]
+        if not amounts:
+            continue
+        credited = [w for w in f.writes
+                    if any(h in w.lower() for h in _CREDIT_HINT)]
+        if not credited:
+            continue
+        # the same identifier must appear BOTH inside the transferFrom(...) call
+        # and on the right of a credit to state - that is the actual defect.
+        param = ""
+        for a in amounts:
+            in_call = re.search(
+                rf"(?:safe)?transferFrom\s*\([^;]*\b{re.escape(a)}\b[^;]*\)",
+                src, re.I)
+            # `+=` or a bare `=`, but never `-=` / `*=` / `/=`: a DEBIT of the
+            # same amount is correct bookkeeping, only a CREDIT is the defect.
+            credits = any(
+                re.search(rf"\b{re.escape(c)}\b[^;=]*(?<![-*/%])(?:\+=|=)(?!=)"
+                          rf"[^;]*\b{re.escape(a)}\b", src)
+                for c in credited)
+            if in_call and credits:
+                param = a
+                break
+        if not param:
+            continue
+        out.append(_mk(
+            IM.ACCOUNTING,
+            f"{f.contract}.{f.name}() must credit the amount the token actually "
+            f"delivered, not the '{param}' the caller asked to transfer - the two "
+            f"differ for any fee-on-transfer or rebasing token",
+            SRC_CREDIT_MISMATCH, contract=f.contract, functions=(f.name,),
+            variables=tuple(sorted(credited)), strength=IM.MEDIUM,
+            recipe={"type": OBJ_CREDIT_MISMATCH, "contract": f.contract,
+                    "function": f.name, "amount_param": param,
+                    "credited_vars": sorted(credited),
+                    "measure": "credited_delta <= balance_delta_of(address(this))"},
+            rationale=(
+                f"{f.name}() pulls tokens in with transferFrom(..., {param}, ...) "
+                f"and then credits {sorted(credited)} using '{param}' itself, with "
+                f"no balanceOf(address(this)) measurement anywhere in the body. If "
+                f"the token takes a fee on transfer, the contract credits more than "
+                f"it received and the shortfall comes out of other users' funds")))
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # H - replay / nonce
 # --------------------------------------------------------------------------- #
 
@@ -804,7 +903,8 @@ CATEGORIES = (
     cat_asset_conservation, cat_user_entitlement, cat_share_accounting,
     cat_debt_collateral, cat_supply_consistency, cat_authorization,
     cat_state_machine, cat_replay, cat_signature_scope,
-    cat_pair_reserve_manipulation, cat_oracle_assumption,
+    cat_pair_reserve_manipulation, cat_credited_amount_mismatch,
+    cat_oracle_assumption,
 )
 
 

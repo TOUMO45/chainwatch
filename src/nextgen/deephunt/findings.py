@@ -73,6 +73,7 @@ _SOURCE_TO_TYPE = {
     # editing the AMM pair's balance is an accounting defect whose blast
     # radius is the pool's price - it is not an access-control question.
     INV.SRC_PAIR_RESERVE: ACCOUNTING,
+    INV.SRC_CREDIT_MISMATCH: ACCOUNTING,
     INV.SRC_ORACLE: ORACLE,
     INV.SRC_PROTOCOL: PROTOCOL_INVARIANT,
 }
