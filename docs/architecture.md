@@ -54,7 +54,7 @@ flowchart TB
     subgraph GCP["Google Cloud"]
         CR["<b>Cloud Run</b><br/>scanner + web UI, scale-to-zero"]
         FS["<b>Firestore</b><br/>scans · pairs · findings · funnel_traces"]
-        SM["<b>Secret Manager</b><br/>GEMINI_API_KEY"]
+        SM["<b>Secret Manager</b><br/>GEMINI_API_KEY · RPC_URL"]
     end
 
     REPO --> E1 & E2 & E3
@@ -75,6 +75,7 @@ flowchart TB
     RPT --> FS
     FUN --> FS
     SM --> AG
+    SM -.->|"RPC_URL only"| E1
     CLI --> CR
     WEB --> CR
 
@@ -178,7 +179,7 @@ hard error.
 | **Cloud Run** | hosts scanner + web UI; 2 vCPU / 4 GiB, 3600s timeout, min/max instances 0/2 | `Dockerfile`, `webapp/server.py` |
 | **Cloud Run Jobs + Cloud Scheduler** | the unattended sweep: a batch that ends, on a schedule, with no human present | `src/sweep.py`, `deploy/sweep-job.md` |
 | **Firestore** | `scans`, `pairs`, `findings`, `funnel_traces`, `agent_runs`, `agent_turns`, `sweeps` — so a commit pair is never re-analysed, "where do candidates die" is answerable across every scan ever run, and what each agent saw and said is a queryable record rather than a claim | `src/corpus.py` |
-| **Secret Manager** | `GEMINI_API_KEY`, injected at run time, never in an image layer | deploy flags in `README.md` |
+| **Secret Manager** | `GEMINI_API_KEY` and `RPC_URL`, injected at run time, never in an image layer | deploy flags in `README.md` |
 | **Gemini 3.5 (`gemini-3.5-flash-lite`) via Google ADK** | the reporting agent's tool-using loop, rate-paced through ADK's `before_model_callback` | `agent/runner.py` |
 
 Firestore is **optional at runtime**: with no cloud project configured,

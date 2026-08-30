@@ -1284,6 +1284,45 @@ sites (`start_scan`, `_run_job`) actually calling `put_job`.
 
 ---
 
+### DEPLOY-L1 — the live instance had no RPC_URL bound, and no error said so [FN risk on the deployment, not the code]
+
+**Found live, 2026-08-30, in the same session as MULTI-INSTANCE-1** — while
+confirming a scan against 88mph on the deployed `.run.app` service, the SSE
+log carried `RuntimeError: RPC_URL not set (.env); immutable-clone liveness
+fallback disarmed for this scan`. `gcloud run services describe` confirmed it:
+the revision had `GEMINI_API_KEY` bound via Secret Manager and nothing else.
+**Every liveness check on the live instance had been silently degrading to
+`UNKNOWN` for the same reason a genuinely unmatched contract would** — the
+two are indistinguishable from a scan report alone.
+
+This is not a code defect - `src/liveness.py`'s `_w3` and the try/except
+around `_attach_liveness`'s proxy-kind resolution both handle a missing
+`RPC_URL` exactly as designed: a warning, not a crash, and the rest of the
+scan proceeds. The gap was purely in what the deployment bound. A
+`chainwatch-rpc-url` secret already existed in Secret Manager (created
+2026-08-28, the same day as an earlier deploy) but no `gcloud run deploy` or
+`gcloud run services update` in this project's history had ever referenced it
+in `--set-secrets`.
+
+**Fixed** by `gcloud run services update --set-secrets=GEMINI_API_KEY=...,
+RPC_URL=chainwatch-rpc-url:latest` and reverified live: a repeat scan's SSE
+log carried a clean `liveness` → `closed: done` sequence with no warning,
+where the identical prior run had the RPC error. The finding's own verdict was
+unaffected either way (LIVE-L1's root cause - the file having moved at HEAD -
+short-circuits before any RPC call is ever made for this specific case), which
+is exactly why the gap went unnoticed: the one case exercised most often
+happened to need nothing broken to reach the same-looking answer.
+
+**The part that would have regressed this fix**, found before it could:
+`--set-secrets` REPLACES the whole binding list rather than merging with a
+previous deploy's, confirmed by the fact that TWO full `gcloud run deploy`
+calls earlier the same day (each specifying only `GEMINI_API_KEY`) had already
+silently dropped whatever `RPC_URL` binding, if any, existed before them. The
+documented deploy command in `README.md` now lists both secrets, so the next
+routine redeploy does not reintroduce this.
+
+---
+
 ## Trajectory mode — walking a real repository's commit history
 
 ### WALK-L1 — path-keyed caches silently replay the previous commit's analysis

@@ -214,7 +214,7 @@ could act on remains something deterministic code established.
 | **Cloud Run** | hosts the scanner and web UI; scale-to-zero, 2 vCPU / 4 GiB, 3600s timeout |
 | **Cloud Run Jobs + Cloud Scheduler** | the unattended sweep (capability 21) — a batch that ends, on a schedule, with nobody watching. Recipe in [deploy/sweep-job.md](deploy/sweep-job.md) |
 | **Firestore** | findings corpus + job state, keyed by `(repo, prev_sha, cur_sha)` — so a pair is never re-analysed, and cross-repository queries become possible. Collections: `scans`, `pairs`, `findings`, `funnel_traces`, `agent_runs`, `agent_turns`, `sweeps` |
-| **Secret Manager** | `GEMINI_API_KEY`, never in the image or the repo |
+| **Secret Manager** | `GEMINI_API_KEY` and `RPC_URL`, never in the image or the repo — see the deploy command's note on `--set-secrets` below |
 
 Firestore is optional at runtime: with no cloud project configured,
 [`src/corpus.py`](src/corpus.py) degrades to *"not recorded"* and the analysis
@@ -305,8 +305,21 @@ plaintext value or an image layer. Deploy is reproducible from a clone:
 gcloud run deploy chainwatch --source . --region us-central1 \
     --memory 4Gi --cpu 2 --timeout 3600 --concurrency 4 \
     --min-instances 0 --max-instances 2 --allow-unauthenticated \
-    --set-secrets=GEMINI_API_KEY=chainwatch-gemini-key:latest
+    --set-secrets=GEMINI_API_KEY=chainwatch-gemini-key:latest,RPC_URL=chainwatch-rpc-url:latest
 ```
+
+**`--set-secrets` REPLACES the whole secret binding list, it does not merge
+with what a previous deploy set.** Found live, the hard way, 2026-08-30: a
+redeploy that ran this command with only `GEMINI_API_KEY` listed silently
+dropped an already-configured `RPC_URL` secret, and on-chain liveness went
+quiet on the deployed instance with no error a user-facing scan would surface
+— every liveness check degraded to `UNKNOWN` for a reason indistinguishable
+from a genuine "not deployed here" answer, unless the scan's log happened to
+be read closely enough to see `RuntimeError: RPC_URL not set (.env);
+immutable-clone liveness fallback disarmed`. Both secrets belong in every
+`--set-secrets` on this service from here on; use `--update-secrets` instead
+of `--set-secrets` on `gcloud run services update` if adding a secret without
+re-listing the others is ever preferable.
 
 A live smoke test scanned `reserve-protocol/protocol` at pair `f43202a3..e27227b2`
 to one CANDIDATE finding (Rule 5, `ActFacet.revenueOverview`) and generated a
