@@ -1236,6 +1236,54 @@ probe blind has only moved the problem.
 
 ---
 
+### MULTI-INSTANCE-1 - a scan job did not survive its own Cloud Run deployment [FN risk on the demo, not on any verdict]
+
+**Found 2026-08-30, live, while confirming the 88mph case works end to end
+through the deployed `.run.app` instance rather than only locally.** A scan
+started against the just-redeployed service, polled roughly eight seconds
+later, returned `{"detail": "no such scan"}`. Not a timeout, not a slow
+compile — the job had simply vanished.
+
+**Cause, exactly as `src/corpus.py`'s own module docstring already predicted:**
+`webapp/server.py`'s `JOBS` dict is process-local. Cloud Run gives no
+session-affinity guarantee by default (`--min-instances 0 --max-instances 2`,
+no `--session-affinity` flag), so the POST that starts a scan, a GET that polls
+it, and the instance that actually runs it in a background thread can be three
+different processes sharing nothing. `corpus.put_job`/`corpus.get_job` were
+written for exactly this — the docstring says so in as many words — but no
+caller in `webapp/server.py` ever invoked either of them. The fix existed as
+inert code for as long as the bug did.
+
+**Fixed**, not merely documented: `start_scan` now persists a `queued`
+placeholder, `_run_job`'s `finally` block persists the terminal state (done /
+error / cancelled, with the full report) after the job is already resolved in
+memory, and `get_scan` falls back to `CORPUS.get_job` when the polling
+instance's own `JOBS` dict does not have it. All three writes are
+best-effort — a Firestore outage degrades this back to exactly today's
+behaviour (poll the instance that ran the scan), never to a worse one, the
+same discipline every other corpus write in this module already follows.
+
+**What is NOT fixed, on purpose, and named rather than hidden:** the live
+event stream (`GET /api/scan/{id}/events`, SSE) still reads `job.events` from
+the in-memory `Job` object directly. A browser connecting to a DIFFERENT
+instance than the one running the scan gets no live log, only the eventual
+`get_scan` result once that instance's own persistence write lands. Fixing
+that needs either Firestore-backed incremental event writes (expensive per
+event, given SSE's per-token cadence) or Cloud Run session affinity
+(`--session-affinity`, which pins by client, not by job, and has its own
+caveats for a stateless CLI/curl caller). Real, separate work.
+
+**Tests.** `tests/test_job_multi_instance.py` (7) — the multi-instance
+condition is simulated by deleting a job from the local `JOBS` dict after a
+fake corpus would have persisted it, which is exactly what happens for real
+between a POST and a later GET on Cloud Run. Covers: a job missing locally
+served from the corpus; a job present locally never touching the corpus (and
+never preferring stale persisted state over live memory); a job nowhere
+staying a 404; persistence failure degrading rather than 500ing; both write
+sites (`start_scan`, `_run_job`) actually calling `put_job`.
+
+---
+
 ## Trajectory mode — walking a real repository's commit history
 
 ### WALK-L1 — path-keyed caches silently replay the previous commit's analysis

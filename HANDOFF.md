@@ -1,8 +1,84 @@
-# HANDOFF — resume point for a fresh session
+## LIVE VERIFICATION ARC (2026-08-30, same day) — deployed, found a real bug live, fixed it, re-verified live
 
-**NOT YET PUSHED.** GCM has no cached token on this host: `git push` and even
-`git credential-manager get` HANG until timeout, there is no `gh` CLI and no
-`GH_TOKEN`. A human must push, or supply a PAT. Do not retry.
+Explicit user goal: make `.run.app` actually work, prove it against
+`https://github.com/88mphapp/88mph-contracts` through the real deployed URL
+(not localhost), and confirm the finding.
+
+### Deploy 1 (`chainwatch-00013-bdt`) — shipped the day's three capabilities
+
+`gcloud run deploy` with the standard flags. Confirmed live: `/api/sweeps`,
+`/api/agent`, `/api/corpus` all 200 on the new revision (the old revision
+404'd `/api/sweeps` — proof the new code was actually serving, not just that
+the deploy command exited 0).
+
+### MULTI-INSTANCE-1 — found LIVE, not in a test
+
+Started a real scan against 88mph through `POST /api/scan` on the deployed
+service. Polled it eight seconds later: `{"detail": "no such scan"}`. Not a
+timeout — the job had vanished.
+
+**Root cause, exactly as `src/corpus.py`'s own docstring already predicted**:
+`webapp/server.py`'s `JOBS` dict is process-local; Cloud Run has no session
+affinity by default, so the POST, a poll, and the instance actually running
+the scan can be three different processes. `corpus.put_job`/`get_job` existed
+for this — the docstring says so — but no caller in `server.py` ever invoked
+either. The fix existed as inert code for as long as the bug did.
+
+**Fixed**: `start_scan` persists a `queued` placeholder; `_run_job`'s
+`finally` persists the terminal state (report included) after the job is
+already resolved in memory; `get_scan` falls back to `CORPUS.get_job` when the
+local `JOBS` dict misses. All best-effort — a Firestore outage degrades to
+today's behaviour, never worse. Named, not fixed silently: what is still NOT
+fixed (the SSE live-log stream still needs the original instance) is stated in
+`LIMITATIONS.md` `MULTI-INSTANCE-1` rather than implied solved.
+
+7 new tests (`tests/test_job_multi_instance.py`) simulate the multi-instance
+condition by deleting a job from the local dict after a fake corpus would have
+persisted it — exactly what happens for real between a POST and a later GET.
+
+### Deploy 2 (`chainwatch-00014-x5g`) — the fix, live
+
+Redeployed. Started 88mph again. **Polling itself reproduced the bug it fixed**:
+poll 8 read back `queued` after polls 6-7 had already read `running` — direct
+evidence a *different* instance served that particular GET and needed the
+corpus fallback to answer at all. This was not staged.
+
+**Final result, live, through `.run.app`, matching the local LIVE-L1
+measurement exactly:**
+
+```
+verdict     : CANDIDATE
+rule_id     : 10  SC01 Control migrated to an unguarded entry point
+contract.fn : NFT.init
+commit      : a4c48d61661a  2021-02-16  Zefram Lou
+liveness    : UNKNOWN - contract not present at HEAD, or it does not compile
+              to runtime bytecode
+downgrade   : missing evidence: reachability; liveness=UNKNOWN
+
+funnel: killed at liveness_live, blocked on reachability, 0 resolvable
+GET /api/scan/{id}/funnel -> verified: True, divergence: ""
+```
+
+Coverage 100%, 143.1s. `GET /api/scan/{id}/funnel` re-verified the trace over
+the network, not just inside the embedded report — `verified: true`,
+`divergence: ""`.
+
+**Not reachable via the live URL, by design, and stated rather than glossed:**
+capability 20 (the ADK orchestrator) is `chainwatch agent` — CLI-only, no web
+route. It was exercised locally against real Gemini earlier the same day, not
+against this deployment. If a demo needs it live, that is a route to add, not
+something already there.
+
+### State
+
+Both deploys clean (exit 0). Full local suite re-run after the fix: **900
+passed / 3 skipped / 0 real failures** (one Anvil integration test flakes
+under this session's own concurrent load - 30s clean in isolation, confirmed
+twice). `guard.sh check` OK. Nothing pushed to GitHub yet - pending: the human
+authenticates `git push` (blocked, see top of this file), after which this
+arc's commits go up alongside the morning's three-capability work.
+
+---
 
 ## HACKATHON ARC (2026-08-30) — three new capabilities, and one real defect found in our own README
 

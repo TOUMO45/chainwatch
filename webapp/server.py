@@ -230,6 +230,26 @@ def _run_job(job: Job, req: ScanRequest) -> None:
         finally:
             job.finished = time.time()
             job.push({"kind": "closed", "status": job.status})
+            # MULTI-INSTANCE-1. `JOBS` is process-local, and Cloud Run gives no
+            # guarantee that the request which STARTS a scan, the requests that
+            # POLL it, and the instance that actually RUNS it are the same
+            # process - min-instances:0 can recycle the instance entirely, and
+            # even with an instance still warm, Cloud Run's load balancer has no
+            # session affinity by default, so a poll can land on a SECOND
+            # instance that never saw this job. Measured live: a scan started
+            # against the deployed service, polled seconds later, returned
+            # "no such scan". `CORPUS.put_job`/`get_job` existed for exactly
+            # this (see corpus.py's own module docstring) but were never
+            # wired to a write site - this is that site. Best-effort and
+            # AFTER the job is already fully resolved in memory, so a Firestore
+            # outage degrades this to "the browser must poll the instance that
+            # ran the scan", which is exactly today's behaviour, never worse.
+            try:
+                from src import corpus as CORPUS
+
+                CORPUS.put_job(job.id, {**job.brief(), "report": job.report})
+            except Exception:  # noqa: BLE001
+                pass
 
 
 # --------------------------------------------------------------------------- routes
@@ -241,6 +261,12 @@ def start_scan(req: ScanRequest):
         raise HTTPException(409, "a scan is already running; cancel it first")
     job = Job(id=uuid.uuid4().hex[:12], repo=req.repo)
     JOBS[job.id] = job
+    try:
+        from src import corpus as CORPUS
+
+        CORPUS.put_job(job.id, {**job.brief(), "report": None})
+    except Exception:  # noqa: BLE001
+        pass
     threading.Thread(target=_run_job, args=(job, req), daemon=True).start()
     return {"id": job.id}
 
@@ -254,9 +280,19 @@ def list_scans():
 @app.get("/api/scan/{job_id}")
 def get_scan(job_id: str):
     job = JOBS.get(job_id)
-    if not job:
-        raise HTTPException(404, "no such scan")
-    return {**job.brief(), "report": job.report}
+    if job:
+        return {**job.brief(), "report": job.report}
+    # MULTI-INSTANCE-1 (see _run_job's finally block). This instance never ran
+    # the job - read back whatever the instance that DID run it persisted.
+    # `None` (no client / not found / a transient read error - put_job and
+    # get_job both fold every failure into a plain return value, never an
+    # exception) means exactly what it always has: not found.
+    from src import corpus as CORPUS
+
+    persisted = CORPUS.get_job(job_id)
+    if persisted:
+        return persisted
+    raise HTTPException(404, "no such scan")
 
 
 @app.get("/api/scan/{job_id}/funnel")
