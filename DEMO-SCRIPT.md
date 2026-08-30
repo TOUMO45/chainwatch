@@ -1,8 +1,12 @@
 # Chainwatch — demo script (~4 min, live, unedited)
 
-**Track: The Taskmaster.** Judging weights this is built around: 40%
-*innovation & operational utility — autonomous, high-value action, not a chat
-loop*; 30% *architectural discipline*; 30% *demo & production readiness*.
+**Track: The Taskmaster.** Judging weights confirmed from the official rules
+page (`allthingsagentichackathon.devpost.com`, fetched 2026-08-30): **40%
+Innovation & Operational Utility** — "how much real-world friction the agent
+autonomously removes... rewarding independent action over simple chat"; **30%
+Architectural Discipline & Tech Stack**; **30% Demo & Production Readiness.**
+The Taskmaster brief, near verbatim: *"Don't just make an agent that writes
+text. Make one that takes action."*
 
 **The spine, said once at the top and paid off at the end:** every other tool
 answers *"is this contract vulnerable now."* Chainwatch answers *"when did a
@@ -11,8 +15,20 @@ prove that — exactly which check is missing."* The model proposes; mechanical
 gates decide; **it cannot hallucinate a finding.**
 
 **Nothing in this script is staged.** Every command below has been run and
-every number measured on 2026-08-30. Where a result is a limitation, the
-script says so on camera — that is the product, not a blemish on it.
+every number measured on 2026-08-30, live, against the real deployed
+`.run.app` instance and real mainnet RPC — not a mock, not a fixture. Where a
+result is a limitation, the script says so on camera. That refusal to
+overclaim is the product, not a blemish on it.
+
+**Why this problem, not a smaller one.** DeFi protocols lost **$680M to
+exploits in 2025** (Immunefi data via DeepStrike), and **89% of that was
+protocol-logic exploits** — not stolen keys, not phishing, bugs in the code
+itself. Access-control flaws alone accounted for **75–81% of all crypto hack
+losses** in 2024 (Hacken) and rank **#1 in the OWASP Smart Contract Top 10**
+for 2025/2026. The exact bug class this demo proves live — an unguarded
+`init()` replacing a guarded constructor — is the same root cause as the
+**Parity Wallet hack ($310M, 2017)**. This is not a niche threat model; it is
+the largest single category of money actually lost.
 
 The rules require the video to show: the problem, the value proposition, the
 app in action, **and proof the backend runs on Google Cloud.** Live terminal,
@@ -24,27 +40,45 @@ no jump cuts.
 
 **Screen:** title card, then the terminal.
 
-**Say:** "Smart contracts get upgraded, refactored and forked. Protections get
-removed in the middle of ordinary-looking refactors, and nobody is watching
-history. In 2021, 88mph replaced a constructor with an `init()` function and
-dropped the access control. A whitehat caught it — six weeks later. That
-implementation is immutable, so the vulnerable code is still deployed today,
-five years on."
+**Say:** "$680 million lost to DeFi exploits last year. 89% of it wasn't
+stolen keys — it was bugs in the code, most often access control: the #1
+category in the OWASP Smart Contract Top 10. And here's the part almost
+nobody is watching for: those bugs don't only exist at launch. They get
+introduced *later*, in an ordinary-looking refactor, by a team that had no
+idea they'd just removed a guard. In 2021, 88mph replaced a constructor with
+an `init()` function and dropped the access control. A whitehat caught it —
+six weeks later. That implementation is immutable, so the vulnerable code is
+still deployed today, five years on."
 
 **Do not say** "we found this bug." A whitehat found it in 2021. Chainwatch
-demonstrates *locating the commit from history alone*.
+demonstrates *locating the commit from history alone, and proving the deployed
+code still matches it* — a question almost no commercial scanner asks, because
+almost every one of them audits a snapshot, not a timeline.
 
 ---
 
-## 0:30–1:00 — the value proposition
+## 0:30–1:00 — the value proposition, and why it's not "another scanner"
 
-**Say:** "Chainwatch is an autonomous agent that walks a repository's git
-history, rebuilds each commit's build environment, and proves a chain:
-regression → reachability → liveness on-chain. It clones, installs, compiles,
-runs thirteen evidence gates, tries to disprove its own findings, and attempts
-a blinded reproduction — with no hand-holding. And the part that matters: a
-Gemini model proposes and explains, but a deterministic gate function decides.
-The model has no path to a verdict."
+**Say:** "Every mainstream tool — static analyzers, AI-powered scanners,
+snapshot auditors — answers one question: is *this* code, right now,
+vulnerable? Chainwatch answers a different one: *which commit made it
+vulnerable, and is that specific broken version what's actually running
+on-chain today.* That's a regression question, not a snapshot question, and it
+needs the whole git history, not just the tip.
+
+"It's built as four things working together, not one model doing everything.
+One: three deterministic engines — a regression walker, a counterfactual
+protocol twin, and a deep-hunt invariant engine — that clone, reconstruct the
+exact historical build environment, and compile. Two: thirteen evidence gates
+a candidate has to survive, including a Skeptic that actively tries to
+disprove its own findings and a blinded reproducer that never sees the
+write-up. Three: a real ADK multi-agent layer where Gemini proposes and a
+separate, deterministic Gatekeeper decides — the model has no path to a
+verdict, and that's checked on every run, not just in a test. Four: it's
+honest about its own limits — a funnel that tells you exactly which check is
+missing instead of a bare zero, and a self-audit that's already found and
+fixed three real bugs in Chainwatch's own production deployment. You're about
+to see all four."
 
 ---
 
@@ -115,11 +149,12 @@ run. It is not a likelihood, and supplying the input doesn't promote anything �
 the same gate function decides again."
 
 **Screen:** switch to the web app and show the same Resolution Queue rendered,
-plus the Sweeps panel.
+plus the Sweeps panel — the unattended path, a Cloud Run Job on a schedule,
+where a failing target is recorded and never stops the run.
 
 ---
 
-## 2:15–3:00 — the 88mph case, and watching the verdict move
+## 2:15–3:00 — the 88mph case: watch the verdict move, and hear it wasn't always this clean
 
 ```bash
 python chainwatch.py --repo realworld-test/88mph-src \
@@ -163,15 +198,17 @@ pools to treasury within 24 hours in 2021. There is nothing to steal. The
 vulnerability is real; the value at risk is zero, and I'm not going to inflate
 that."
 
-**Then the funnel, briefly — the other half of the story:** `distance_to_confirmed: 0`.
+**Then the funnel, briefly — the other half of the story:**
+`distance_to_confirmed: 0`.
 
 **Say:** "This CONFIRMED result wasn't always reachable, and that's worth ten
 seconds. Until earlier today, this exact case stopped at CANDIDATE — the
 pipeline had the byte-exact evidence but a gate in the liveness check was too
-narrow to reach it. That's written up as `LIVE-L1` in LIMITATIONS.md: found,
-measured, fixed, eleven new tests, and re-verified against the real repo and
-real mainnet, not a mock. A tool that shows its own bugs is more trustworthy
-than one that's never had any."
+narrow to reach it. Found, measured, fixed, eleven new tests, and re-verified
+against the real repo and real mainnet — not a mock, and not just once: the
+same fix was re-proven live on this deployed instance, right here, minutes
+before this recording. A tool that shows its own bugs, in its own change log,
+is more trustworthy than one that's never had any."
 
 ---
 
@@ -186,25 +223,33 @@ than one that's never had any."
    Cloud Run.
 3. **Firestore console** — the collections: `scans`, `pairs`, `findings`,
    `funnel_traces`, `agent_runs`, `agent_turns`, `sweeps`.
-4. **Secret Manager** — `chainwatch-gemini-key`, mounted at deploy time; say
-   "the API key is never in an image layer, and `docker history` is clean."
+4. **Secret Manager** — `chainwatch-gemini-key` and `chainwatch-rpc-url`,
+   mounted at deploy time; say "both credentials are Secret Manager
+   references, never plaintext, never in an image layer."
 
 **Say:** "Gemini 3.5 through Google's ADK; Cloud Run hosting the scanner and
 the UI; Firestore holding the corpus, the funnel traces and every agent turn;
 Cloud Scheduler driving the unattended sweep. Every agent turn is recorded —
-what it saw, what it said, and what the gate did about it."
+what it saw, what it said, and what the gate did about it. And this isn't a
+demo environment spun up for judging — this exact service caught two of its
+own production bugs earlier today, live, while I was testing it: a job that
+didn't survive Cloud Run's own multi-instance routing, and a missing RPC
+credential binding. Both fixed, both redeployed, both re-verified — you're
+looking at the fixed version right now."
 
 ---
 
 ## 3:30–4:00 — close
 
-**Say:** "One sentence: the engines propose, deterministic gates decide, and
-the funnel tells you exactly which check is missing for everything that didn't
-make it. It's measured — 50.8% mechanism-matched detection across 63 real
-DeFiHackLabs exploits, at zero high-confidence false positives per thousand
-mainnet contracts — and where it falls short, that's written down too. We
-rejected a rule that would have raised recall because it bought it with two
-false positives."
+**Say:** "One sentence: three engines propose, thirteen deterministic gates
+decide, and a funnel tells you exactly which check is missing for everything
+that didn't make it. It's measured, not asserted — 50.8% mechanism-matched
+detection across 63 real DeFiHackLabs exploits, at zero high-confidence false
+positives per thousand mainnet contracts — and where it falls short, that's
+written down too. We rejected a candidate rule that would have raised recall
+because it bought that recall with false positives. In a space that lost $680
+million last year mostly to exactly this class of bug, a tool that refuses to
+guess is worth more than one that guesses confidently."
 
 **End card:** repo URL + <https://chainwatch-898260334135.us-central1.run.app>
 
@@ -227,6 +272,33 @@ false positives."
   seconds" on camera. Either run it once immediately before recording so the
   HEAD environment is hot, or start the command, say the 0:00–0:30 problem
   framing over it, and come back to the result.
+- **The opening stats are sourced, not invented** — see "External validation"
+  below. Do not round further or restate them from memory; read them off this
+  file.
+
+## External validation (checked 2026-08-30, for Q&A and the written submission)
+
+Numbers used in this script, with sources:
+
+| Claim | Source |
+|---|---|
+| $680M lost to DeFi exploits in 2025, down 74% from 2022's $2.62B peak | [DeepStrike, "DeFi Hacks & Exploits Statistics 2026"](https://deepstrike.io/blog/defi-hacks-exploits-statistics) (Immunefi data) |
+| 89% of 2025 DeFi protocol losses were protocol-logic exploits | same |
+| Access-control flaws caused 75–81% of all crypto hack losses (2024) | Hacken 2024 report, cited via [DeepStrike](https://deepstrike.io/blog/defi-hacks-exploits-statistics) |
+| Access Control ranks #1 in the OWASP Smart Contract Top 10 | [OWASP Smart Contract Top 10, SC01](https://scs.owasp.org/sctop10/SC01-AccessControlVulnerabilities/) |
+| Parity Wallet hack ($310M, 2017) — unguarded `initWallet()` | [OWASP SC01 writeup](https://github.com/OWASP/www-project-smart-contract-top-10/blob/main/2025/en/src/SC01-access-control.md); widely documented, same root-cause class as the 88mph case demonstrated live |
+| The industry's own stated need: "live protocols change, integrate with new dependencies," recommending continuous, not one-time, assurance | [DeepStrike](https://deepstrike.io/blog/defi-hacks-exploits-statistics) |
+| No mainstream commercial scanner audits git history as its primary method — the closest work is academic (e.g. "Finding Ethereum Smart Contracts Security Issues by Comparing History Versions," ContractTrace) | Search of the commercial landscape (SolidityScan, ContractScan, Mythril-family tools — all snapshot-based) and academic literature, 2026-08-30 |
+| All Things Agentic Hackathon judging weights and Taskmaster brief | [allthingsagentichackathon.devpost.com](https://allthingsagentichackathon.devpost.com/), fetched 2026-08-30 |
+
+**The honest caveat on the uniqueness claim**: git-history-based vulnerability
+detection is not unprecedented in academia (ContractTrace and similar work
+exist), and this search was not exhaustive. What is defensible is narrower and
+still strong: no *mainstream commercial* scanner surfaced in this search
+frames its product this way, and none combine it with on-chain liveness proof,
+an adversarial self-disproof stage, and a blinded reproducer the way Chainwatch
+does. Say "no commercial tool we found does this the way Chainwatch does" on
+camera, not "nobody has ever done this."
 
 ## Reproduction commands (for the recording session)
 
