@@ -18,7 +18,8 @@ Upgrading to a paid tier is a CONFIG CHANGE, not an architecture change: raise
 `RateLimiter(max_requests=...)` (or pass `--rpm`) and nothing else moves.
 
 THE AGENT NEVER DECIDES ANYTHING. It is handed a finished finding record and
-may only call the six reader tools. Verdicts, evidence fields and the report's
+may only call the six reader tools on the report path (eleven in all,
+counting the impact and ranking flows - see tools.ALL_TOOLS). Verdicts, evidence fields and the report's
 framing are all produced by code before the model sees them.
 """
 

@@ -43,6 +43,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 from sse_starlette.sse import EventSourceResponse  # noqa: E402
 
+from src import funnel as FUNNEL  # noqa: E402
 from src.history import clone_public, git_safety_args  # noqa: E402
 from src.scan import RULE_ORDER, RULE_TITLES, ScanOptions, scan  # noqa: E402
 
@@ -258,6 +259,33 @@ def get_scan(job_id: str):
     return {**job.brief(), "report": job.report}
 
 
+@app.get("/api/scan/{job_id}/funnel")
+def get_funnel(job_id: str):
+    """Capability 19 - the funnel section of a finished scan.
+
+    The report already carries it (so the UI needs no second request to draw
+    the queue), but this endpoint RE-VERIFIES before answering: every stored
+    verdict is recomputed from its own stored gate states. A consumer reading
+    this route is told, in `verified`, whether the numbers it is about to
+    display still follow from the evidence recorded beside them. Instrumentation
+    that cannot be audited is decoration.
+    """
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "no such scan")
+    fun = dict((job.report or {}).get("funnel") or {})
+    traces = fun.get("traces") or []
+    try:
+        FUNNEL.verify_all(traces)
+        fun["verified"] = True
+        fun["divergence"] = fun.get("divergence", "")
+    except FUNNEL.TraceDivergence as exc:
+        fun["verified"] = False
+        fun["divergence"] = str(exc)
+    fun["queue"] = FUNNEL.resolution_queue(traces)
+    return fun
+
+
 @app.post("/api/scan/{job_id}/cancel")
 def cancel_scan(job_id: str):
     job = JOBS.get(job_id)
@@ -384,6 +412,23 @@ def corpus_status():
     from src import corpus as CORPUS
 
     return CORPUS.available()
+
+
+@app.get("/api/sweeps")
+def list_sweeps(limit: int = 20):
+    """Capability 21 - the history of unattended runs, newest first.
+
+    Read-only over the corpus. `available` rides along so the UI can say "not
+    recorded" plainly instead of showing an empty list that looks like "no
+    sweeps have ever run" - two different facts, and the same distinction
+    coverage draws for a scan.
+    """
+    from src import corpus as CORPUS
+
+    avail = CORPUS.available()
+    return {"available": bool(avail.get("available")),
+            "reason": avail.get("reason", ""),
+            "sweeps": CORPUS.list_sweeps(limit)}
 
 
 @app.get("/api/corpus/findings")

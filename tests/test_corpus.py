@@ -168,3 +168,75 @@ def test_a_large_scan_is_chunked_under_the_firestore_batch_cap(monkeypatch):
     assert len(commits) > 1, "everything went into one over-sized batch"
     assert all(n <= 500 for n in commits), f"a batch exceeded the cap: {commits}"
     assert sum(commits) == res["written"] == 601   # 1 scan + 300 pairs + 300 findings
+
+
+def test_funnel_traces_are_written_in_the_same_batch_as_the_scan(monkeypatch):
+    """Capability 19. The traces describe a scan, so they must not be able to
+    outlive one: they ride the SAME batch, which Firestore commits whole. A
+    trace pointing at a scan_id that was never written would be a corpus that
+    lies about its own history."""
+    seen: list[tuple] = []
+
+    class FakeBatch:
+        def set(self, ref, payload):
+            seen.append((ref, payload))
+
+        def commit(self):
+            pass
+
+    class FakeClient:
+        def __init__(self):
+            self.last = ""
+
+        def collection(self, name):
+            self.last = name
+            return self
+
+        def document(self, key):
+            return (self.last, key)
+
+        def batch(self):
+            return FakeBatch()
+
+    monkeypatch.setattr(C, "_client", FakeClient())
+    monkeypatch.setattr(C, "_probe_error", "")
+
+    report = {
+        "repo": "org/repo", "head": "h", "summary": {}, "coverage": {},
+        "findings": [{"rule_id": "1", "commit": "a" * 40, "file": "a.sol",
+                      "contract": "C", "function": "f", "verdict": "CANDIDATE"}],
+        "funnel": {"traces": [{
+            "schema": "chainwatch.funnel.v1", "finding_id": "1-C-f-aaaaaaaa",
+            "engine": "regression", "gate_model": "classic-6",
+            "verdict": "CANDIDATE", "state": "CANDIDATE",
+            "gate_states": {"liveness": "PENDING"}, "kill_gate": None,
+            "blocking_gates": ["liveness"], "distance_to_confirmed": 1,
+            "required_inputs": ["address"], "rule_class": "rule 1",
+            "finding_type": "SC01", "commit_pair": ["b" * 40, "a" * 40],
+            "toolchain_versions": {"python": "3.14"},
+        }]},
+    }
+    res = C.record_scan(report)
+    assert res["ok"] is True
+
+    collections = [ref[0] for ref, _ in seen]
+    assert C.COL_FUNNEL in collections
+    # The three pre-existing collections are untouched by this addition.
+    assert C.COL_JOBS in collections and C.COL_FINDINGS in collections
+
+    trace_docs = [p for ref, p in seen if ref[0] == C.COL_FUNNEL]
+    assert len(trace_docs) == 1
+    doc = trace_docs[0]
+    assert doc["scan_id"] == res["scan_id"]
+    assert doc["distance_to_confirmed"] == 1
+    assert doc["blocking_gates"] == ["liveness"]
+    assert doc["gate_states"] == {"liveness": "PENDING"}
+
+
+def test_a_scan_without_a_funnel_section_still_records(monkeypatch):
+    """Reports written before capability 19 have no `funnel` key. Reading one
+    must not raise - the corpus predates the instrumentation."""
+    monkeypatch.setattr(C, "_client", None)
+    monkeypatch.setattr(C, "_probe_error", "no client")
+    res = C.record_scan({"repo": "org/repo", "findings": []})
+    assert res["ok"] is False and "written" in res

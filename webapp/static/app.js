@@ -133,6 +133,154 @@ function renderExposure(rows) {
       </div>`).join("");
 }
 
+/* Capability 19 - the funnel and the resolution queue.
+ *
+ * Renders a DERIVED view and nothing else. `distance_to_confirmed` is a count
+ * of gates that have not been able to run - not a likelihood, not a score, and
+ * emphatically not a ranking of how real a finding is. The engine computed
+ * every value here and `funnel.verify` already re-derived each verdict from
+ * its own recorded gate states before the report left the server; the browser
+ * only formats what it is handed, exactly as it does for verdicts.
+ */
+function renderFunnel(fun) {
+  const el = $("funnel");
+  const traces = (fun && fun.traces) || [];
+  if (!traces.length) {
+    el.className = "funnel hidden";
+    el.innerHTML = "";
+    return;
+  }
+  const s = fun.summary || {};
+  const med = s.median_distance_to_confirmed;
+
+  const verdictChips = Object.entries(s.verdicts || {})
+    .map(([v, n]) => `<div class="cov-metric"><b>${n}</b><span>${esc(v)}</span></div>`)
+    .join("");
+
+  const gateBars = (obj, cls) => Object.entries(obj || {})
+    .map(([g, n]) => `<div class="gate-row ${cls}">
+        <span class="gate-n">${n}</span>
+        <span class="gate-name">${esc(g)}</span></div>`).join("");
+
+  /* Sorted server-side (funnel.resolution_queue); the browser must not
+   * reorder it, or two surfaces would disagree about what to work on next. */
+  const queue = (fun.resolution_queue || [])
+    .map((id) => traces.find((t) => t.finding_id === id))
+    .filter(Boolean);
+
+  const queueRows = queue.map((t, i) => `
+    <div class="q-row">
+      <div class="q-rank">${i + 1}</div>
+      <div class="q-main">
+        <div class="q-head">
+          <span class="q-dist" title="Gates that have not been able to run. NOT a likelihood.">distance ${t.distance_to_confirmed}</span>
+          <span class="q-id">${esc(t.finding_id)}</span>
+          <span class="q-rule">${esc(t.rule_class || "")}</span>
+        </div>
+        ${(t.required_inputs || []).length ? `<div class="q-supply">
+          <b>supply:</b> ${(t.required_inputs || []).map((r) => `<code>${esc(r)}</code>`).join(" ")}
+        </div>` : ""}
+        ${(t.evidence_requests || []).map((r) => `
+          <div class="q-req">
+            <span class="q-gate">${esc(r.gate)}</span>
+            <span class="q-status">${esc(r.status)}</span>
+            <span class="q-how">${esc(r.how)}</span>
+          </div>`).join("")}
+      </div>
+    </div>`).join("");
+
+  el.className = "funnel";
+  el.innerHTML = `
+    <div class="cov-head">Funnel — capability 19
+      <span class="muted">(derived from the engine's own gate states; decides nothing)</span></div>
+    ${fun.divergence ? `<div class="sizing-refusal">
+      <div class="alert-head">Trace divergence</div>
+      <div class="alert-body">${esc(fun.divergence)}</div></div>` : ""}
+    <div class="cov-grid">
+      ${verdictChips}
+      <div class="cov-metric"><b>${s.resolvable ?? 0}</b><span>resolvable by evidence</span></div>
+      <div class="cov-metric"><b>${s.killed ?? 0}</b><span>killed at a gate</span></div>
+      ${med !== null && med !== undefined
+        ? `<div class="cov-metric"><b>${med}</b><span>median distance to CONFIRMED</span></div>` : ""}
+    </div>
+    ${Object.keys(s.kill_gates || {}).length ? `<div class="gate-block">
+      <div class="gate-title">Killed at</div>${gateBars(s.kill_gates, "kill")}</div>` : ""}
+    ${Object.keys(s.blocking_gates || {}).length ? `<div class="gate-block">
+      <div class="gate-title">Blocked on — a gate that could not run</div>
+      ${gateBars(s.blocking_gates, "block")}</div>` : ""}
+    ${queueRows ? `<div class="q-block">
+      <div class="gate-title">Resolution queue — closest to a decidable answer first</div>
+      <p class="cov-note">Distance counts mechanical checks that have not run.
+        It is not a likelihood and it never promotes anything: supplying the
+        named input lets the gate run, and the same verdict function decides
+        the outcome.</p>
+      ${queueRows}</div>`
+      : `<p class="cov-note">Nothing here is resolvable by supplying evidence.</p>`}`;
+}
+
+/* Capability 21 - sweep history.
+ *
+ * Draws unattended runs, and draws FAILED targets at the same weight as
+ * successful ones. A sweep page that quietly hides the repos that would not
+ * clone is the same mistake as a scan report that hides coverage: the reader
+ * cannot tell "nothing was found" from "nothing was looked at".
+ */
+async function loadSweeps() {
+  const el = $("sweeps");
+  if (!el) return;
+  let data;
+  try {
+    data = await (await fetch("/api/sweeps?limit=10")).json();
+  } catch (e) {
+    el.className = "sweeps hidden";
+    return;
+  }
+
+  if (!data.available) {
+    el.className = "sweeps";
+    el.innerHTML = `<div class="cov-head">Sweeps — capability 21
+        <span class="muted">(unattended, scheduled runs)</span></div>
+      <p class="cov-note">Sweep history is <b>not recorded</b>: ${esc(data.reason
+        || "no corpus configured")}. Scans still run; they are just not
+        persisted, so this list cannot say whether any sweep has ever run.</p>`;
+    return;
+  }
+  if (!data.sweeps || !data.sweeps.length) {
+    el.className = "sweeps";
+    el.innerHTML = `<div class="cov-head">Sweeps — capability 21
+        <span class="muted">(unattended, scheduled runs)</span></div>
+      <p class="cov-note">No sweep has been recorded yet.</p>`;
+    return;
+  }
+
+  const when = (t) => {
+    const d = new Date((t || 0) * 1000);
+    return isFinite(d.getTime()) ? d.toISOString().replace("T", " ").slice(0, 16) : "—";
+  };
+
+  el.className = "sweeps";
+  el.innerHTML = `<div class="cov-head">Sweeps — capability 21
+      <span class="muted">(unattended, scheduled runs)</span></div>` +
+    data.sweeps.map((s) => {
+      const t = s.totals || {};
+      const rows = (s.results || []).map((r) => `
+        <div class="sw-row ${r.ok ? "sw-ok" : "sw-fail"}">
+          <span class="sw-mark">${r.ok ? "ok" : "FAIL"}</span>
+          <span class="sw-repo">${esc(r.repo)}</span>
+          <span class="sw-meta">${r.ok
+            ? `${(r.summary || {}).findings ?? 0} finding(s) · ${r.seconds}s`
+            : esc(r.error || "failed")}</span>
+        </div>`).join("");
+      return `<div class="sw-block">
+        <div class="sw-head">
+          <span class="sw-id">${esc(s.sweep_id || "")}</span>
+          <span class="sw-when">${when(s.started_at)}</span>
+          <span class="sw-tot">${t.ok ?? 0} ok · ${t.failed ?? 0} failed ·
+            ${t.findings ?? 0} finding(s) · ${t.confirmed ?? 0} CONFIRMED</span>
+        </div>${rows}</div>`;
+    }).join("");
+}
+
 // -------------------------------------------------------------- bootstrap
 
 /* Decorative only — the moving grid/orbs are pure CSS; this just seeds a
@@ -174,6 +322,8 @@ function renderExposure(rows) {
     $("corpus-pill-state").textContent = "unreachable";
   }
 })();
+
+loadSweeps();
 
 fetch("/api/rules").then((r) => r.json()).then((d) => {
   RULE_TITLES = d.titles;
@@ -446,6 +596,7 @@ function render(rep) {
 
   renderSizing(rep.sizing || {});
   renderExposure(rep.exposure || []);
+  renderFunnel(rep.funnel || {});
 
   const body = $("findings-body");
   if (!rep.findings.length) {

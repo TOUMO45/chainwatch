@@ -1,0 +1,16 @@
+# Chainwatch sweep targets — one per line:
+#
+#   repo[,root[,address[,limit]]]
+#
+# `repo`     a clone URL or an on-disk path
+# `root`     the source subdirectory (empty = detect it)
+# `address`  a deployed address; WITHOUT one, liveness is UNKNOWN and nothing
+#            in that repository can reach CONFIRMED. That is the verdict model
+#            working, not a gap in the sweep.
+# `limit`    commit pairs to walk (default 15)
+#
+# Keep this list small and honest. Each repository costs a full dependency
+# reconstruction per commit pair, which on a large protocol is minutes.
+
+https://github.com/reserve-protocol/protocol,contracts,,10
+https://github.com/88mphapp/88mph-contracts,contracts,,10

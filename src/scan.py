@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from . import funnel as FUNNEL
 from . import history as H
 from . import sizing as SZ
 from . import verdict as V
@@ -1314,4 +1315,42 @@ def _report(opts: ScanOptions, cov: Coverage, findings: list[V.Finding],
         # historical regression was found. Empty unless --check-exposure was
         # passed with --address.
         "exposure": exposure or [],
+        # Capability 19: the funnel. A DERIVED view of the findings above -
+        # every trace is recomputed from evidence those findings already
+        # carry, and `funnel.verify` re-derives each verdict from its own
+        # recorded gate states, so this section can only ever agree with
+        # `verdict.classify` or fail loudly. It adds no evidence and creates
+        # no promotion path; it answers "where did each candidate stop", which
+        # a bare count of CONFIRMED cannot.
+        "funnel": _funnel_section(opts, findings, head),
+    }
+
+
+def _funnel_section(opts: ScanOptions, findings: list[V.Finding],
+                    head: Optional[str]) -> dict:
+    """Build and self-check one funnel trace per finding.
+
+    Never raises into a scan: a scan that produced real findings must not be
+    lost because instrumentation failed. A divergence is reported IN the
+    section (and is a bug, caught by tests), not by discarding the report.
+    """
+    traces: list[dict] = []
+    for f in findings:
+        d = {**f.as_dict(), "address_used": bool(opts.address)}
+        traces.append(FUNNEL.from_classic_finding(
+            d, repo=str(opts.repo),
+            commit_pair=(f.parent or "", f.commit or "")))
+    try:
+        FUNNEL.verify_all(traces)
+        divergence = ""
+    except FUNNEL.TraceDivergence as exc:      # pragma: no cover - a bug path
+        divergence = str(exc)
+    return {
+        "schema": FUNNEL.SCHEMA,
+        "head": head,
+        "summary": FUNNEL.summarize(traces),
+        "traces": traces,
+        "resolution_queue": [t["finding_id"]
+                             for t in FUNNEL.resolution_queue(traces)],
+        "divergence": divergence,
     }

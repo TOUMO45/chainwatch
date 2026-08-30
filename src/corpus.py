@@ -32,6 +32,7 @@ per scan rather than issued per finding.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import os
 import time
@@ -45,6 +46,18 @@ DATABASE_ID = os.environ.get("FIRESTORE_DATABASE", "chainwatch2026")
 COL_JOBS = "scans"
 COL_PAIRS = "pairs"
 COL_FINDINGS = "findings"
+# Capability 19. ADDITIVE: a new collection beside the three above, never a
+# change to them. One document per funnel trace, so "where do candidates
+# actually die" is answerable across every scan ever recorded rather than only
+# within the report that happened to be open.
+COL_FUNNEL = "funnel_traces"
+# Capability 20. One document per ADK agent RUN, and one per TURN inside it -
+# so "what did the model actually see, say, and change" is a queryable record
+# rather than a claim in a README. ADDITIVE, like COL_FUNNEL.
+COL_AGENT_RUNS = "agent_runs"
+COL_AGENT_TURNS = "agent_turns"
+# Capability 21. One document per unattended sweep. ADDITIVE.
+COL_SWEEPS = "sweeps"
 
 _client: Any = None
 _probe_error: str = ""
@@ -191,6 +204,29 @@ def _record(client: Any, report: dict, repo: Optional[str]) -> dict:
             "downgrade_reasons": f.get("downgrade_reasons", []),
         }))
 
+    # Capability 19: one document per funnel trace. Written in the SAME batch
+    # as everything else - a scan is persisted whole or not at all, and the
+    # traces must not be able to describe a scan that was never recorded.
+    for t in (report.get("funnel", {}) or {}).get("traces", []) or []:
+        tid = hashlib.sha256(
+            f"{scan_id}|{t.get('finding_id')}".encode("utf-8")).hexdigest()[:24]
+        ops.append((client.collection(COL_FUNNEL).document(tid), {
+            "repo": repo_ref, "scan_id": scan_id, "recorded_at": now,
+            "schema": t.get("schema"),
+            "finding_id": t.get("finding_id"),
+            "engine": t.get("engine"), "gate_model": t.get("gate_model"),
+            "verdict": t.get("verdict"), "state": t.get("state"),
+            "gate_states": t.get("gate_states", {}),
+            "kill_gate": t.get("kill_gate"),
+            "blocking_gates": t.get("blocking_gates", []),
+            "distance_to_confirmed": t.get("distance_to_confirmed"),
+            "required_inputs": t.get("required_inputs", []),
+            "rule_class": t.get("rule_class"),
+            "finding_type": t.get("finding_type"),
+            "commit_pair": t.get("commit_pair", []),
+            "toolchain_versions": t.get("toolchain_versions", {}),
+        }))
+
     written = 0
     for chunk_start in range(0, len(ops), 400):   # under Firestore's 500 cap
         batch = client.batch()
@@ -202,6 +238,119 @@ def _record(client: Any, report: dict, repo: Optional[str]) -> dict:
 
     return {"ok": True, "written": written, "scan_id": scan_id,
             "findings": len(findings)}
+
+
+def record_agent_run(run: dict) -> dict:
+    """Persist one ADK orchestration run and every turn inside it.
+
+    Same contract as `record_scan`: DEGRADES, NEVER BLOCKS. An agent run whose
+    persistence fails is still a valid run - it just was not recorded. And like
+    everything else in this module, it stores what already happened; nothing
+    here can change a verdict, and `verdicts_unchanged` is copied from the
+    orchestrator's own drift check rather than recomputed into a second
+    opinion.
+    """
+    client = _connect()
+    if client is None:
+        return {"ok": False, "reason": _probe_error or "firestore unavailable",
+                "written": 0}
+    try:
+        return _record_agent_run(client, run)
+    except Exception as exc:  # noqa: BLE001 - persistence never fails a run
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:200],
+                "written": 0}
+
+
+def _record_agent_run(client: Any, run: dict) -> dict:
+    repo_ref = _repo_id(run.get("repo", "") or "")
+    now = time.time()
+    run_id = hashlib.sha256(
+        f"{repo_ref}|{run.get('head')}|{now}".encode("utf-8")).hexdigest()[:24]
+
+    ops: list[tuple[Any, dict]] = [(
+        client.collection(COL_AGENT_RUNS).document(run_id), {
+            "repo": repo_ref, "head": run.get("head"), "recorded_at": now,
+            "schema": run.get("schema"), "model": run.get("model"),
+            "llm": run.get("llm"), "findings": run.get("findings"),
+            "verdicts": run.get("verdicts", {}),
+            "verdicts_unchanged": run.get("verdicts_unchanged"),
+            "hunter_dropped": run.get("hunter_dropped", []),
+            "funnel_summary": (run.get("funnel") or {}).get("summary", {}),
+        })]
+
+    for i, t in enumerate(run.get("turns") or []):
+        ops.append((client.collection(COL_AGENT_TURNS).document(
+            f"{run_id}-{i:04d}"), {
+                "run_id": run_id, "repo": repo_ref, "recorded_at": now,
+                "seq": i, "agent": t.get("agent"),
+                "finding_id": t.get("finding_id"),
+                # Truncated, not dropped: a turn log that blew past Firestore's
+                # 1 MiB document cap would lose the whole run.
+                "input": json.dumps(t.get("input", {}), default=str)[:8000],
+                "output": json.dumps(t.get("output", {}), default=str)[:8000],
+                "gate_outcome": t.get("gate_outcome", ""),
+                "note": t.get("note", ""), "at": t.get("at"),
+        }))
+
+    written = 0
+    for chunk_start in range(0, len(ops), 400):
+        batch = client.batch()
+        chunk = ops[chunk_start:chunk_start + 400]
+        for ref, payload in chunk:
+            batch.set(ref, payload)
+        batch.commit()
+        written += len(chunk)
+    return {"ok": True, "written": written, "run_id": run_id,
+            "turns": len(run.get("turns") or [])}
+
+
+def record_sweep(sweep: dict) -> dict:
+    """Persist one unattended sweep. Degrades, never blocks - same as the rest.
+
+    Per-repo rows are stored WITHOUT their tracebacks: a traceback is for the
+    console log of the run that produced it, and twenty of them would push a
+    sweep document toward Firestore's 1 MiB cap for no reader's benefit. The
+    error MESSAGE is kept, because "which repos failed and why" is the part a
+    reader of an unattended run actually needs.
+    """
+    client = _connect()
+    if client is None:
+        return {"ok": False, "reason": _probe_error or "firestore unavailable",
+                "written": 0}
+    try:
+        rows = [{k: v for k, v in r.items() if k != "traceback"}
+                for r in sweep.get("results") or []]
+        doc = {
+            "schema": sweep.get("schema"),
+            "sweep_id": sweep.get("sweep_id"),
+            "started_at": sweep.get("started_at"),
+            "finished_at": sweep.get("finished_at"),
+            "seconds": sweep.get("seconds"),
+            "used_agent": sweep.get("used_agent"),
+            "totals": sweep.get("totals", {}),
+            "results": rows,
+            "recorded_at": time.time(),
+        }
+        client.collection(COL_SWEEPS).document(
+            str(sweep.get("sweep_id") or "")).set(doc)
+        return {"ok": True, "written": 1, "sweep_id": sweep.get("sweep_id")}
+    except Exception as exc:  # noqa: BLE001 - persistence never fails a sweep
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:200],
+                "written": 0}
+
+
+def list_sweeps(limit: int = 20) -> list[dict]:
+    """Recorded sweeps, newest first. Empty list when unavailable - reads
+    return empty rather than raising, exactly like `query_findings`."""
+    client = _connect()
+    if client is None:
+        return []
+    try:
+        q = client.collection(COL_SWEEPS).order_by(
+            "started_at", direction="DESCENDING").limit(int(limit))
+        return [d.to_dict() for d in q.stream()]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def seen_pair(repo: str, prev_sha: str, cur_sha: str) -> Optional[dict]:

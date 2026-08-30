@@ -22,6 +22,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -31,6 +32,8 @@ from src import verdict as V  # noqa: E402
 from src import liveness as L  # noqa: E402
 from src import exposure as E  # noqa: E402
 from src import deepen as DEEPEN  # noqa: E402
+from src import funnel as FUNNEL  # noqa: E402
+from src import corpus as CORPUS  # noqa: E402
 from src.history import clone_public  # noqa: E402
 
 
@@ -255,7 +258,270 @@ def print_report(rep: dict) -> None:
                     print(f"          {line}")
 
 
-def main() -> int:
+def print_funnel(rep: dict, fmt: str = "text") -> None:
+    """Capability 19 - where every candidate stopped, and what would move it.
+
+    A DERIVED view: every number below is recomputed from evidence already in
+    the report, and `FUNNEL.verify` re-derives each verdict from its own
+    recorded gate states before anything is printed. This section can agree
+    with the engine or fail loudly; it cannot promote anything.
+    """
+    fun = rep.get("funnel") or {}
+    traces = fun.get("traces") or []
+
+    if fmt == "json":
+        print(json.dumps(fun, indent=2))
+        return
+    if fmt == "csv":
+        cols = ("finding_id", "engine", "verdict", "kill_gate",
+                "distance_to_confirmed", "blocking_gates", "rule_class", "repo")
+        print(",".join(cols))
+        for t in FUNNEL.resolution_queue(traces, include_killed=True):
+            row = []
+            for c in cols:
+                v = t.get(c)
+                if isinstance(v, list):
+                    v = "|".join(str(x) for x in v)
+                cell = str("" if v is None else v).replace('"', '""')
+                row.append('"' + cell + '"')
+            print(",".join(row))
+        return
+
+    print()
+    print("=" * 78)
+    print("FUNNEL (capability 19) - a derived view; it decides nothing")
+    print("=" * 78)
+    if fun.get("divergence"):
+        print(f"  !! TRACE DIVERGENCE: {fun['divergence']}")
+    if not traces:
+        print("  No candidate reached the verdict function, so there is no funnel.")
+        return
+
+    s = fun.get("summary") or {}
+    print(f"  {s.get('traces', 0)} candidate(s): "
+          + ", ".join(f"{k} {v}"
+                      for k, v in sorted((s.get("verdicts") or {}).items())))
+    med = s.get("median_distance_to_confirmed")
+    print(f"  {s.get('resolvable', 0)} resolvable, {s.get('killed', 0)} killed"
+          + (f"; median distance to CONFIRMED {med:g}" if med is not None else ""))
+
+    if s.get("kill_gates"):
+        print()
+        print("  KILLED AT")
+        for gate, n in s["kill_gates"].items():
+            print(f"    {n:>3}  {gate}")
+    if s.get("blocking_gates"):
+        print()
+        print("  BLOCKED ON (a gate that has not been able to run)")
+        for gate, n in s["blocking_gates"].items():
+            print(f"    {n:>3}  {gate}")
+
+    queue = FUNNEL.resolution_queue(traces)
+    print()
+    if not queue:
+        print("  RESOLUTION QUEUE: empty - nothing here is resolvable by "
+              "supplying evidence.")
+        return
+    print("  RESOLUTION QUEUE - closest to a decidable answer first")
+    print("  distance = how many mechanical checks have not run. NOT a likelihood.")
+    for i, t in enumerate(queue, 1):
+        print()
+        print(f"    {i}. [distance {t['distance_to_confirmed']}] "
+              f"{t['finding_id']}  ({t['verdict']}, {t['rule_class']})")
+        inputs = ", ".join(t.get("required_inputs") or []) or "-"
+        print(f"       supply: {inputs}")
+        for req in t["evidence_requests"]:
+            needs = ", ".join(req["needs"]) or "-"
+            print(f"       {req['gate']} ({req['status']}) needs: {needs}")
+            for line in _wrap(req["how"], width=62):
+                print(f"           {line}")
+
+
+def verify_funnel(path: str) -> int:
+    """Recompute every stored verdict from its own stored gate states.
+
+    Any divergence is a HARD ERROR, not a warning: a report whose verdict does
+    not follow from its recorded evidence is not a report worth reading. This
+    is the replay check the funnel exists to make possible - instrumentation
+    that cannot be audited is decoration.
+    """
+    rep = json.loads(Path(path).read_text(encoding="utf-8"))
+    traces = (rep.get("funnel") or {}).get("traces") or []
+    if not traces:
+        print(f"{path}: no funnel traces to verify "
+              f"(scan predates capability 19)")
+        return 0
+    try:
+        n = FUNNEL.verify_all(traces)
+    except FUNNEL.TraceDivergence as exc:
+        print(f"DIVERGENCE: {exc}")
+        return 1
+    print(f"{path}: {n} trace(s) verified - every verdict follows from its "
+          f"own recorded gate states")
+    return 0
+
+
+def _run_agent(args) -> int:
+    """`chainwatch agent --repo <url>` - capability 20.
+
+    Runs the deterministic scan FIRST, then the ADK multi-agent layer over its
+    finished output. The verdicts printed here are the engine's verdicts: the
+    orchestrator recomputes them after every agent turn and raises rather than
+    continue if they moved. Additive - nothing on the classic path changes.
+    """
+    from agent import orchestrator as ORCH
+
+    if not args.repo:
+        sys.exit("agent mode needs --repo")
+
+    repo = args.repo
+    if repo.startswith(CLONE_SCHEMES):
+        repo = clone(repo, Path(tempfile.gettempdir()) / "chainwatch-clones")
+    repo = Path(repo).resolve()
+    if not (repo / ".git").exists():
+        sys.exit(f"{repo} is not a git working tree")
+
+    opts = ScanOptions(
+        repo=repo,
+        limit=args.limit,
+        root_dir=args.root,
+        address=args.address,
+        rpc_url=args.rpc_url,
+        check_head_survival=not args.no_head_check,
+        rules=[r.strip() for r in args.rules.split(",") if r.strip()] or None,
+        explicit_pairs=[tuple(x.split(":", 1))
+                        for x in args.pairs.split(",") if ":" in x] or None,
+        check_exposure=args.check_exposure,
+        check_exploit_proof=args.check_exploit_proof,
+    )
+
+    print("STAGE 1/2  deterministic engine (no model in this path)")
+    rep = scan(opts, on_event=None if args.quiet else _print_progress)
+    print_report(rep)
+
+    print()
+    print("=" * 78)
+    print("STAGE 2/2  ADK multi-agent layer - Hunter, Skeptic, Reproducer, "
+          "Gatekeeper")
+    print("=" * 78)
+    if not ORCH.model_available():
+        print("  No GEMINI_API_KEY / GOOGLE_API_KEY configured: every model turn")
+        print("  ABSTAINS. This is the same orchestration, and it must produce")
+        print("  the same verdicts - if it did not, the model would be deciding.")
+
+    def on_ev(ev):
+        if args.quiet:
+            return
+        if ev.get("kind") == "agent":
+            print(f"  {ev['agent']}: {ev.get('n', '')} finding(s)")
+        elif ev.get("kind") == "agent_done":
+            extra = {k: v for k, v in ev.items() if k not in ("kind", "agent")}
+            print(f"  {ev['agent']} done  {extra}")
+        elif ev.get("kind") == "gatekeeper":
+            print(f"  gatekeeper ({ev.get('phase')}): "
+                  f"{len(ev.get('verdicts') or {})} verdict(s)")
+
+    try:
+        run = ORCH.run(rep, use_llm=not args.agent_no_llm, rpm=args.rpm,
+                       limit=args.agent_limit, on_event=on_ev)
+    except ORCH.VerdictDrift as exc:
+        print(f"\nVERDICT DRIFT - the agent layer moved a verdict: {exc}")
+        return 1
+
+    print()
+    print(f"  model            : {run['model'] or '(none - abstained)'}")
+    print(f"  findings          : {run['findings']}")
+    print(f"  verdicts unchanged: {run['verdicts_unchanged']}  "
+          f"(recomputed after every agent turn)")
+    if run["hunter_dropped"]:
+        print(f"  hunter proposals DROPPED (not engine findings): "
+              f"{run['hunter_dropped']}")
+
+    print()
+    print("  AGENT TURNS")
+    for t in run["turns"]:
+        print(f"    {t['agent']:<11} {t['finding_id']:<28} {t['gate_outcome']}")
+
+    print_funnel(rep, "text")
+
+    if args.json:
+        payload = {"scan": rep, "agent_run": run}
+        Path(args.json).write_text(json.dumps(payload, indent=2, default=str),
+                                   encoding="utf-8")
+        print(f"\nscan + agent run written to {args.json}")
+
+    rec = CORPUS.record_agent_run(run)
+    if not args.quiet:
+        print(f"\n  agent run persisted: {rec}")
+    return 0
+
+
+def _run_sweep(args) -> int:
+    """`chainwatch sweep --repos <file|a,b,c>` - capability 21.
+
+    The unattended path. Exit code reflects whether the SWEEP ran, not whether
+    it found anything and not whether every target succeeded: a scheduled job
+    that reports failure because three of twenty repos would not clone is a job
+    that will be muted within a week.
+    """
+    from src import sweep as SWEEP
+
+    spec = args.sweep_repos or ""
+    if not spec:
+        sys.exit("sweep mode needs --repos <file with one repo per line, or "
+                 "a comma-separated list>")
+
+    path = Path(spec)
+    if path.is_file():
+        targets = SWEEP.load_targets(path)
+    else:
+        targets = [t for t in (SWEEP.SweepTarget.parse(x)
+                               for x in spec.split(";")) if t]
+    if not targets:
+        sys.exit(f"no targets parsed from {spec!r}")
+
+    for t in targets:
+        if args.limit:
+            t.limit = args.limit
+
+    print(f"SWEEP  {len(targets)} target(s), unattended; a failing target is "
+          f"recorded, never fatal")
+
+    def on_ev(ev):
+        if args.quiet:
+            return
+        mark = "ok  " if ev.get("ok") else "FAIL"
+        print(f"  {mark} {ev.get('repo')}  {ev.get('seconds')}s"
+              + (f"  {ev.get('error')}" if ev.get("error") else ""))
+
+    sweep = SWEEP.run_sweep(targets, use_agent=args.sweep_agent,
+                            on_event=on_ev)
+    SWEEP.verify(sweep)
+
+    print()
+    print(SWEEP.summarize_text(sweep))
+
+    if args.json:
+        Path(args.json).write_text(json.dumps(sweep, indent=2, default=str),
+                                   encoding="utf-8")
+        print(f"\nsweep written to {args.json}")
+
+    rec = CORPUS.record_sweep(sweep)
+    print(f"\nsweep persisted: {rec}")
+    return 0
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    # `chainwatch agent --repo ...` is the documented agentic entrypoint. It is
+    # accepted as a leading WORD rather than an argparse subparser so that every
+    # existing flag invocation keeps working unchanged - adding a subparser
+    # would have made `--repo` alone ambiguous.
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "agent":
+        argv = argv[1:] + ["--agent"]
+    elif argv and argv[0] == "sweep":
+        argv = argv[1:] + ["--sweep"]
+
     ap = argparse.ArgumentParser(description="Chainwatch trajectory scanner")
     ap.add_argument("--repo", help="local path or clone URL (omit only with --from-json)")
     ap.add_argument("--address", help="deployed address for the liveness gate")
@@ -356,7 +622,47 @@ def main() -> int:
                     help="for --deep-hunt: allow the optional Gemini hypothesis "
                          "hook to PROPOSE extra invariants / sequences (still "
                          "mechanically validated; never decides a verdict)")
-    args = ap.parse_args()
+    ap.add_argument("--funnel", action="store_true",
+                    help="print the funnel: where every candidate stopped, "
+                         "which gate blocked it, and the resolution queue "
+                         "ranked by distance to a decidable answer "
+                         "(capability 19; derived, decides nothing)")
+    ap.add_argument("--funnel-format", dest="funnel_format", default="text",
+                    choices=("text", "json", "csv"),
+                    help="output format for --funnel (default: text)")
+    ap.add_argument("--verify-funnel", dest="verify_funnel", metavar="FILE",
+                    help="recompute every stored verdict in a report JSON from "
+                         "its own recorded gate states; any divergence exits 1")
+    ap.add_argument("--agent", action="store_true",
+                    help="run the ADK multi-agent layer (Hunter, Skeptic, "
+                         "Reproducer proposing; a deterministic Gatekeeper "
+                         "deciding) over the scan's finished output. Same as "
+                         "the `chainwatch agent` subcommand. Capability 20")
+    ap.add_argument("--agent-no-llm", dest="agent_no_llm", action="store_true",
+                    help="for --agent: abstain every model turn. The same "
+                         "orchestration must yield the same verdicts")
+    ap.add_argument("--agent-limit", dest="agent_limit", type=int, default=10,
+                    help="for --agent: how many findings to narrate "
+                         "(default 10; each costs model requests)")
+    ap.add_argument("--sweep", action="store_true",
+                    help="run an unattended sweep over --repos. Same as the "
+                         "`chainwatch sweep` subcommand. Capability 21")
+    ap.add_argument("--repos", dest="sweep_repos", metavar="FILE|LIST",
+                    help="for --sweep: a file with one "
+                         "`repo[,root[,address[,limit]]]` per line, or a "
+                         "semicolon-separated list of the same")
+    ap.add_argument("--sweep-agent", dest="sweep_agent", action="store_true",
+                    help="for --sweep: also run the ADK agent layer per repo")
+    args = ap.parse_args(argv)
+
+    if args.sweep:
+        return _run_sweep(args)
+
+    if args.agent:
+        return _run_agent(args)
+
+    if args.verify_funnel:
+        return verify_funnel(args.verify_funnel)
 
     if args.deep_hunt:
         return _run_deephunt(args)
@@ -370,7 +676,14 @@ def main() -> int:
     # --from-json: report generation over a completed scan, no repo walk.
     if args.from_json:
         rep = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
+        if args.funnel and args.funnel_format != "text":
+            # A machine-readable funnel is the whole output; a human report
+            # printed above it would not parse.
+            print_funnel(rep, args.funnel_format)
+            return 0
         print_report(rep)
+        if args.funnel:
+            print_funnel(rep, args.funnel_format)
         if args.generate_reports:
             _generate_reports(rep, args)
         return 0
@@ -400,7 +713,14 @@ def main() -> int:
         check_exploit_proof=args.check_exploit_proof,
     )
     rep = scan(opts, on_event=None if args.quiet else _print_progress)
+    if args.funnel and args.funnel_format != "text":
+        print_funnel(rep, args.funnel_format)
+        if args.json:
+            Path(args.json).write_text(json.dumps(rep, indent=2), encoding="utf-8")
+        return 0
     print_report(rep)
+    if args.funnel:
+        print_funnel(rep, args.funnel_format)
     if args.json:
         Path(args.json).write_text(json.dumps(rep, indent=2), encoding="utf-8")
         print(f"\nfull report written to {args.json}")

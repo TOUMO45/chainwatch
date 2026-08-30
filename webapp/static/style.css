@@ -522,6 +522,78 @@ button:disabled { opacity: .42; cursor: not-allowed; box-shadow: none; }
 .exp-who { font: var(--fs-sm) var(--mono); color: var(--text); flex: none; }
 .exp-reason { color: var(--dim); font-size: var(--fs-xs); }
 
+/* -------------------------------------------------------------- funnel (19) */
+/* Deliberately drawn in the NON-VERDICT palette. Distance is a count of checks
+   that have not run, so nothing here may borrow the CONFIRMED red or the
+   CANDIDATE amber and imply a verdict the funnel does not make. */
+.funnel { border: 1px solid var(--line); border-radius: var(--r-xl);
+          padding: var(--sp-4); margin-bottom: var(--sp-4);
+          background: linear-gradient(160deg, var(--panel-2), var(--panel));
+          box-shadow: var(--shadow-1); }
+.funnel.hidden { display: none; }
+
+.gate-block { margin-top: var(--sp-4); }
+.gate-title { font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase;
+              color: var(--faint); margin-bottom: var(--sp-2); }
+.gate-row { display: flex; align-items: baseline; gap: var(--sp-3);
+            padding: 3px 0; font-size: var(--fs-sm); }
+.gate-n { font: var(--fs-sm) var(--mono); font-weight: 700; min-width: 26px;
+          text-align: right; color: var(--text); }
+.gate-name { font: var(--fs-sm) var(--mono); color: var(--dim); }
+.gate-row.kill .gate-name { color: var(--danger-mut); }
+.gate-row.block .gate-name { color: var(--accent-2); }
+
+.q-block { margin-top: var(--sp-5); }
+.q-row { display: flex; gap: var(--sp-3); padding: var(--sp-3) 0;
+         border-top: 1px solid var(--line); }
+.q-row:first-of-type { border-top: none; }
+.q-rank { font: var(--fs-md) var(--mono); color: var(--faint); min-width: 22px;
+          text-align: right; flex: none; }
+.q-main { flex: 1; min-width: 0; }
+.q-head { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
+.q-dist { font: var(--fs-xs) var(--mono); font-weight: 700; letter-spacing: .05em;
+          padding: 2px 8px; border-radius: var(--r-pill);
+          background: rgba(78,168,255,.12); color: var(--accent-2); flex: none;
+          cursor: help; }
+.q-id { font: var(--fs-sm) var(--mono); color: var(--text); word-break: break-all; }
+.q-rule { font-size: var(--fs-xs); color: var(--violet); }
+.q-supply { margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--dim); }
+.q-supply code { font: var(--fs-xs) var(--mono); color: var(--cyan);
+                 background: var(--bg-2); padding: 1px 6px; border-radius: var(--r-sm); }
+.q-req { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: baseline;
+         margin-top: var(--sp-2); padding-left: var(--sp-3);
+         border-left: 2px solid var(--line); font-size: var(--fs-xs); }
+.q-gate { font: var(--fs-xs) var(--mono); color: var(--text); flex: none; }
+.q-status { font: var(--fs-micro) var(--mono); letter-spacing: .06em;
+            color: var(--faint); flex: none; }
+.q-how { color: var(--dim); flex: 1; min-width: 220px; }
+
+/* -------------------------------------------------------------- sweeps (21) */
+.sweeps { border: 1px solid var(--line); border-radius: var(--r-xl);
+          padding: var(--sp-4); margin-bottom: var(--sp-4);
+          background: linear-gradient(160deg, var(--panel-2), var(--panel));
+          box-shadow: var(--shadow-1); }
+.sweeps.hidden { display: none; }
+.sw-block { margin-top: var(--sp-4); padding-top: var(--sp-3);
+            border-top: 1px solid var(--line); }
+.sw-block:first-of-type { border-top: none; }
+.sw-head { display: flex; gap: var(--sp-3); flex-wrap: wrap; align-items: baseline;
+           margin-bottom: var(--sp-2); }
+.sw-id { font: var(--fs-xs) var(--mono); color: var(--faint); }
+.sw-when { font: var(--fs-xs) var(--mono); color: var(--dim); }
+.sw-tot { font-size: var(--fs-xs); color: var(--text); }
+.sw-row { display: flex; gap: var(--sp-3); align-items: baseline;
+          padding: 3px 0; font-size: var(--fs-xs); }
+.sw-mark { font: var(--fs-micro) var(--mono); font-weight: 700; letter-spacing: .06em;
+           padding: 1px 7px; border-radius: var(--r-pill); flex: none; }
+.sw-ok .sw-mark { background: var(--ok-bg); color: var(--ok); }
+/* A failed target is infra, not a verdict - the muted danger tone, never
+   the CONFIRMED red. */
+.sw-fail .sw-mark { background: rgba(201,139,106,.14); color: var(--danger-mut); }
+.sw-repo { font: var(--fs-xs) var(--mono); color: var(--text);
+           word-break: break-all; }
+.sw-meta { color: var(--dim); }
+
 /* --------------------------------------------------- ranking (capability 12) */
 .rank-wrap { margin-top: var(--sp-5); }
 .rank-wrap.hidden { display: none; }
