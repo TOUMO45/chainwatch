@@ -342,6 +342,23 @@ function syncPairCommitsState() {
 $("pair").addEventListener("input", syncPairCommitsState);
 syncPairCommitsState();
 
+/* Demo-link prefill: ?repo=...&pair=...&address=...&root_dir=...&limit=...
+ * fills the form from the URL instead of anyone typing during a recording -
+ * the exact failure mode this exists to prevent is a value landing in the
+ * wrong box (an address typed into Subdirectory, a commit pair typed into
+ * nothing at all) under camera pressure. Never auto-submits: the presenter
+ * still sees the filled form and clicks Run scan themselves, on camera. */
+(function prefillFromQuery() {
+  const q = new URLSearchParams(location.search);
+  const set = (id, key) => { if (q.has(key)) $(id).value = q.get(key); };
+  set("repo", "repo");
+  set("root_dir", "root_dir");
+  set("pair", "pair");
+  set("limit", "limit");
+  set("address", "address");
+  syncPairCommitsState();
+})();
+
 fetch("/api/rules").then((r) => r.json()).then((d) => {
   RULE_TITLES = d.titles;
   $("rule-boxes").innerHTML = d.order.map((r) =>
